@@ -13,9 +13,11 @@ from pathlib import Path
 from typing import Any
 
 try:  # Support ``python examples/jobpacer/run_replay.py``.
+    from .comm_profile import apply_profile, load_profile
     from .plan_builder import build_plan, key_labels, policy_names
     from .workloads import load_workload, ranks_for_job
 except ImportError:  # pragma: no cover - direct script execution
+    from comm_profile import apply_profile, load_profile
     from plan_builder import build_plan, key_labels, policy_names
     from workloads import load_workload, ranks_for_job
 
@@ -64,6 +66,9 @@ def _run_rank(rank: int, args: argparse.Namespace, port: int) -> subprocess.Pope
         "--fault",
         args.fault,
     ]
+    if args.comm_profile:
+        command.extend(["--comm-profile", str(args.comm_profile)])
+    command.append("--profile-strict" if args.profile_strict else "--no-profile-strict")
     return subprocess.Popen(
         command,
         env=env,
@@ -98,6 +103,13 @@ def _validate_results(
     results: list[dict[str, Any]], args: argparse.Namespace
 ) -> dict[str, Any]:
     workload = load_workload(args.workload)
+    if args.comm_profile:
+        workload = apply_profile(
+            workload,
+            load_profile(args.comm_profile),
+            {"backend": args.backend, "device_type": "cuda" if args.backend == "nccl" else "cpu", "world_size": args.world_size},
+            strict=args.profile_strict,
+        )
     plan = build_plan(workload, args.policy)
     digests = {result["plan"]["digest"] for result in results}
     all_correct = all(
@@ -181,12 +193,28 @@ def main() -> int:
     parser.add_argument("--max-outstanding", type=int, default=1)
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--comm-profile", type=Path)
+    parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
         "--fault", choices=("none", "missing_key", "metadata_mismatch"), default="none"
     )
     args = parser.parse_args()
+    if Path(args.workload).exists():
+        args.workload = str(Path(args.workload).resolve())
+    if args.comm_profile:
+        args.comm_profile = args.comm_profile.resolve()
     if args.world_size < 2:
         parser.error("--world-size must be at least 2")
+    workload = load_workload(args.workload)
+    profile = None
+    if args.comm_profile:
+        profile = load_profile(args.comm_profile)
+        apply_profile(
+            workload,
+            profile,
+            {"backend": args.backend, "device_type": "cuda" if args.backend == "nccl" else "cpu", "world_size": args.world_size},
+            strict=args.profile_strict,
+        )
     port = _free_port()
     processes = [_run_rank(rank, args, port) for rank in range(args.world_size)]
     results: list[dict[str, Any]] = []
@@ -218,6 +246,12 @@ def main() -> int:
             "max_outstanding": args.max_outstanding,
             "timeout_s": args.timeout,
             "torch": __import__("torch").__version__,
+            "estimate_source": "offline_profile" if profile else "manifest",
+            "comm_profile": str(args.comm_profile) if args.comm_profile else None,
+            "profile_digest": profile.digest() if profile else None,
+            "profile_schema_version": profile.schema_version if profile else None,
+            "profile_strict": args.profile_strict if profile else None,
+            "profile_environment": dict(profile.environment) if profile else None,
         },
         "validation": validation,
         "ranks": results,
