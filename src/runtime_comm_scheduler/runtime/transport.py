@@ -21,6 +21,8 @@ class _Inbound:
 
 
 class CoordinatorServer:
+    _MAX_CHECK_INTERVAL_S = 0.05
+
     def __init__(self, coordinator: CoordinatorState, host: str, port: int) -> None:
         self.coordinator = coordinator
         self.host = host
@@ -29,6 +31,7 @@ class CoordinatorServer:
         self._inbound: queue.Queue[_Inbound] = queue.Queue()
         self._writers: dict[int, queue.Queue[dict[str, Any] | None]] = {}
         self._connections: dict[int, socket.socket] = {}
+        self._finish_sent: dict[int, threading.Event] = {}
         self._threads: list[threading.Thread] = []
         self._stop = threading.Event()
         self._ready = threading.Event()
@@ -46,20 +49,31 @@ class CoordinatorServer:
             threading.Thread(target=self._accept_loop, name="runtime-accept", daemon=True),
             threading.Thread(target=self._event_loop, name="runtime-coordinator", daemon=True),
         ]
-        for thread in self._threads:
+        for thread in tuple(self._threads):
             thread.start()
 
     def wait_ready(self, timeout: float = 20.0) -> None:
         if not self._ready.wait(timeout):
             raise TimeoutError("runtime coordinator did not receive all endpoints")
 
-    def close(self) -> None:
-        self._stop.set()
+    def close(self, timeout: float = 2.0) -> None:
+        if timeout < 0:
+            raise ValueError("timeout must be non-negative")
         if self._listener is not None:
             try:
                 self._listener.close()
             except OSError:
                 pass
+        if self.coordinator.finished:
+            deadline = time.monotonic() + timeout
+            with self._lock:
+                finish_events = tuple(self._finish_sent.values())
+            for event in finish_events:
+                remaining = max(0.0, deadline - time.monotonic())
+                if remaining == 0:
+                    break
+                event.wait(remaining)
+        self._stop.set()
         with self._lock:
             for writer in self._writers.values():
                 writer.put(None)
@@ -100,6 +114,7 @@ class CoordinatorServer:
                     raise CoordinatorError(f"duplicate connection for endpoint {endpoint}")
                 self._connections[endpoint] = conn
                 self._writers[endpoint] = queue.Queue()
+                self._finish_sent[endpoint] = threading.Event()
                 writer = threading.Thread(target=self._writer_loop, args=(endpoint, conn, self._writers[endpoint]), daemon=True)
                 writer.start()
                 self._threads.append(writer)
@@ -117,25 +132,40 @@ class CoordinatorServer:
                 pass
 
     def _writer_loop(self, endpoint: int, conn: socket.socket, messages: queue.Queue[dict[str, Any] | None]) -> None:
-        while not self._stop.is_set():
+        while True:
             message = messages.get()
             if message is None:
                 return
             try:
                 conn.sendall(encode_message(message))
+                if message.get("kind") == "FINISHED":
+                    with self._lock:
+                        finish_sent = self._finish_sent.get(endpoint)
+                    if finish_sent is not None:
+                        finish_sent.set()
             except OSError:
                 self._inbound.put(_Inbound(endpoint, None, ConnectionError("control send failed")))
                 return
 
     def _event_loop(self) -> None:
         while not self._stop.is_set():
+            if self.coordinator.done:
+                self._stop.wait()
+                continue
             try:
-                inbound = self._inbound.get(timeout=0.05)
+                deadline = self.coordinator.next_deadline
+                timeout = self._MAX_CHECK_INTERVAL_S
+                if deadline is not None:
+                    timeout = min(timeout, max(0.0, deadline - time.monotonic()))
+                inbound = self._inbound.get(timeout=timeout)
             except queue.Empty:
                 self._dispatch(self.coordinator.tick(time.monotonic()))
                 continue
             if inbound.error is not None:
-                self._dispatch(self.coordinator.fail("transport", endpoint=inbound.endpoint, error=str(inbound.error)))
+                try:
+                    self._dispatch(self.coordinator.fail("transport", endpoint=inbound.endpoint, error=str(inbound.error)))
+                except CoordinatorError:
+                    pass
                 continue
             assert inbound.message is not None
             message = inbound.message
@@ -150,7 +180,10 @@ class CoordinatorServer:
                 out = self.coordinator.apply(inbound.endpoint, message["kind"], int(message["event_seq"]), message["payload"], time.monotonic())
                 self._dispatch(out)
             except BaseException as exc:  # noqa: BLE001
-                self._dispatch(self.coordinator.fail("protocol", endpoint=inbound.endpoint, error=str(exc)))
+                try:
+                    self._dispatch(self.coordinator.fail("protocol", endpoint=inbound.endpoint, error=str(exc)))
+                except CoordinatorError:
+                    pass
 
     def _dispatch(self, messages: list[Outbound]) -> None:
         with self._lock:
@@ -212,6 +245,8 @@ class ControlClient:
         item = self._incoming.get(timeout=timeout)
         if isinstance(item, BaseException):
             raise item
+        if item.get("epoch") != self.epoch or item.get("endpoint") != self.endpoint:
+            raise RuntimeError("control message identity mismatch")
         if item.get("kind") in {"GRANT", "FINISHED", "FAILED"}:
             delivery = item.get("payload", {}).get("delivery_seq")
             if delivery is not None:

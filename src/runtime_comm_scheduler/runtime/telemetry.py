@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -17,6 +18,7 @@ class EventLog:
     source: str
     endpoint: int | None = None
     events: list[dict[str, Any]] = field(default_factory=list)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False, compare=False)
 
     def record(self, kind: str, *, task_id: str | None = None, seq: int | None = None, **fields: Any) -> None:
         event = {"source": self.source, "kind": kind, "time_us": monotonic_us(), **fields}
@@ -26,10 +28,13 @@ class EventLog:
             event["task_id"] = task_id
         if seq is not None:
             event["seq"] = seq
-        self.events.append(event)
+        with self._lock:
+            self.events.append(event)
 
     def as_dict(self) -> dict[str, Any]:
-        return {"source": self.source, "endpoint": self.endpoint, "events": list(self.events)}
+        with self._lock:
+            events = list(self.events)
+        return {"source": self.source, "endpoint": self.endpoint, "events": events}
 
     def dumps(self) -> str:
         return json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"))

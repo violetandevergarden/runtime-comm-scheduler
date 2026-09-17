@@ -91,12 +91,17 @@ def _validate_envelope(message: dict[str, Any]) -> None:
     kind = message.get("kind")
     if not isinstance(kind, str):
         raise ProtocolError("message kind is required")
-    if not isinstance(message.get("epoch"), int) or not isinstance(
-        message.get("endpoint"), int
+    if (
+        not isinstance(message.get("epoch"), int)
+        or isinstance(message.get("epoch"), bool)
+        or not isinstance(message.get("endpoint"), int)
+        or isinstance(message.get("endpoint"), bool)
     ):
         raise ProtocolError("message epoch and endpoint are required integers")
     if kind not in {"HELLO", *CONTROL_KINDS} and (
-        not isinstance(message.get("event_seq"), int) or message["event_seq"] <= 0
+        not isinstance(message.get("event_seq"), int)
+        or isinstance(message.get("event_seq"), bool)
+        or message["event_seq"] <= 0
     ):
         raise ProtocolError("event_seq must be a positive integer")
     if not isinstance(message.get("payload"), dict):

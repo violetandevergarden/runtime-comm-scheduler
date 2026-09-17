@@ -5,7 +5,6 @@ from __future__ import annotations
 import enum
 import threading
 import time
-from datetime import timedelta
 from typing import Any
 
 
@@ -15,6 +14,27 @@ class HandleState(enum.Enum):
     BOUND = "bound"
     COMPLETED = "completed"
     FAILED = "failed"
+
+"""
+应用调用 runtime.submit()
+            │
+            ▼
+         PENDING
+    等待 coordinator 调度
+            │ grant()
+            ▼
+         GRANTED
+    已准入，等待本地 launch
+            │ bind(work)
+            ▼
+          BOUND
+    已绑定真实 PyTorch Work
+            │ mark_completed()
+            ▼
+        COMPLETED
+
+  任意未结束状态 ── fail(error) ──> FAILED
+"""
 
 
 class RuntimeHandle:
@@ -75,28 +95,13 @@ class RuntimeHandle:
             raise ValueError("timeout must be non-negative or None")
         deadline = None if timeout is None else time.monotonic() + timeout
         with self._condition:
-            while self._state not in (HandleState.BOUND, HandleState.COMPLETED, HandleState.FAILED):
+            while self._state not in (HandleState.COMPLETED, HandleState.FAILED):
                 remaining = self._remaining(deadline)
                 if remaining == 0:
                     return False
                 self._condition.wait(remaining)
             self._raise_if_failed_locked()
-            work = self._work
-        if work is None:
-            return self.state is HandleState.COMPLETED
-        remaining = self._remaining(deadline)
-        try:
-            if remaining is None:
-                ok = bool(work.wait())
-            elif remaining == 0:
-                ok = bool(getattr(work, "is_completed", lambda: False)())
-            else:
-                ok = bool(work.wait(timeout=timedelta(seconds=remaining)))
-        except TypeError:
-            ok = bool(work.wait())
-        if not ok:
-            return False
-        return True
+            return True
 
     def wait_on(self, stream: Any) -> None:
         """Establish a consumer dependency when the backend exposes one."""

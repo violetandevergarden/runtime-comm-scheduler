@@ -92,3 +92,56 @@ def test_coordinator_rejects_metadata_conflict_and_missing_static_task():
     failed = static.apply(1, "INPUT_CLOSED", 3, {}, 0.2)
     assert failed[0].kind == "FAILED"
     assert "g/comm-1" in failed[0].payload["missing_tasks"]
+
+
+def test_dynamic_fifo_uses_first_eligible_arrival_not_declare_order():
+    coordinator = CoordinatorState((0, 1), policy="fifo")
+    for group_seq, group_id in enumerate(("x", "a", "b"), 1):
+        group = GroupSpec(0, group_id, (0, 1))
+        for endpoint in (0, 1):
+            coordinator.apply(
+                endpoint,
+                "REGISTER_GROUP",
+                group_seq,
+                {"group": group.to_dict()},
+                0.0,
+            )
+
+    x, a, b = _task("x", 0), _task("a", 0), _task("b", 0)
+    for endpoint in (0, 1):
+        coordinator.apply(endpoint, "OFFER", 4, _payload(x), 0.1)
+    coordinator.apply(0, "DECLARE", 5, _payload(a), 0.2)
+    coordinator.apply(0, "DECLARE", 6, _payload(b), 0.21)
+    coordinator.apply(0, "OFFER", 7, _payload(b), 0.22)
+    coordinator.apply(0, "OFFER", 8, _payload(a), 0.23)
+    coordinator.apply(1, "DECLARE", 5, _payload(b), 0.24)
+    coordinator.apply(1, "DECLARE", 6, _payload(a), 0.25)
+    coordinator.apply(1, "OFFER", 7, _payload(b), 0.26)
+    coordinator.apply(1, "OFFER", 8, _payload(a), 0.27)
+
+    for endpoint in (0, 1):
+        coordinator.apply(endpoint, "SUBMITTED", 9, {"task_id": x.task_id, "decision_seq": 1}, 0.3)
+    coordinator.apply(0, "COMPLETED", 10, {"task_id": x.task_id, "decision_seq": 1}, 0.31)
+    out = coordinator.apply(1, "COMPLETED", 10, {"task_id": x.task_id, "decision_seq": 1}, 0.32)
+    assert [item.payload["task"]["task_id"] for item in out] == [b.task_id, b.task_id]
+
+
+def test_lookahead_deadline_falls_back_without_refreshing():
+    coordinator = CoordinatorState((0, 1), policy="lookahead", wait_budget_s=0.005)
+    for group_seq, group_id in enumerate(("a", "b"), 1):
+        group = GroupSpec(0, group_id, (0, 1))
+        for endpoint in (0, 1):
+            coordinator.apply(endpoint, "REGISTER_GROUP", group_seq, {"group": group.to_dict()}, 0.0)
+    a, b = _task("a", 0), _task("b", 0)
+    a_payload = {"task": a.to_dict(), "hint": TaskHint(0.0, 0.01, 0.1).to_dict()}
+    b_payload = {"task": b.to_dict(), "hint": TaskHint(0.004, 0.001, 10.0).to_dict()}
+    for endpoint in (0, 1):
+        coordinator.apply(endpoint, "DECLARE", 3, b_payload, 0.0)
+    for endpoint in (0, 1):
+        coordinator.apply(endpoint, "OFFER", 4, a_payload, 0.0)
+    assert coordinator.active_wait is not None
+    deadline = coordinator.active_wait.deadline
+    out = coordinator.tick(deadline + 0.001)
+    assert deadline == 0.004
+    assert [item.kind for item in out] == ["GRANT", "GRANT"]
+    assert coordinator.active_wait is None

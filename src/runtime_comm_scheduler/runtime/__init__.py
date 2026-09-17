@@ -30,7 +30,7 @@ from .policy import (
     Wait,
     make_policy,
 )
-from .runtime import RankRuntime
+from .runtime import RankRuntime, RuntimeState
 from .telemetry import EventLog, monotonic_us
 
 __all__ = [
@@ -55,6 +55,7 @@ __all__ = [
     "PolicySnapshot",
     "RankRuntime",
     "RuntimeHandle",
+    "RuntimeState",
     "StaticPolicy",
     "TaskHint",
     "TaskSpec",

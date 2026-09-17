@@ -167,7 +167,7 @@ class BoundedLookaheadPolicy:
             wait_s + target.estimated_comm_s + target.remaining_tail_s,
             wait_s + target.estimated_comm_s + selected.estimated_comm_s + selected.remaining_tail_s,
         )
-        if wait_s <= self._wait_budget_s and wait_score < dispatch_score:
+        if 0.0 < wait_s <= self._wait_budget_s and wait_score < dispatch_score:
             return Wait(target.task_id, snapshot.now + wait_s)
         return Dispatch(selected.task_id, "dynamic_ltf")
 

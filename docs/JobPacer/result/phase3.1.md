@@ -1,6 +1,86 @@
-# JobPacer Phase 3.1 实现与验收结果
+# JobPacer Phase 3.1 修复后实现与验收结果
 
-日期：2026-09-16
+日期：2026-09-17
+
+## 修复后验收
+
+本节记录依据 `process/phase3.1fix-plan.md` 完成后的结果。修复覆盖：
+
+- active task 边界保证 `SUBMITTED` 先于 `COMPLETED`；
+- Dynamic FIFO 按首次 eligible 顺序选择；
+- lookahead 使用最近 deadline，事件处理也检查 timer；
+- `wait_host()` 只等待 runtime 的 `COMPLETED/FAILED`；
+- 当前 job frontier 才声明，未知 `ready_after_s` 不参与预测；
+- GRANT、tensor、dtype、bytes、device、ProcessGroup、input close 和失败停发校验；
+- coordinator 初始线程只启动一次，避免 accept 并发导致连接线程重复启动；
+- 正常关闭等待各 writer 发出 FINISHED，终态 deadline 清空并等待 close；
+- submit/declare/finish_epoch 在同一条件锁内发送控制消息，保证 OFFER 不越过 INPUT_CLOSED；
+- 完成后释放本地 binding，接入 rank-local EventLog 和 coordinator trace；
+- replay 输出增加 launch 投影、makespan、job duration 和等待分解。
+
+测试环境为 Python 3.13.15、PyTorch 2.13.0+cu129，CPU/Gloo，world size 2，
+`max_inflight=1`。
+
+单元测试：
+
+```text
+PYTHONPATH=src pytest -q
+94 passed, 10 skipped
+```
+
+新增的 runtime 测试覆盖 handle 失败唤醒、提交/完成顺序、错误 GRANT、LocalBinding 的
+tensor 字段、失败后队列停发、binding 释放、FIFO arrival inversion、lookahead deadline、
+持续消息、input close、正常关闭发送排空和并发 submit/finish 顺序。真实双 rank replay 已固化
+为 opt-in pytest 集成测试：
+
+```text
+env PYTHONPATH=src RUN_JOBPACER_RUNTIME_REPLAY=1 \
+  pytest -q tests/integration/test_runtime_replay.py
+4 passed
+```
+
+未设置 `RUN_JOBPACER_RUNTIME_REPLAY=1` 时，集成参数默认跳过，以免普通单测依赖本地 TCP
+权限；启用后使用真实 CPU/Gloo 两 rank 和独立 coordinator 控制通道。
+
+Replay 命令：
+
+```bash
+PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py --policy fifo --workload balanced --backend gloo --timeout 20 --output /tmp/jobpacer-runtime-fifo.json
+PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py --policy static_fifo --workload delayed --backend gloo --timeout 20 --output /tmp/jobpacer-runtime-static.json
+PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py --policy ltf --workload tail --backend gloo --timeout 20 --output /tmp/jobpacer-runtime-ltf.json
+PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py --policy lookahead --workload delayed --backend gloo --timeout 20 --output /tmp/jobpacer-runtime-lookahead.json
+```
+
+四种 CPU/Gloo replay 均返回 `validation.status=ok`，每个 rank 的 grant/launch 投影一致，
+all-reduce 结果正确；下表顺序为各命令的一次运行观测，FIFO/LTF 的实际到达顺序由线程事件决定：
+
+| policy / workload | grant 顺序 | coordinator makespan（秒） |
+| --- | --- | ---: |
+| FIFO / balanced | `job-1/0, job-0/0, job-1/1, job-0/1, job-1/2, job-0/2` | 0.285 |
+| Static FIFO / delayed | `job-0/0, job-1/0, job-0/1, job-1/1` | 0.276 |
+| LTF / tail | `job-0/0, job-1/0, job-0/1, job-1/1, job-0/2, job-1/2` | 0.282 |
+| Lookahead / delayed | `job-1/0, job-1/1, job-0/0, job-0/1` | 0.230 |
+
+对应的 rank-local job duration（秒）为：FIFO `job-0=0.246, job-1=0.200`，Static FIFO
+`0.186, 0.234`，LTF `0.191, 0.238`，Lookahead `0.190, 0.097`。coordinator trace
+同时记录了 `eligible→grant`、`grant→all submitted`、`all submitted→all completed`；
+本次样本的主要等待区间是 `CAPACITY_FULL`，Static FIFO 另有队首阻塞，未将不同进程的
+原始 `perf_counter` 直接相减。
+
+输出文件分别为 `/tmp/jobpacer-runtime-{fifo,static,ltf,lookahead}.json`；文件内包含每个
+job 的本地 duration、coordinator idle interval、task 阶段时间以及每 rank 的 runtime
+events。`delayed` 的 Static FIFO 记录了约 0.0815 秒的 `STATIC_HEAD_BLOCKED`；四次 replay
+的 tensor 校验均通过。
+
+本次检查再次运行四种故障注入，均以非零且有界失败结束：`metadata_mismatch` 在 backend
+launch 前以 `tensor shape mismatch` 被拒绝，`missing_task` 报告 `missing_offer`，
+`launch_failure` 和 `completion_probe_failure` 分别广播对应的 runtime failure。对应输出为
+`/tmp/jobpacer-runtime-fault-{metadata,missing,launch,probe}.json`。
+
+NCCL/GPU、DAG、多 inflight、多资源、跨 host 和重连恢复仍未验收；本结果只将 CPU/Gloo
+机制标记为完成。
+
+## 修复前历史记录（2026-09-16）
 
 已按 [讨论方案](../plan/discussion.md)、[执行计划](../plan/phase3.1.md) 和
 [实际实现方案](../process/phase3.1.md) 完成 CPU/Gloo 版 Stage 3.1。此前的
