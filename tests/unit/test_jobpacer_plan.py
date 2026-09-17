@@ -5,7 +5,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from examples.jobpacer.plan_builder import build_plan, key_labels, policy_names
+from examples.jobpacer.plan_builder import (
+    PlannedTask,
+    _tail_after,
+    build_plan,
+    key_labels,
+    policy_names,
+    task_key,
+)
 from examples.jobpacer.workloads import (
     CollectiveComm,
     Job,
@@ -50,6 +57,25 @@ def test_ltf_uses_tail_and_has_a_different_legal_interleaving():
         assert [key.ordinal for key in plan.group_sequence(job_id)] == sorted(
             key.ordinal for key in plan.group_sequence(job_id)
         )
+
+
+def test_tail_uses_compute_communication_overlap_critical_path():
+    communications = (
+        CollectiveComm(0, estimated_comm_s=0.004, consumer_compute_s=0.010),
+        CollectiveComm(
+            1,
+            producer_compute_s=0.002,
+            estimated_comm_s=0.005,
+            consumer_compute_s=0.003,
+        ),
+        CollectiveComm(2, estimated_comm_s=0.002, consumer_compute_s=0.008),
+    )
+    tasks = tuple(
+        PlannedTask("job-a", communication, task_key("job-a", communication.id))
+        for communication in communications
+    )
+
+    assert abs(_tail_after(tasks, 0) - 0.021) < 1e-12
 
 
 def test_plan_and_digest_are_deterministic():
