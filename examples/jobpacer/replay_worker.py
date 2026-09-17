@@ -23,9 +23,11 @@ from runtime_comm_scheduler import (
 )
 
 try:  # Support both package imports in tests and direct script execution.
+    from .comm_profile import apply_profile, load_profile, workload_digest
     from .plan_builder import build_plan, planned_tasks, policy_names
     from .workloads import Workload, load_workload, ranks_for_job
 except ImportError:  # pragma: no cover - exercised by the subprocess driver
+    from comm_profile import apply_profile, load_profile, workload_digest
     from plan_builder import build_plan, planned_tasks, policy_names
     from workloads import Workload, load_workload, ranks_for_job
 
@@ -48,6 +50,15 @@ def _check_plan_digest(plan) -> None:
     dist.all_gather_object(observed, plan.digest())
     if any(digest != plan.digest() for digest in observed):
         raise RuntimeError(f"plan digest mismatch across ranks: {observed}")
+
+
+def _check_workload_digest(workload: Workload) -> str:
+    digest = workload_digest(workload)
+    observed: list[str | None] = [None] * dist.get_world_size()
+    dist.all_gather_object(observed, digest)
+    if any(item != digest for item in observed):
+        raise RuntimeError(f"workload digest mismatch across ranks: {observed}")
+    return digest
 
 
 def _new_groups(workload: Workload, world_size: int) -> dict[str, Any]:
@@ -84,6 +95,7 @@ def _run_job(
     errors: list[BaseException],
     stop_event: threading.Event,
     fault: str,
+    estimate_source: str,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {"job_id": job.job_id, "status": "ok", "tasks": []}
     try:
@@ -165,6 +177,8 @@ def _run_job(
                 "job_id": job.job_id,
                 "ordinal": spec.id,
                 "num_bytes": spec.num_bytes,
+                "estimated_comm_s": spec.estimated_comm_s,
+                "estimate_source": estimate_source,
                 "correct": correct,
                 "producer_compute_start_ts": compute_start,
                 "ready_record_ts": ready_ts,
@@ -198,9 +212,19 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     else:
         device = "cpu"
 
+    profile = load_profile(args.comm_profile) if args.comm_profile else None
+    if profile is not None:
+        workload = apply_profile(
+            workload,
+            profile,
+            {"backend": args.backend, "device_type": "cuda" if args.backend == "nccl" else "cpu", "world_size": world_size},
+            strict=args.profile_strict,
+        )
+
     dist.init_process_group(backend=args.backend)
     groups = _new_groups(workload, world_size)
     dist.barrier()
+    applied_workload_digest = _check_workload_digest(workload)
     plan = build_plan(
         workload, args.policy, version=args.plan_version, window_id=args.window_id
     )
@@ -243,6 +267,7 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 errors=errors,
                 stop_event=stop_event,
                 fault=args.fault,
+                estimate_source="offline_profile" if profile else "manifest",
             )
 
         for job in local_jobs:
@@ -270,6 +295,15 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             "backend": args.backend,
             "world_size": world_size,
             "workload": workload.to_dict(),
+            "workload_digest": applied_workload_digest,
+            "communication_profile": {
+                "path": str(args.comm_profile) if args.comm_profile else None,
+                "digest": profile.digest() if profile else None,
+                "schema_version": profile.schema_version if profile else None,
+                "strict": args.profile_strict if profile else None,
+                "environment": dict(profile.environment) if profile else None,
+                "estimate_source": "offline_profile" if profile else "manifest",
+            },
             "plan": {
                 "version": plan.version,
                 "window_id": plan.window_id,
@@ -348,6 +382,8 @@ def main() -> int:
     parser.add_argument("--finish-timeout", type=float, default=20.0)
     parser.add_argument("--thread-timeout", type=float, default=20.0)
     parser.add_argument("--completion-poll-interval-s", type=float, default=0.001)
+    parser.add_argument("--comm-profile", type=Path)
+    parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
         "--fault", choices=("none", "missing_key", "metadata_mismatch"), default="none"
     )

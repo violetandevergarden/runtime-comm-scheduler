@@ -24,7 +24,7 @@ class CollectiveComm:
     op：集合通信操作名称
     producer_compute_s：上游产生数据需要的计算时间
     consumer_compute_s：下游暂时不依赖此次通信的计算时间，模拟计算和通信重叠
-    estimated_comm_s：预估计算时间
+    estimated_comm_s：预估通信时间（秒）
     """
 
     id: int
@@ -32,7 +32,7 @@ class CollectiveComm:
     op: str = "all_reduce"
     producer_compute_s: float = 0.0
     consumer_compute_s: float = 0.0
-    estimated_comm_s: float = 0.001  # TODO：还不是真实估计值
+    estimated_comm_s: float = 0.001
 
     def __post_init__(self) -> None:
         if self.id < 0:

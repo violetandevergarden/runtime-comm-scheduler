@@ -84,3 +84,63 @@ pytest -q tests/unit tests/integration/test_gloo_order.py
 ```
 
 跳过项是仓库原有 Gloo integration harness 在受限沙箱中无法创建本地 TCP rendezvous socket；上述 JobPacer 两 rank replay 使用本机 TCP rendezvous 在放行 socket 权限后实际完成。GPU/NCCL 路径已保留 CLI 和 `TorchProcessGroupExecutor` 接口，本阶段未将 GPU 作为 CPU/Gloo 验收的必要条件，也未进行 NCCL 结果宣称。
+
+## 附加任务：离线通信 Profiling
+
+日期：2026-09-16
+
+已完成 `process/phase2.md` 中的补充工作。新增
+`examples/jobpacer/profile_communication.py`，它从 workload 去重通信签名，按 manifest 顺序
+创建 ProcessGroup，并逐签名执行无竞争 warmup 和正式测量。每轮在 group barrier 后计时真实
+异步 all-reduce 直到物理完成，再在参与 rank 间取最大耗时。Gloo 使用单调 CPU 时钟；NCCL
+路径在计时边界同步 CUDA device。rank 0 以临时文件加原子替换的方式写 profile，失败时不会
+写出半成品。
+
+新增 `examples/jobpacer/comm_profile.py`，提供稳定的 `CommSignature`、严格校验的
+`ProfileRecord`/`CommunicationProfile`、确定性 JSON digest 和冻结 workload 的复制覆盖。
+匹配键包括 op、bytes、dtype、group size、backend、device type 和 reduction；严格模式会在
+启动 distributed collective 前拒绝缺失或重复签名，以及 backend、device、world size、
+group membership 不匹配。非严格模式保留 manifest 估值并发出逐项 fallback 警告。
+
+Replay 新增 `--comm-profile`、`--profile-strict/--no-profile-strict`。父进程和每个 rank 都在
+构造 Plan 前应用同一 profile，各 rank 在执行前交换应用后 workload digest。输出 trace 现在
+包含 profile 路径、内容 digest、schema version、strict 标志、环境摘要、workload digest，
+以及每个 task 的最终 `estimated_comm_s` 和 `offline_profile`/`manifest` 来源。未传 profile
+时保持原有手工估值路径。
+
+CPU/Gloo 小轮次实测命令如下：
+
+```bash
+python examples/jobpacer/profile_communication.py \
+  --workload balanced --backend gloo --world-size 2 \
+  --warmup 1 --iterations 3 --timeout 20 \
+  --output /tmp/jobpacer-profile.json
+
+python examples/jobpacer/run_replay.py \
+  --mode scheduler --policy ltf --workload balanced \
+  --backend gloo --world-size 2 --max-outstanding 1 \
+  --comm-profile /tmp/jobpacer-profile.json --timeout 20 \
+  --output /tmp/jobpacer-profile-replay.json
+```
+
+该次 profile 对 4096-byte all-reduce 得到 p10/p50/p90 为
+`0.476/0.581/0.894 ms`（3 个样本，仅用于功能验收）。应用 profile 后两 rank 的 workload
+digest 均为 `4dbcf9b5dc660b63aa719957888c581b613bc14b516d58d09575f1959b4a1cec`，Plan
+digest 均为 `d01d0c9e62e17c6662844b88d7bcf32d69a7b17f48bb79c112eab29a0c6d9f73`；LTF
+顺序为 `job-1:0, job-0:0, job-1:1, job-0:1, job-1:2, job-0:2`。collective
+结果、scheduler/group 顺序和严格串行 admission 检查均通过。
+
+新增单元测试覆盖跨 job 签名去重、JSON round-trip/digest、不可变覆盖、缺失/重复/环境错误、
+profile 改变 LTF 顺序；新增两 rank Gloo 集成测试，用 4096 和 8192 bytes 两种消息完成
+profile 后再 replay，并校验样本、分位数、跨 rank workload digest、估值来源和 collective
+正确性。完整 CPU 测试结果：
+
+```text
+pytest -q tests/unit tests/integration
+...............................................................          [100%]
+63 passed in 12.85s
+```
+
+当前机器未执行两 GPU NCCL 验收，因此不记录 NCCL 耗时或正确性结论。NCCL 测量与 replay
+代码路径已经实现，需在目标双 GPU 实验机上重新生成 profile 后完成最终环境验收；本次 Gloo
+绝对耗时不应跨机器复用。
