@@ -35,7 +35,7 @@ src/runtime_comm_scheduler/runtime/
 ├── __init__.py       # 只导出稳定应用接口
 ├── model.py          # GroupSpec、TaskSpec、TaskHint、LocalBinding
 ├── protocol.py       # 控制消息、编解码、版本和协议校验
-├── policy.py         # Snapshot、Decision 与四种纯策略
+├── policy.py         # Snapshot、Action、Policy Protocol 与四种纯策略
 ├── coordinator.py    # 单线程状态机、合法候选、容量、结束和错误
 ├── transport.py      # TCP NDJSON，server/client 收发，不含调度逻辑
 ├── handle.py         # RuntimeHandle 的等待、绑定、完成和失败
@@ -379,10 +379,13 @@ class PolicySnapshot:
     now: float
     eligible: tuple[Candidate, ...]
     anticipated: tuple[Anticipated, ...]
-    static_next: str | None
     active_wait: ActiveWait | None
 
 Action = Dispatch | Wait | Idle | Done
+
+策略决策接口统一为 `decide(snapshot)`；静态策略额外保存自己的 order/cursor，
+其他策略不共享这些状态。Coordinator 只通过统一策略接口工作，并自行维护 lookahead 的
+等待轮次。策略还提供统一的任务完整性检查入口，静态策略用它报告缺失的静态 task。
 ```
 
 Coordinator 使用可注入的 `Clock.monotonic()` 生成 `now`，单元测试使用 fake clock。

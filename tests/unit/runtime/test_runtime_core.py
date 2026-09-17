@@ -4,7 +4,15 @@ import pytest
 
 from runtime_comm_scheduler.runtime.coordinator import CoordinatorState
 from runtime_comm_scheduler.runtime.model import CollectiveSpec, GroupSpec, TaskHint, TaskSpec
-from runtime_comm_scheduler.runtime.policy import Candidate, PolicySnapshot, make_policy
+from runtime_comm_scheduler.runtime.policy import (
+    BoundedLookaheadPolicy,
+    Candidate,
+    FifoPolicy,
+    LongestTailFirstPolicy,
+    PolicySnapshot,
+    StaticPolicy,
+    make_policy,
+)
 
 
 def _task(job: str, ordinal: int) -> TaskSpec:
@@ -30,6 +38,13 @@ def test_policy_fifo_and_ltf_choose_different_candidates():
     )
     assert make_policy("fifo").decide(PolicySnapshot(0.0, candidates, ())).task_id == "short"
     assert make_policy("ltf").decide(PolicySnapshot(0.0, candidates, ())).task_id == "long"
+
+
+def test_policy_factory_returns_separate_strategy_types():
+    assert isinstance(make_policy("static", static_order=("task",)), StaticPolicy)
+    assert isinstance(make_policy("fifo"), FifoPolicy)
+    assert isinstance(make_policy("ltf"), LongestTailFirstPolicy)
+    assert isinstance(make_policy("lookahead"), BoundedLookaheadPolicy)
 
 
 def test_coordinator_requires_both_members_and_releases_one_inflight_task():

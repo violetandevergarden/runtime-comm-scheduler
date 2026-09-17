@@ -10,7 +10,18 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .model import GroupSpec, TaskHint, TaskSpec
-from .policy import ActiveWait, Anticipated, Candidate, Dispatch, Done, Idle, Policy, PolicySnapshot, Wait, make_policy
+from .policy import (
+    ActiveWait,
+    Anticipated,
+    Candidate,
+    Dispatch,
+    Done,
+    Idle,
+    Policy,
+    PolicySnapshot,
+    Wait,
+    make_policy,
+)
 
 
 class CoordinatorError(RuntimeError):
@@ -26,6 +37,8 @@ class _EndpointState:
 
 @dataclass
 class _Member:
+    """记录一个 rank 对一个 collective 任务的进展"""
+
     declared: bool = False
     offered: bool = False
     submitted: bool = False
@@ -38,14 +51,16 @@ class _Task:
     spec: TaskSpec
     hints: dict[int, TaskHint] = field(default_factory=dict)
     members: dict[int, _Member] = field(default_factory=dict)
-    registered_seq: int = 0
-    eligible_seq: int | None = None
-    grant_seq: int | None = None
+    registered_seq: int = 0  # 第一次看到任务的顺序
+    eligible_seq: int | None = None  # 任务满足调度的时间顺序
+    grant_seq: int | None = None  # 调度顺序
 
 
 @dataclass(frozen=True)
 class Outbound:
-    endpoint: int
+    """准备发出的信息"""
+
+    endpoint: int  # 现在就是目标rank
     kind: str
     payload: dict[str, Any]
 
@@ -72,7 +87,9 @@ class CoordinatorState:
         self.epoch = epoch
         self.max_inflight = max_inflight
         self.epoch_timeout_s = epoch_timeout_s
-        self.endpoint: dict[int, _EndpointState] = {rank: _EndpointState() for rank in self.endpoints}
+        self.endpoint: dict[int, _EndpointState] = {
+            rank: _EndpointState() for rank in self.endpoints
+        }
         self.groups: dict[str, GroupSpec] = {}
         self._group_registered: dict[str, set[int]] = {}
         self.tasks: dict[str, _Task] = {}
@@ -86,16 +103,28 @@ class CoordinatorState:
         self.finished = False
         self._finish_sent = False
         self.active_wait: ActiveWait | None = None
+        self._wait_round = 0
         self._must_dispatch = False
         self._started_at: float | None = None
         self.records: list[dict[str, Any]] = []
-        self.policy: Policy = make_policy(policy, static_order=static_order, wait_budget_s=wait_budget_s)
+        self.policy: Policy = make_policy(
+            policy, static_order=static_order, wait_budget_s=wait_budget_s
+        )
 
     @property
     def done(self) -> bool:
         return self.finished or self.failed is not None
 
-    def apply(self, endpoint: int, kind: str, event_seq: int, payload: dict[str, Any], now: float) -> list[Outbound]:
+    def apply(
+        self,
+        endpoint: int,
+        kind: str,
+        event_seq: int,
+        payload: dict[str, Any],
+        now: float,
+    ) -> list[Outbound]:
+        """处理rank上报事件"""
+
         if self.failed is not None:
             return []
         if endpoint not in self.endpoint:
@@ -107,40 +136,56 @@ class CoordinatorState:
             raise CoordinatorError(
                 f"event sequence error endpoint={endpoint}: expected {state.next_event_seq}, got {event_seq}"
             )
+
         state.next_event_seq += 1
         if kind == "REGISTER_GROUP":
             self._register_group(endpoint, GroupSpec.from_dict(payload["group"]))
         elif kind in {"DECLARE", "OFFER"}:
             task = self._task_from_payload(payload)
-            self._accept_task(endpoint, task, TaskHint.from_dict(payload["hint"]), kind, now)
+            self._accept_task(
+                endpoint, task, TaskHint.from_dict(payload["hint"]), kind, now
+            )
         elif kind in {"SUBMITTED", "COMPLETED"}:
             self._progress(endpoint, kind, payload)
         elif kind == "INPUT_CLOSED":
             state.input_closed = True
-            self.records.append({"kind": "input_closed", "endpoint": endpoint, "now": now})
+            self.records.append(
+                {"kind": "input_closed", "endpoint": endpoint, "now": now}
+            )
             missing_from_endpoint = [
                 task.spec.task_id
                 for task in self.tasks.values()
-                if endpoint in task.members
-                and not task.members[endpoint].offered
+                if endpoint in task.members and not task.members[endpoint].offered
             ]
             if missing_from_endpoint:
-                self._fail("missing_offer", endpoint=endpoint, missing_tasks=missing_from_endpoint, now=now)
+                self._fail(
+                    "missing_offer",
+                    endpoint=endpoint,
+                    missing_tasks=missing_from_endpoint,
+                    now=now,
+                )
         elif kind == "FAILED":
             self._fail("remote_failed", endpoint=endpoint, **payload)
         else:
             raise CoordinatorError(f"unknown coordinator event {kind!r}")
+
         if self.failed is not None:
             return self._failure_messages()
+
         out = self._maybe_finish(now)
         if not out and not self.finished:
             out = self._decide(now)
         return out
 
     def tick(self, now: float) -> list[Outbound]:
+        """定期检查状态"""
+
         if self.done:
             return []
-        if self._started_at is not None and now - self._started_at > self.epoch_timeout_s:
+        if (
+            self._started_at is not None
+            and now - self._started_at > self.epoch_timeout_s
+        ):
             self._fail("epoch_timeout", now=now, inflight=self.inflight)
             return self._failure_messages()
         if self.active_wait is not None and now >= self.active_wait.deadline:
@@ -152,10 +197,15 @@ class CoordinatorState:
         return self._failure_messages()
 
     def _register_group(self, endpoint: int, group: GroupSpec) -> None:
+        """注册通信组"""
+
         if group.epoch != self.epoch:
             raise CoordinatorError(f"old or future epoch {group.epoch}")
         if endpoint not in group.ranks:
-            raise CoordinatorError(f"endpoint {endpoint} is not a member of group {group.group_id}")
+            raise CoordinatorError(
+                f"endpoint {endpoint} is not a member of group {group.group_id}"
+            )
+
         previous = self.groups.get(group.group_id)
         if previous is not None and previous != group:
             raise CoordinatorError(f"group metadata mismatch for {group.group_id}")
@@ -172,17 +222,31 @@ class CoordinatorState:
             raise CoordinatorError("task group mismatch")
         return task
 
-    def _accept_task(self, endpoint: int, spec: TaskSpec, hint: TaskHint, kind: str, now: float) -> None:
+    def _accept_task(
+        self, endpoint: int, spec: TaskSpec, hint: TaskHint, kind: str, now: float
+    ) -> None:
+        """把各个 rank 对同一个 collective 的声明汇总成一个 _Task"""
+
         group = self.groups.get(spec.group_id)
         if group is None:
-            raise CoordinatorError(f"task {spec.task_id} arrived before group registration")
+            raise CoordinatorError(
+                f"task {spec.task_id} arrived before group registration"
+            )
         members = set(group.ranks)
         if endpoint not in members:
-            raise CoordinatorError(f"endpoint {endpoint} is not a member of task {spec.task_id}")
+            raise CoordinatorError(
+                f"endpoint {endpoint} is not a member of task {spec.task_id}"
+            )
         existing = self.tasks.get(spec.task_id)
-        if existing is None:
+
+        if existing is None:  
+            # 检查组内序号冲突
+            # 保证同一个 ProcessGroup 的 rank 必须以相同顺序发起 collective
             pair = (spec.group_id, spec.group_seq)
-            if pair in self._group_task_ids and self._group_task_ids[pair] != spec.task_id:
+            if (
+                pair in self._group_task_ids
+                and self._group_task_ids[pair] != spec.task_id
+            ):
                 raise CoordinatorError(f"group sequence conflict for {pair}")
             self._registered_seq += 1
             existing = _Task(spec, registered_seq=self._registered_seq)
@@ -192,21 +256,40 @@ class CoordinatorState:
         elif existing.spec != spec:
             raise CoordinatorError(f"task metadata mismatch for {spec.task_id}")
         member = existing.members[endpoint]
+
         if kind == "DECLARE":
             if member.declared and existing.hints[endpoint] != hint:
-                raise CoordinatorError(f"declaration metadata mismatch for {spec.task_id}")
+                raise CoordinatorError(
+                    f"declaration metadata mismatch for {spec.task_id}"
+                )
             member.declared = True
-            member.declared_at = now if member.declared_at is None else member.declared_at
+            member.declared_at = (
+                now if member.declared_at is None else member.declared_at
+            )
         else:
             if member.offered:
-                raise CoordinatorError(f"duplicate offer for {spec.task_id} from endpoint {endpoint}")
+                raise CoordinatorError(
+                    f"duplicate offer for {spec.task_id} from endpoint {endpoint}"
+                )
             member.offered = True
             member.declared = True
-            member.declared_at = now if member.declared_at is None else member.declared_at
+            member.declared_at = (
+                now if member.declared_at is None else member.declared_at
+            )
+
         existing.hints[endpoint] = hint
-        self.records.append({"kind": kind.lower(), "task_id": spec.task_id, "endpoint": endpoint, "now": now})
+        self.records.append(
+            {
+                "kind": kind.lower(),
+                "task_id": spec.task_id,
+                "endpoint": endpoint,
+                "now": now,
+            }
+        )
 
     def _progress(self, endpoint: int, kind: str, payload: dict[str, Any]) -> None:
+        """处理 rank 对已获授权任务上报的执行进度"""
+
         task_id = payload.get("task_id")
         task = self.tasks.get(task_id)
         if task is None or task.grant_seq is None:
@@ -214,9 +297,11 @@ class CoordinatorState:
         decision_seq = int(payload.get("decision_seq", -1))
         if decision_seq != task.grant_seq:
             raise CoordinatorError(f"{kind} decision mismatch for {task_id}")
+
         member = task.members.get(endpoint)
         if member is None:
             raise CoordinatorError(f"endpoint {endpoint} is not a member of {task_id}")
+
         if kind == "SUBMITTED":
             if not member.offered or member.submitted:
                 raise CoordinatorError(f"invalid submitted transition for {task_id}")
@@ -225,17 +310,28 @@ class CoordinatorState:
             if not member.submitted or member.completed:
                 raise CoordinatorError(f"invalid completed transition for {task_id}")
             member.completed = True
-        self.records.append({"kind": kind.lower(), "task_id": task_id, "endpoint": endpoint})
-        if kind == "COMPLETED" and all(item.completed for item in task.members.values()):
+        self.records.append(
+            {"kind": kind.lower(), "task_id": task_id, "endpoint": endpoint}
+        )
+
+        if kind == "COMPLETED" and all(
+            item.completed for item in task.members.values()
+        ):
             self._next_group_seq[task.spec.group_id] = task.spec.group_seq + 1
             self.inflight = None
             self.active_wait = None
             self._must_dispatch = False
 
     def _eligible(self) -> list[Candidate]:
+        """找出当前所有已经具备调度条件的任务"""
+
         result: list[Candidate] = []
         for task in self.tasks.values():
-            if task.grant_seq is not None or task.eligible_seq is not None and task.members[next(iter(task.members))].completed:
+            if (
+                task.grant_seq is not None
+                or task.eligible_seq is not None
+                and task.members[next(iter(task.members))].completed
+            ):
                 continue
             if task.spec.group_seq != self._next_group_seq.get(task.spec.group_id, 0):
                 continue
@@ -244,49 +340,107 @@ class CoordinatorState:
             if task.eligible_seq is None:
                 self._eligible_seq += 1
                 task.eligible_seq = self._eligible_seq
-                self.records.append({"kind": "eligible", "task_id": task.spec.task_id, "eligible_seq": task.eligible_seq})
+                self.records.append(
+                    {
+                        "kind": "eligible",
+                        "task_id": task.spec.task_id,
+                        "eligible_seq": task.eligible_seq,
+                    }
+                )
             hint = next(iter(task.hints.values()))
-            result.append(Candidate(task.spec.task_id, hint.estimated_comm_s, hint.remaining_tail_s, task.eligible_seq))
+            result.append(
+                Candidate(
+                    task.spec.task_id,
+                    hint.estimated_comm_s,
+                    hint.remaining_tail_s,
+                    task.eligible_seq,
+                )
+            )
         return result
 
     def _anticipated(self, now: float) -> list[Anticipated]:
+        """已声明，但还没全部 ready，预计将来能执行"""
+
         result: list[Anticipated] = []
         for task in self.tasks.values():
-            if task.grant_seq is not None or task.spec.group_seq != self._next_group_seq.get(task.spec.group_id, 0):
+            if (
+                task.grant_seq is not None
+                or task.spec.group_seq
+                != self._next_group_seq.get(task.spec.group_id, 0)
+            ):
                 continue
-            if all(member.offered for member in task.members.values()) or not any(member.declared for member in task.members.values()):
+            if all(member.offered for member in task.members.values()) or not any(
+                member.declared for member in task.members.values()
+            ):
                 continue
             hints = [task.hints[rank] for rank in task.hints]
             hint = max(hints, key=lambda item: item.ready_after_s or 0)
-            declared_at = max(member.declared_at or now for member in task.members.values() if member.declared)
+            declared_at = max(
+                member.declared_at or now
+                for member in task.members.values()
+                if member.declared
+            )
             predicted = declared_at + (hint.ready_after_s or 0.0)
-            result.append(Anticipated(task.spec.task_id, predicted, hint.estimated_comm_s, hint.remaining_tail_s))
+            result.append(
+                Anticipated(
+                    task.spec.task_id,
+                    predicted,
+                    hint.estimated_comm_s,
+                    hint.remaining_tail_s,
+                )
+            )
         return result
 
     def _decide(self, now: float) -> list[Outbound]:
+        """根据策略决定下一个动作"""
+
         if self.done or self.inflight is not None:
             return []
         eligible = tuple(self._eligible())
         anticipated = tuple(self._anticipated(now))
         if self.active_wait is not None and now < self.active_wait.deadline:
-            if any(item.task_id == self.active_wait.target_task_id for item in eligible):
+            if any(
+                item.task_id == self.active_wait.target_task_id for item in eligible
+            ):
                 self.active_wait = None
             elif not self._must_dispatch:
-                self.records.append({"kind": "active_wait", "target": self.active_wait.target_task_id, "now": now})
+                self.records.append(
+                    {
+                        "kind": "active_wait",
+                        "target": self.active_wait.target_task_id,
+                        "now": now,
+                    }
+                )
                 return []
-        static_next = None
-        if self.policy.name == "static" and self.policy._cursor < len(self.policy.static_order):
-            static_next = self.policy.static_order[self.policy._cursor]
-        decision = self.policy.decide(PolicySnapshot(now, eligible, anticipated, static_next, self.active_wait, self._must_dispatch))
+        decision = self.policy.decide(
+            PolicySnapshot(
+                now, eligible, anticipated, self.active_wait, self._must_dispatch
+            )
+        )
         if isinstance(decision, Wait):
-            self.active_wait = ActiveWait(decision.target_task_id, decision.deadline, self.policy._round)
+            self._wait_round += 1
+            self.active_wait = ActiveWait(
+                decision.target_task_id, decision.deadline, self._wait_round
+            )
             self._must_dispatch = False
-            self.records.append({"kind": "decision", "decision": "wait", "target": decision.target_task_id, "deadline": decision.deadline, "eligible": [item.task_id for item in eligible]})
+            self.records.append(
+                {
+                    "kind": "decision",
+                    "decision": "wait",
+                    "target": decision.target_task_id,
+                    "deadline": decision.deadline,
+                    "eligible": [item.task_id for item in eligible],
+                }
+            )
             return []
         if isinstance(decision, Dispatch):
-            selected = next((item for item in eligible if item.task_id == decision.task_id), None)
+            selected = next(
+                (item for item in eligible if item.task_id == decision.task_id), None
+            )
             if selected is None:
-                raise CoordinatorError(f"policy selected ineligible task {decision.task_id}")
+                raise CoordinatorError(
+                    f"policy selected ineligible task {decision.task_id}"
+                )
             self.decision_seq += 1
             task = self.tasks[selected.task_id]
             task.grant_seq = self.decision_seq
@@ -297,30 +451,72 @@ class CoordinatorState:
             for rank in sorted(task.members):
                 delivery = self.endpoint[rank].next_delivery_seq
                 self.endpoint[rank].next_delivery_seq += 1
-                out.append(Outbound(rank, "GRANT", {"task": task.spec.to_dict(), "decision_seq": self.decision_seq, "delivery_seq": delivery}))
-            self.records.append({"kind": "decision", "decision": "dispatch", "task_id": task.spec.task_id, "decision_seq": self.decision_seq, "reason": decision.reason, "eligible": [item.task_id for item in eligible], "anticipated": [item.task_id for item in anticipated]})
+                out.append(
+                    Outbound(
+                        rank,
+                        "GRANT",
+                        {
+                            "task": task.spec.to_dict(),
+                            "decision_seq": self.decision_seq,
+                            "delivery_seq": delivery,
+                        },
+                    )
+                )
+            self.records.append(
+                {
+                    "kind": "decision",
+                    "decision": "dispatch",
+                    "task_id": task.spec.task_id,
+                    "decision_seq": self.decision_seq,
+                    "reason": decision.reason,
+                    "eligible": [item.task_id for item in eligible],
+                    "anticipated": [item.task_id for item in anticipated],
+                }
+            )
             return out
         if isinstance(decision, Idle):
-            self.records.append({"kind": "idle", "reason": decision.reason, "eligible": [item.task_id for item in eligible]})
+            self.records.append(
+                {
+                    "kind": "idle",
+                    "reason": decision.reason,
+                    "eligible": [item.task_id for item in eligible],
+                }
+            )
         return []
 
     def _maybe_finish(self, now: float) -> list[Outbound]:
-        if self._finish_sent or not all(state.input_closed for state in self.endpoint.values()):
+        """判断当前 epoch 是否已经可以正常结束"""
+        
+        if self._finish_sent or not all(
+            state.input_closed for state in self.endpoint.values()
+        ):
             return []
-        missing = [task.spec.task_id for task in self.tasks.values() if not all(member.offered for member in task.members.values())]
+        missing = [
+            task.spec.task_id
+            for task in self.tasks.values()
+            if not all(member.offered for member in task.members.values())
+        ]
         if missing:
             self._fail("missing_offer", missing_tasks=missing, now=now)
             return self._failure_messages()
-        if self.policy.name == "static":
-            missing_static = [task_id for task_id in self.policy.static_order if task_id not in self.tasks]
-            if missing_static:
-                self._fail("missing_static_task", missing_tasks=missing_static, now=now)
-                return self._failure_messages()
-        if self.inflight is not None or any(not all(member.completed for member in task.members.values()) for task in self.tasks.values()):
+        missing_policy_tasks = self.policy.missing_tasks(self.tasks)
+        if missing_policy_tasks:
+            self._fail(
+                "missing_static_task", missing_tasks=list(missing_policy_tasks), now=now
+            )
+            return self._failure_messages()
+        if self.inflight is not None or any(
+            not all(member.completed for member in task.members.values())
+            for task in self.tasks.values()
+        ):
             return []
         self.finished = True
         self._finish_sent = True
-        payload = {"epoch": self.epoch, "decision_seq": self.decision_seq, "task_count": len(self.tasks)}
+        payload = {
+            "epoch": self.epoch,
+            "decision_seq": self.decision_seq,
+            "task_count": len(self.tasks),
+        }
         self.records.append({"kind": "finished", **payload})
         return [Outbound(rank, "FINISHED", payload) for rank in self.endpoints]
 
