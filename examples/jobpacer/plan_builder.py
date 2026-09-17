@@ -85,13 +85,17 @@ def _planned_tasks(
 
 
 def _tail_after(tasks: tuple[PlannedTask, ...], index: int) -> float:
-    """Estimate work remaining after the candidate communication."""
+    """Estimate the critical path remaining after the candidate completes."""
 
     current = tasks[index].communication
-    return current.consumer_compute_s + sum(
+    return max(
+        current.consumer_compute_s - current.estimated_comm_s, 0.0
+    ) + sum(
         item.communication.producer_compute_s
-        + item.communication.estimated_comm_s
-        + item.communication.consumer_compute_s
+        + max(
+            item.communication.estimated_comm_s,
+            item.communication.consumer_compute_s,
+        )
         for item in tasks[index + 1 :]
     )
 
