@@ -2,10 +2,7 @@
 
 日期：2026-09-17
 
-依据：[Phase 3.1 问题清单](phase3.1fix.md)、[原实施计划](phase3.1.md)和
-[原设计计划](../plan/phase3.1.md)。本计划只修复现有 Phase 3.1 runtime 的正确性、可验证性
-和必要的资源管理问题，保留中心 coordinator、独立 TCP 控制通道、rank-local runtime、
-单全局 inflight 和四种策略的现有分层。
+依据：[原实施计划](phase3.1.md)和[原设计计划](../plan/phase3.1.md)。本计划只修复现有 Phase 3.1 runtime 的正确性、可验证性和必要的资源管理问题，保留中心 coordinator、独立 TCP 控制通道、rank-local runtime、单全局 inflight 和四种策略的现有分层。
 
 ## 1. 目标和完成边界
 
