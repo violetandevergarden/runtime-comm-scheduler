@@ -8,5 +8,8 @@ version = "0.1.0"
 description = "Mechanism prototype for single-job runtime collective scheduling"
 requires-python = ">=3.10"
 
+[project.optional-dependencies]
+visualization = ["matplotlib>=3.8"]
+
 [tool.setuptools.packages.find]
 where = ["src"]

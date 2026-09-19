@@ -1,8 +1,10 @@
 # JobPacer Phase 2 示例
 
 本目录提供多 job 线性通信 workload 的真实 PyTorch collective 重放工具。它可以直接并发
-发射通信作为 baseline，也可以通过 `AdmissionScheduler` 按静态 FIFO 或 longest-tail-first
-（LTF）Plan 控制发射顺序。正式比较 FIFO/LTF 前，可先在相同通信环境中生成离线 profile，
+发射通信作为 baseline，也可以通过 `AdmissionScheduler` 按静态 FIFO、corrected LTF，或
+`--selection ready_first` 的跨 rank globally-ready-first 控制发射顺序。LTF 保留 CLI 名称，
+但 score 是零准入延迟假设下的估计剩余关键路径，不是通信完成后的 tail。正式比较前，
+可先在相同通信环境中生成离线 profile，
 用实测的无竞争通信时间替换 workload 中的手工估值。
 
 以下命令均从仓库根目录执行。
@@ -112,6 +114,7 @@ Profile 与 replay 必须使用相同的 backend、device type、world size 和 
 | --- | --- |
 | `--mode bare\|scheduler` | 直接调用 collective，或通过 scheduler 发射 |
 | `--policy fifo\|ltf` | 静态 Plan 构造策略 |
+| `--selection runtime_arrival\|ready_first` | 静态 Plan 发射，或跨 rank 协调全局 ready 集合 |
 | `--backend gloo\|nccl` | CPU/Gloo 或 GPU/NCCL |
 | `--world-size N` | rank 数，至少为 2 |
 | `--max-outstanding N` | scheduler 最大在途任务数；`1` 表示等待物理完成后再准入下一项，`0` 不限制 |
@@ -123,8 +126,10 @@ Profile 与 replay 必须使用相同的 backend、device type、world size 和 
 
 `bare` 用于观察多个 job 不经调度器协调时的行为。`scheduler` 模式下每个 rank 的 job 线程
 共享一个 `AdmissionScheduler`，但每个 job 使用独立 ProcessGroup。FIFO 按 workload 中的 job
-顺序轮转；LTF 每次从各 job 的下一项中选择估计剩余 tail 最大者，同时保持每个 job 内的通信
-顺序。
+顺序轮转；LTF 用 `max(estimated_comm, consumer_compute)` 估计当前段，后续段再加 producer
+compute，并保持每个 job 内顺序。ready-first 按全局 ready round 和稳定 TaskKey 选择，同时
+保持 ProcessGroup 内顺序；serial 模式在全局 completion barrier 后进入下一轮。控制面耗时
+单独记录，但 Gloo 控制流量可能干扰共享的 Gloo 数据面。
 
 `--fault missing_key` 和 `--fault metadata_mismatch` 是故障路径验收参数，不用于性能实验。
 
@@ -137,7 +142,8 @@ Profile 与 replay 必须使用相同的 backend、device type、world size 和 
 3. 发起异步 all-reduce 并等待物理完成；
 4. 取参与 rank 本地耗时的最大值。
 
-Warmup 不进入样本。Profile 保存 p10、p50、p90、均值、标准差和样本数，并记录 backend、
+Warmup 不进入样本。Profile 保存 `profile_service_time_s`（兼容别名 `p50_s`）、API 调用
+时长、return-to-sync 时长、p10、p50、p90、均值、标准差和样本数，并记录 backend、
 world size、group ranks、PyTorch/CUDA/NCCL 版本、设备名称和生成时间。Replay 使用 p50 作为
 `estimated_comm_s`。
 
@@ -168,14 +174,19 @@ Profiler 在计时区间前后同步 CUDA device，避免只测到 Python API �
 
 Replay trace 的顶层包含运行配置、validation 摘要和每个 rank 的完整记录。重点字段包括：
 
-- `validation`：collective 正确性、Plan digest、scheduler/group 顺序和严格串行检查；
+- `validation`：collective 正确性、Plan digest、scheduler/group 顺序、rank-local 串行与边界检查；
 - `ranks[].workload_digest`：应用 profile 后的 workload digest，各 rank 必须一致；
 - `ranks[].communication_profile`：profile 路径、digest、schema、环境和估值来源；
 - `ranks[].plan`：Plan version、digest 和完整 key 顺序；
-- `ranks[].jobs[].tasks[]`：ready、admit、submit、wait、complete 时间戳，以及最终通信估值；
+- `ranks[].jobs[].tasks[]`：schema v2 API/collective、application/backend wait、completion-observed 和 deferred validation 时间戳及派生耗时；
 - `ranks[].launch_sequence`、`group_sequence`：scheduler 的实际发射顺序。
 
 同一进程内的时间戳可以相减；不同 rank 的时间戳没有做时钟同步，不能直接比较。
+
+逐 task tensor correctness scan 在所有 job 结束且 completion observer/scheduler 排空后执行，
+不进入 application makespan。`application_makespan_us`、`communication_drain_makespan_us`、
+`validation_total_us` 和 `harness_total_us` 分别报告 workload、通信排空与 harness 边界。
+Visualizer 只接受完整 batch manifest 列出的 schema-v2 trace，并拒绝缺失/逆序字段。
 
 ## 文件说明
 

@@ -84,16 +84,47 @@ def _planned_tasks(
     }
 
 
-def _tail_after(tasks: tuple[PlannedTask, ...], index: int) -> float:
-    """Estimate work remaining after the candidate communication."""
+LTF_SCORE_DEFINITION = "zero-admission-delay estimated remaining critical path"
 
+
+def ltf_score(tasks: tuple[PlannedTask, ...], index: int) -> float:
+    """Estimate the remaining critical path for a ready candidate.
+
+    The candidate's producer work has already happened by the time it is
+    eligible.  Its communication and consumer work may overlap, while later
+    segments include their producer work exactly once.
+    """
     current = tasks[index].communication
-    return current.consumer_compute_s + sum(
+    return max(current.estimated_comm_s, current.consumer_compute_s) + sum(
         item.communication.producer_compute_s
-        + item.communication.estimated_comm_s
-        + item.communication.consumer_compute_s
+        + max(
+            item.communication.estimated_comm_s,
+            item.communication.consumer_compute_s,
+        )
         for item in tasks[index + 1 :]
     )
+
+
+def _ltf_candidates(
+    workload: Workload,
+    tasks: dict[str, tuple[PlannedTask, ...]],
+    positions: dict[str, int],
+) -> list[tuple[float, str, int, int, PlannedTask]]:
+    candidates = []
+    for job_index, job in enumerate(workload.jobs):
+        position = positions[job.job_id]
+        if position < len(tasks[job.job_id]):
+            candidate = tasks[job.job_id][position]
+            candidates.append(
+                (
+                    ltf_score(tasks[job.job_id], position),
+                    job.job_id,
+                    candidate.communication.id,
+                    job_index,
+                    candidate,
+                )
+            )
+    return candidates
 
 
 def _fifo_order(
@@ -114,20 +145,7 @@ def _ltf_order(
     ordered: list[PlannedTask] = []
 
     while len(ordered) < sum(len(job.communications) for job in workload.jobs):
-        candidates = []
-        for job_index, job in enumerate(workload.jobs):
-            position = positions[job.job_id]
-            if position < len(tasks[job.job_id]):
-                candidate = tasks[job.job_id][position]
-                candidates.append(
-                    (
-                        _tail_after(tasks[job.job_id], position),
-                        job.job_id,
-                        candidate.communication.id,
-                        job_index,
-                        candidate,
-                    )
-                )
+        candidates = _ltf_candidates(workload, tasks, positions)
 
         # Largest tail first.  The ascending job_id/ordinal tie break is
         # independent of thread start order and of object identity.
@@ -137,6 +155,56 @@ def _ltf_order(
         ordered.append(selected)
         positions[selected.job_id] += 1
     return ordered
+
+
+def policy_diagnostics(
+    workload: Workload, policy: str = "fifo", *, window_id: int = 0
+) -> dict[str, object]:
+    """Return reproducible selection diagnostics for a static policy."""
+    tasks = _planned_tasks(workload, window_id=window_id)
+    if policy != "ltf":
+        ordered = _ordered_tasks(workload, tasks, policy)
+        return {
+            "policy": policy,
+            "score_definition": None,
+            "steps": [
+                {
+                    "candidates": [],
+                    "selected_key": item.key.as_list(),
+                    "tie_break": [item.job_id, item.communication.id],
+                }
+                for item in ordered
+            ],
+        }
+
+    positions = {job.job_id: 0 for job in workload.jobs}
+    steps = []
+    while len(steps) < sum(len(job.communications) for job in workload.jobs):
+        candidates = _ltf_candidates(workload, tasks, positions)
+        selected = sorted(
+            candidates, key=lambda item: (-item[0], item[1], item[2], item[3])
+        )[0]
+        steps.append(
+            {
+                "candidates": [
+                    {
+                        "key": item[4].key.as_list(),
+                        "score": item[0],
+                        "tie_break": [item[1], item[2], item[3]],
+                    }
+                    for item in candidates
+                ],
+                "selected_key": selected[4].key.as_list(),
+                "selected_score": selected[0],
+                "tie_break": [selected[1], selected[2], selected[3]],
+            }
+        )
+        positions[selected[1]] += 1
+    return {
+        "policy": "ltf",
+        "score_definition": LTF_SCORE_DEFINITION,
+        "steps": steps,
+    }
 
 
 def _validate_job_sequences(ordered: list[PlannedTask], workload: Workload) -> None:

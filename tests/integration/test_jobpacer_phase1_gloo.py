@@ -58,12 +58,25 @@ def test_phase1_bare_replay_emits_job_makespans_and_trace(tmp_path):
     assert payload["performance"]["workload_makespan_us"] > 0
     assert len(payload["performance"]["job_makespans"]) == 2
     for rank in payload["ranks"]:
+        assert rank["trace_schema_version"] == 2
+        assert (
+            rank["application_release_ts"]
+            <= rank["application_end_ts"]
+            <= rank["communication_drain_end_ts"]
+            <= rank["validation_end_ts"]
+            <= rank["harness_end_ts"]
+        )
         assert len(rank["launch_sequence"]) == 6
         for job in rank["jobs"]:
             assert job["makespan_us"] > 0
             assert len(job["tasks"]) == 3
             for task in job["tasks"]:
                 assert task["submit_call_ts"] <= task["submit_return_ts"]
-                assert task["submit_return_ts"] <= task["consumer_compute_end_ts"]
-                assert task["first_wait_ts"] <= task["wait_return_ts"]
-                assert task["wait_return_ts"] <= task["consumer_end_ts"]
+                assert task["collective_call_start_ts"] <= task["collective_call_return_ts"]
+                assert task["collective_call_return_ts"] <= task["completion_observed_ts"]
+                assert task["application_wait_start_ts"] <= task["underlying_wait_start_ts"]
+                assert task["underlying_wait_start_ts"] <= task["wait_return_ts"]
+                assert task["wait_return_ts"] == task["application_task_end_ts"]
+                assert task["completion_observed_ts"] <= rank["communication_drain_end_ts"]
+                assert task["validation_start_ts"] >= rank["communication_drain_end_ts"]
+                assert task["correct"] is True

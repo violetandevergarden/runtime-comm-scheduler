@@ -70,6 +70,9 @@ class ProfileRecord:
     mean_s: float
     stdev_s: float
     samples: int
+    profile_service_time_s: float | None = None
+    api_call_duration_p50_s: float | None = None
+    return_to_sync_p50_s: float | None = None
 
     def __post_init__(self) -> None:
         CommSignature(**{name: getattr(self, name) for name in CommSignature.__dataclass_fields__})
@@ -80,6 +83,8 @@ class ProfileRecord:
             raise ValueError("profile percentiles must satisfy p10 <= p50 <= p90")
         if self.p50_s <= 0 or self.samples <= 0:
             raise ValueError("p50_s and samples must be positive")
+        if self.profile_service_time_s is None:
+            object.__setattr__(self, "profile_service_time_s", self.p50_s)
 
     @property
     def signature(self) -> CommSignature:

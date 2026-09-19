@@ -53,6 +53,10 @@ def _run_rank(rank: int, args: argparse.Namespace, port: int) -> subprocess.Pope
         args.mode,
         "--policy",
         args.policy,
+        "--selection",
+        args.selection,
+        "--scenario",
+        args.scenario or "",
         "--workload",
         args.workload,
         "--backend",
@@ -63,6 +67,8 @@ def _run_rank(rank: int, args: argparse.Namespace, port: int) -> subprocess.Pope
         str(args.timeout),
         "--thread-timeout",
         str(args.timeout),
+        "--completion-poll-interval-s",
+        str(args.completion_poll_interval_s),
         "--fault",
         args.fault,
     ]
@@ -117,7 +123,31 @@ def _validate_results(
         for result in results
         for job in result.get("jobs", [])
         for task in job.get("tasks", [])
+    ) and all(
+        len(job.get("tasks", [])) == len(next(
+            item for item in workload.jobs if item.job_id == job["job_id"]
+        ).communications)
+        for result in results
+        for job in result.get("jobs", [])
     )
+    boundary_ok = True
+    for result in results:
+        if result.get("trace_schema_version") == 2:
+            boundary_ok &= (
+                result["application_release_ts"]
+                <= result["application_end_ts"]
+                <= result["communication_drain_end_ts"]
+                <= result["validation_end_ts"]
+                <= result["harness_end_ts"]
+            )
+            boundary_ok &= all(
+                task["completion_observed_ts"]
+                <= result["communication_drain_end_ts"]
+                and task["validation_start_ts"]
+                >= result["communication_drain_end_ts"]
+                for job in result.get("jobs", [])
+                for task in job.get("tasks", [])
+            )
     scheduler_order_ok = None
     group_order_ok = None
     serial_admission_ok = None
@@ -141,21 +171,20 @@ def _validate_results(
                 ]
                 for group_id in local_jobs
             }
-            scheduler_order_ok &= result.get("launch_sequence") == expected_keys
+            if args.selection != "ready_first":
+                scheduler_order_ok &= result.get("launch_sequence") == expected_keys
             group_order_ok &= result.get("group_sequence") == expected_groups
         serial_admission_ok = (
             all(
                 all(
-                    next_timing["admit_ts"] >= timing["complete_ts"]
+                    next_timing["admit_ts"]
+                    >= (
+                        timing.get("completion_observed_ts")
+                        or timing.get("complete_ts")
+                    )
                     for timing, next_timing in zip(
-                        sorted(
-                            result.get("timings", []),
-                            key=lambda item: result["plan"]["keys"].index(item["key"]),
-                        ),
-                        sorted(
-                            result.get("timings", []),
-                            key=lambda item: result["plan"]["keys"].index(item["key"]),
-                        )[1:],
+                        sorted(result.get("timings", []), key=lambda item: item["admit_ts"]),
+                        sorted(result.get("timings", []), key=lambda item: item["admit_ts"])[1:],
                     )
                 )
                 for result in results
@@ -168,16 +197,38 @@ def _validate_results(
             "ok"
             if len(digests) == 1
             and all_correct
+            and boundary_ok
             and scheduler_order_ok is not False
             and group_order_ok is not False
             and serial_admission_ok is not False
+            and (
+                args.selection != "ready_first"
+                or args.max_outstanding != 1
+                or all(
+                    result.get("control", {}).get("global_completion_barrier_count", 0)
+                    >= max(0, len(result.get("launch_sequence", [])) - 1)
+                    for result in results
+                )
+            )
             else "failed"
         ),
         "plan_digest_equal": len(digests) == 1,
         "all_collectives_correct": all_correct,
+        "trace_boundaries_closed": boundary_ok,
         "scheduler_sequence_matches_plan": scheduler_order_ok,
         "group_sequences_match_plan": group_order_ok,
         "strict_serial_admission_verified": serial_admission_ok,
+        "rank_local_serial_admission_verified": serial_admission_ok,
+        "global_completion_barrier_before_next_selection": (
+            all(
+                result.get("control", {}).get("global_completion_barrier_before_next_selection", False)
+                and result.get("control", {}).get("global_completion_barrier_count", 0)
+                >= max(0, len(result.get("launch_sequence", [])) - 1)
+                for result in results
+            )
+            if args.selection == "ready_first" and args.max_outstanding == 1
+            else None
+        ),
         "expected_plan_labels": key_labels(plan),
         "plan_digest": plan.digest(),
     }
@@ -187,6 +238,9 @@ def _summarize_performance(
     results: list[dict[str, Any]], args: argparse.Namespace
 ) -> dict[str, Any]:
     """Aggregate per-rank durations without comparing absolute rank clocks."""
+    explicit_boundaries = any(
+        "application_makespan_us" in result for result in results
+    )
     workload = load_workload(args.workload)
     jobs = []
     for job in workload.jobs:
@@ -210,36 +264,83 @@ def _summarize_performance(
         rank_makespans_us = [
             records_by_rank[rank]["makespan_us"] for rank in expected_ranks
         ]
-        jobs.append(
-            {
-                "job_id": job.job_id,
-                "participating_ranks": list(expected_ranks),
-                "makespan_us": max(rank_makespans_us),
-                "rank_makespans_us": rank_makespans_us,
-                "tasks_per_rank": len(job.communications),
-            }
-        )
-    return {
+        job_record = {
+            "job_id": job.job_id,
+            "participating_ranks": list(expected_ranks),
+            "makespan_us": max(rank_makespans_us),
+            "rank_makespans_us": rank_makespans_us,
+            "tasks_per_rank": len(job.communications),
+        }
+        if explicit_boundaries:
+            application_values = [
+                records_by_rank[rank].get(
+                    "application_makespan_us", records_by_rank[rank]["makespan_us"]
+                )
+                for rank in expected_ranks
+            ]
+            job_record["application_makespan_us"] = max(application_values)
+            job_record["rank_application_makespans_us"] = application_values
+            job_record["makespan_us"] = job_record["application_makespan_us"]
+        jobs.append(job_record)
+    summary = {
         "job_makespans": jobs,
         "workload_makespan_us": max(
-            result["replay_makespan_us"] for result in results
+            result.get("application_makespan_us", result["replay_makespan_us"])
+            for result in results
         ),
         "rank_replay_makespans_us": [
-            result["replay_makespan_us"]
+            result.get("application_makespan_us", result["replay_makespan_us"])
             for result in sorted(results, key=lambda item: item["rank"])
         ],
     }
+    if explicit_boundaries:
+        summary.update(
+            {
+                "application_makespan_us": summary["workload_makespan_us"],
+                "rank_application_makespans_us": summary[
+                    "rank_replay_makespans_us"
+                ],
+                "communication_drain_makespan_us": max(
+                    result.get(
+                        "communication_drain_makespan_us",
+                        result.get("application_makespan_us", 0),
+                    )
+                    for result in results
+                ),
+                "rank_communication_drain_makespans_us": [
+                    result.get(
+                        "communication_drain_makespan_us",
+                        result.get("application_makespan_us", 0),
+                    )
+                    for result in sorted(results, key=lambda item: item["rank"])
+                ],
+                "validation_total_us": max(
+                    result.get("validation_total_us", 0) for result in results
+                ),
+                "harness_total_us": max(
+                    result.get("harness_total_us", 0) for result in results
+                ),
+            }
+        )
+    return summary
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("bare", "scheduler"), default="scheduler")
     parser.add_argument("--policy", choices=policy_names(), default="fifo")
+    parser.add_argument(
+        "--selection",
+        choices=("runtime_arrival", "ready_first"),
+        default="runtime_arrival",
+    )
+    parser.add_argument("--scenario")
     parser.add_argument("--workload", default="balanced")
     parser.add_argument("--backend", choices=("gloo", "nccl"), default="gloo")
     parser.add_argument("--world-size", type=int, default=2)
     parser.add_argument("--max-outstanding", type=int, default=1)
     parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument("--completion-poll-interval-s", type=float, default=0.001)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--comm-profile", type=Path)
     parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
@@ -286,13 +387,19 @@ def main(argv: list[str] | None = None) -> int:
     validation = _validate_results(results, args)
     performance = _summarize_performance(results, args)
     payload = {
+        "trace_schema_version": max(
+            result.get("trace_schema_version", 0) for result in results
+        ),
         "config": {
             "mode": args.mode,
             "policy": args.policy,
+            "selection": args.selection,
+            "scenario": args.scenario,
             "workload": args.workload,
             "backend": args.backend,
             "world_size": args.world_size,
             "max_outstanding": args.max_outstanding,
+            "completion_poll_interval_s": args.completion_poll_interval_s,
             "timeout_s": args.timeout,
             "torch": __import__("torch").__version__,
             "estimate_source": "offline_profile" if profile else "manifest",

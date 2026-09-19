@@ -272,6 +272,9 @@ def test_wait_inserts_dependency_but_does_not_mark_physical_completion():
     assert work.wait()
     assert work.intent.state is IntentState.SUBMITTED
     assert work.timing.first_wait_ts is not None
+    assert work.timing.application_wait_start_ts == work.timing.first_wait_ts
+    assert work.timing.underlying_wait_start_ts is not None
+    assert work.timing.wait_return_ts is not None
     assert work.timing.complete_ts is None
     underlying.complete()
     sched.finish_window(timeout=1)

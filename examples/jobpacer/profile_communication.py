@@ -44,7 +44,12 @@ def _percentile(samples: list[float], fraction: float) -> float:
     return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
 
 
-def _record(signature: CommSignature, samples: list[float]) -> ProfileRecord:
+def _record(
+    signature: CommSignature,
+    samples: list[float],
+    api_samples: list[float] | None = None,
+) -> ProfileRecord:
+    api_p50 = _percentile(api_samples, 0.5) if api_samples else None
     return ProfileRecord(
         **asdict(signature),
         p50_s=_percentile(samples, 0.5),
@@ -53,10 +58,24 @@ def _record(signature: CommSignature, samples: list[float]) -> ProfileRecord:
         mean_s=statistics.fmean(samples),
         stdev_s=statistics.pstdev(samples),
         samples=len(samples),
+        profile_service_time_s=_percentile(samples, 0.5),
+        api_call_duration_p50_s=api_p50,
+        return_to_sync_p50_s=(
+            max(0.0, _percentile(samples, 0.5) - api_p50)
+            if api_p50 is not None
+            else None
+        ),
     )
 
 
-def _measure(signature: CommSignature, group, device: str, warmup: int, iterations: int) -> list[float]:
+def _measure(
+    signature: CommSignature,
+    group,
+    device: str,
+    warmup: int,
+    iterations: int,
+    api_samples: list[float] | None = None,
+) -> list[float]:
     samples: list[float] = []
     for index in range(warmup + iterations):
         tensor = torch.ones(signature.num_bytes // 4, dtype=torch.float32, device=device)
@@ -65,6 +84,7 @@ def _measure(signature: CommSignature, group, device: str, warmup: int, iteratio
             torch.cuda.synchronize()
         start = time.perf_counter_ns()
         work = dist.all_reduce(tensor, op=dist.ReduceOp.SUM, group=group, async_op=True)
+        call_return = time.perf_counter_ns()
         work.wait()
         if device.startswith("cuda"):
             torch.cuda.synchronize()
@@ -73,6 +93,8 @@ def _measure(signature: CommSignature, group, device: str, warmup: int, iteratio
         dist.all_reduce(maximum, op=dist.ReduceOp.MAX, group=group)
         if index >= warmup:
             samples.append(float(maximum.item()))
+            if api_samples is not None:
+                api_samples.append((call_return - start) / 1e9)
     return samples
 
 
@@ -118,11 +140,17 @@ def _profile_rank(args: argparse.Namespace) -> dict[str, Any]:
         for signature, ranks in measurements:
             local_record = None
             if rank in ranks:
+                api_samples: list[float] = []
                 samples = _measure(
-                    signature, groups[ranks], device, args.warmup, args.iterations
+                    signature,
+                    groups[ranks],
+                    device,
+                    args.warmup,
+                    args.iterations,
+                    api_samples,
                 )
                 if rank == ranks[0]:
-                    local_record = asdict(_record(signature, samples))
+                    local_record = asdict(_record(signature, samples, api_samples))
             gathered: list[dict[str, Any] | None] = [None] * args.world_size
             dist.all_gather_object(gathered, local_record)
             document = next((item for item in gathered if item is not None), None)
