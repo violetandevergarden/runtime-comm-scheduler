@@ -15,8 +15,15 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 sys.path.insert(0, str(Path(__file__).parents[2] / "benchmark/phase1.2"))
 
 from examples.jobpacer import replay_worker
+from examples.jobpacer.measurement import occupancy_metrics
 from examples.jobpacer.plan_builder import ltf_score, planned_tasks, policy_diagnostics
-from examples.jobpacer.visualize import timeline_data, trace_paths, validate_trace
+from examples.jobpacer.visualize import (
+    scheduler_state_intervals,
+    scheduler_state_summary,
+    timeline_data,
+    trace_paths,
+    validate_trace,
+)
 from examples.jobpacer.workloads import CollectiveComm, Job, Workload
 from runtime_comm_scheduler import (
     AdmissionScheduler,
@@ -227,6 +234,48 @@ def test_timeline_validates_canonical_boundaries_and_uses_rank_origin():
         "backend_wait",
         "validation",
     }
+    intervals = {item["kind"]: item for item in data["jobs"][0]["tasks"][0]["intervals"]}
+    assert intervals["admission_wait"]["lane"] == "admission"
+    assert intervals["communication"]["lane"] == "communication"
+
+
+def test_occupancy_reconstruction_counts_half_open_simultaneous_events():
+    rank = {
+        "application_release_ts": 100,
+        "communication_drain_end_ts": 140,
+        "max_outstanding": 2,
+        "jobs": [{"tasks": [
+            {
+                "key": ["a", 0], "admit_ts": 105,
+                "collective_call_start_ts": 110, "completion_observed_ts": 130,
+            },
+            {
+                "key": ["b", 0], "admit_ts": 110,
+                "collective_call_start_ts": 110, "completion_observed_ts": 120,
+            },
+        ]}],
+    }
+    result = occupancy_metrics(rank)
+    assert result["peak_admission_occupancy"] == 2
+    assert result["peak_launched_inflight"] == 2
+    assert result["admission_occupancy_time_us"] == 35
+    assert result["launched_inflight_time_us"] == 30
+    assert result["pending_launch_time_us"] == 5
+    assert result["admission_occupancy_by_count_us"] == {"0": 15, "1": 15, "2": 10}
+    assert result["finite_capacity_ok"]
+
+
+def test_occupancy_reconstruction_flags_a_capacity_overflow():
+    rank = {
+        "application_release_ts": 0,
+        "communication_drain_end_ts": 10,
+        "max_outstanding": 1,
+        "jobs": [{"tasks": [
+            {"admit_ts": 1, "collective_call_start_ts": 1, "completion_observed_ts": 8},
+            {"admit_ts": 2, "collective_call_start_ts": 2, "completion_observed_ts": 7},
+        ]}],
+    }
+    assert not occupancy_metrics(rank)["finite_capacity_ok"]
 
 
 def test_timeline_fails_closed_for_missing_or_reversed_timestamps():
@@ -238,6 +287,27 @@ def test_timeline_fails_closed_for_missing_or_reversed_timestamps():
     trace["ranks"][0]["jobs"][0]["tasks"][0]["completion_observed_ts"] = 114
     with pytest.raises(ValueError, match="reversed"):
         validate_trace(trace, "reversed.json")
+
+
+def test_scheduler_state_splits_admission_launch_and_communication():
+    rank = _valid_trace()["ranks"][0]
+    task = rank["jobs"][0]["tasks"][0]
+    task.update(
+        ready_record_ts=105,
+        admit_ts=110,
+        collective_call_start_ts=115,
+        collective_call_return_ts=116,
+        completion_observed_ts=120,
+    )
+    intervals = scheduler_state_intervals(rank)
+    states = {(item["start_ts"], item["end_ts"]): item["state"] for item in intervals}
+    assert states[110, 115] == "admission_pending_launch"
+    assert states[115, 116] == "capacity_busy"
+    assert states[116, 120] == "capacity_busy"
+    summary = scheduler_state_summary(rank)
+    assert summary["pending_launch_us"] == 5
+    assert summary["capacity_wait_us"] == 5
+    assert summary["capacity_occupied_us"] == 5
 
 
 def test_trace_selection_uses_only_complete_manifest_entries(tmp_path):

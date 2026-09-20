@@ -1,4 +1,4 @@
-"""Static FIFO and longest-tail-first Plan construction for JobPacer."""
+"""Static FIFO and remaining-path Plan construction for JobPacer."""
 
 from __future__ import annotations
 
@@ -84,10 +84,11 @@ def _planned_tasks(
     }
 
 
-LTF_SCORE_DEFINITION = "zero-admission-delay estimated remaining critical path"
+REMAINING_SCORE_DEFINITION = "zero-admission-delay estimated remaining critical path"
+LTF_SCORE_DEFINITION = REMAINING_SCORE_DEFINITION
 
 
-def ltf_score(tasks: tuple[PlannedTask, ...], index: int) -> float:
+def remaining_score(tasks: tuple[PlannedTask, ...], index: int) -> float:
     """Estimate the remaining critical path for a ready candidate.
 
     The candidate's producer work has already happened by the time it is
@@ -105,22 +106,24 @@ def ltf_score(tasks: tuple[PlannedTask, ...], index: int) -> float:
     )
 
 
-def _ltf_candidates(
+ltf_score = remaining_score
+
+
+def _scored_candidates(
     workload: Workload,
     tasks: dict[str, tuple[PlannedTask, ...]],
     positions: dict[str, int],
-) -> list[tuple[float, str, int, int, PlannedTask]]:
+) -> list[tuple[float, str, int, PlannedTask]]:
     candidates = []
-    for job_index, job in enumerate(workload.jobs):
+    for job in workload.jobs:
         position = positions[job.job_id]
         if position < len(tasks[job.job_id]):
             candidate = tasks[job.job_id][position]
             candidates.append(
                 (
-                    ltf_score(tasks[job.job_id], position),
+                    remaining_score(tasks[job.job_id], position),
                     job.job_id,
                     candidate.communication.id,
-                    job_index,
                     candidate,
                 )
             )
@@ -138,23 +141,40 @@ def _fifo_order(
     return ordered
 
 
-def _ltf_order(
-    workload: Workload, tasks: dict[str, tuple[PlannedTask, ...]]
+def _remaining_order(
+    workload: Workload,
+    tasks: dict[str, tuple[PlannedTask, ...]],
+    *,
+    direction: str,
 ) -> list[PlannedTask]:
     positions = {job.job_id: 0 for job in workload.jobs}
     ordered: list[PlannedTask] = []
 
     while len(ordered) < sum(len(job.communications) for job in workload.jobs):
-        candidates = _ltf_candidates(workload, tasks, positions)
-
-        # Largest tail first.  The ascending job_id/ordinal tie break is
-        # independent of thread start order and of object identity.
-        _tail, _job_id, _ordinal, _job_index, selected = sorted(
-            candidates, key=lambda item: (-item[0], item[1], item[2], item[3])
-        )[0]
-        ordered.append(selected)
-        positions[selected.job_id] += 1
+        candidates = _scored_candidates(workload, tasks, positions)
+        selected = min(
+            candidates,
+            key=lambda item: (
+                -item[0] if direction == "max" else item[0],
+                item[1],
+                item[2],
+            ),
+        )
+        ordered.append(selected[3])
+        positions[selected[1]] += 1
     return ordered
+
+
+def _ltf_order(
+    workload: Workload, tasks: dict[str, tuple[PlannedTask, ...]]
+) -> list[PlannedTask]:
+    return _remaining_order(workload, tasks, direction="max")
+
+
+def _srjf_order(
+    workload: Workload, tasks: dict[str, tuple[PlannedTask, ...]]
+) -> list[PlannedTask]:
+    return _remaining_order(workload, tasks, direction="min")
 
 
 def policy_diagnostics(
@@ -162,7 +182,7 @@ def policy_diagnostics(
 ) -> dict[str, object]:
     """Return reproducible selection diagnostics for a static policy."""
     tasks = _planned_tasks(workload, window_id=window_id)
-    if policy != "ltf":
+    if policy not in {"ltf", "srjf"}:
         ordered = _ordered_tasks(workload, tasks, policy)
         return {
             "policy": policy,
@@ -177,32 +197,39 @@ def policy_diagnostics(
             ],
         }
 
+    direction = "max" if policy == "ltf" else "min"
     positions = {job.job_id: 0 for job in workload.jobs}
     steps = []
     while len(steps) < sum(len(job.communications) for job in workload.jobs):
-        candidates = _ltf_candidates(workload, tasks, positions)
-        selected = sorted(
-            candidates, key=lambda item: (-item[0], item[1], item[2], item[3])
-        )[0]
+        candidates = _scored_candidates(workload, tasks, positions)
+        selected = min(
+            candidates,
+            key=lambda item: (
+                -item[0] if direction == "max" else item[0],
+                item[1],
+                item[2],
+            ),
+        )
         steps.append(
             {
                 "candidates": [
                     {
-                        "key": item[4].key.as_list(),
+                        "key": item[3].key.as_list(),
                         "score": item[0],
-                        "tie_break": [item[1], item[2], item[3]],
+                        "tie_break": [item[1], item[2]],
                     }
                     for item in candidates
                 ],
-                "selected_key": selected[4].key.as_list(),
+                "selected_key": selected[3].key.as_list(),
                 "selected_score": selected[0],
-                "tie_break": [selected[1], selected[2], selected[3]],
+                "sort_direction": direction,
+                "tie_break": [selected[1], selected[2]],
             }
         )
         positions[selected[1]] += 1
     return {
-        "policy": "ltf",
-        "score_definition": LTF_SCORE_DEFINITION,
+        "policy": policy,
+        "score_definition": REMAINING_SCORE_DEFINITION,
         "steps": steps,
     }
 
@@ -264,3 +291,4 @@ def key_labels(plan: Plan) -> list[str]:
 
 register_policy("fifo", _fifo_order)
 register_policy("ltf", _ltf_order)
+register_policy("srjf", _srjf_order)

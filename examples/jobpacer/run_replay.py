@@ -14,10 +14,12 @@ from typing import Any
 
 try:  # Support ``python examples/jobpacer/run_replay.py``.
     from .comm_profile import apply_profile, load_profile
+    from .measurement import occupancy_metrics
     from .plan_builder import build_plan, key_labels, policy_names
     from .workloads import load_workload, ranks_for_job
 except ImportError:  # pragma: no cover - direct script execution
     from comm_profile import apply_profile, load_profile
+    from measurement import occupancy_metrics
     from plan_builder import build_plan, key_labels, policy_names
     from workloads import load_workload, ranks_for_job
 
@@ -131,6 +133,10 @@ def _validate_results(
         for job in result.get("jobs", [])
     )
     boundary_ok = True
+    capacity_by_rank = {
+        int(result["rank"]): occupancy_metrics(result) for result in results
+    }
+    capacity_ok = all(item["finite_capacity_ok"] for item in capacity_by_rank.values())
     for result in results:
         if result.get("trace_schema_version") == 2:
             boundary_ok &= (
@@ -198,6 +204,7 @@ def _validate_results(
             if len(digests) == 1
             and all_correct
             and boundary_ok
+            and capacity_ok
             and scheduler_order_ok is not False
             and group_order_ok is not False
             and serial_admission_ok is not False
@@ -215,6 +222,8 @@ def _validate_results(
         "plan_digest_equal": len(digests) == 1,
         "all_collectives_correct": all_correct,
         "trace_boundaries_closed": boundary_ok,
+        "rank_capacity_observations": capacity_by_rank,
+        "finite_capacity_verified": capacity_ok,
         "scheduler_sequence_matches_plan": scheduler_order_ok,
         "group_sequences_match_plan": group_order_ok,
         "strict_serial_admission_verified": serial_admission_ok,
@@ -296,6 +305,13 @@ def _summarize_performance(
     if explicit_boundaries:
         summary.update(
             {
+                "mean_job_completion_us": sum(
+                    item["makespan_us"] for item in jobs
+                ) / len(jobs),
+                "capacity_observations": [
+                    occupancy_metrics(result)
+                    for result in sorted(results, key=lambda item: item["rank"])
+                ],
                 "application_makespan_us": summary["workload_makespan_us"],
                 "rank_application_makespans_us": summary[
                     "rank_replay_makespans_us"
@@ -328,7 +344,12 @@ def _summarize_performance(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("bare", "scheduler"), default="scheduler")
-    parser.add_argument("--policy", choices=policy_names(), default="fifo")
+    parser.add_argument(
+        "--policy",
+        choices=policy_names(),
+        default="fifo",
+        help="static ordering policy; srjf is non-preemptive and may wait for its fixed plan head",
+    )
     parser.add_argument(
         "--selection",
         choices=("runtime_arrival", "ready_first"),

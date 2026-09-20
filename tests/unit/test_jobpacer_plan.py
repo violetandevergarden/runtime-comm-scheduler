@@ -7,7 +7,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from examples.jobpacer.plan_builder import build_plan, key_labels, policy_names
+from examples.jobpacer.plan_builder import (
+    build_plan,
+    key_labels,
+    policy_diagnostics,
+    policy_names,
+)
 from examples.jobpacer.workloads import (
     CollectiveComm,
     Job,
@@ -62,8 +67,40 @@ def test_plan_and_digest_are_deterministic():
     assert [key.as_list() for key in first.keys] == [key.as_list() for key in second.keys]
 
 
+def test_srjf_picks_shortest_remaining_job_while_ltf_picks_longest():
+    workload = Workload(
+        "long-short",
+        (
+            Job("long", (CollectiveComm(0, estimated_comm_s=0.01),
+                          CollectiveComm(1, producer_compute_s=0.01, estimated_comm_s=0.02))),
+            Job("short", (CollectiveComm(0, estimated_comm_s=0.005),)),
+        ),
+    )
+    assert key_labels(build_plan(workload, "ltf"))[0] == "long:0"
+    assert key_labels(build_plan(workload, "srjf"))[0] == "short:0"
+
+
+def test_srjf_ties_and_diagnostics_are_stable_across_job_input_order():
+    jobs = (
+        Job("job-b", (CollectiveComm(0, estimated_comm_s=0.01),)),
+        Job("job-a", (CollectiveComm(0, estimated_comm_s=0.01),)),
+    )
+    first = Workload("ties", jobs)
+    second = Workload("ties", tuple(reversed(jobs)))
+    plan = build_plan(first, "srjf")
+    assert key_labels(plan) == ["job-a:0", "job-b:0"]
+    assert plan.digest() == build_plan(second, "srjf").digest()
+    diagnostics = policy_diagnostics(first, "srjf")
+    assert diagnostics["score_definition"] == "zero-admission-delay estimated remaining critical path"
+    assert diagnostics["steps"][0]["sort_direction"] == "min"
+    assert diagnostics["steps"][0]["selected_key"] == plan.keys[0].as_list()
+    assert diagnostics["steps"][0]["selected_score"] == diagnostics["steps"][0]["candidates"][1]["score"]
+    for job_id in ("job-a", "job-b"):
+        assert [key.ordinal for key in plan.group_sequence(job_id)] == [0]
+
+
 def test_policy_registry_exposes_static_algorithms():
-    assert policy_names() == ("fifo", "ltf")
+    assert policy_names() == ("fifo", "ltf", "srjf")
 
 
 def test_job_membership_accepts_arbitrary_global_ranks():

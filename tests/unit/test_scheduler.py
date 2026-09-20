@@ -243,6 +243,30 @@ def test_global_outstanding_slot_released_without_consumer_wait():
     sched.close()
 
 
+@pytest.mark.parametrize(("capacity", "initial_launches"), ((2, 2), (3, 3), (0, 4)))
+def test_capacity_two_three_and_unbounded_allow_parallel_inflight(capacity, initial_launches):
+    keys = [_key(index) for index in range(4)]
+    scheduler = _scheduler(_plan(keys), max_outstanding=capacity)
+    created, works = [], {}
+    scheduled = [
+        scheduler.submit(_intent(key, lambda key=key: _make_work(created, works, key)))
+        for key in keys
+    ]
+    _wait_for(lambda: len(created) >= initial_launches)
+    time.sleep(0.02)
+    assert len(created) == initial_launches
+    if capacity:
+        for work in list(works.values()):
+            work.complete()
+        _wait_for(lambda: len(created) == len(keys))
+    for work in list(works.values()):
+        work.complete()
+    _wait_for(lambda: all(item.is_completed() for item in scheduled))
+    scheduler.finish_window(timeout=1)
+    assert all(item.is_completed() for item in scheduled)
+    scheduler.close()
+
+
 def test_cpu_ready_event_gates_rank_wide_head():
     k0, k1 = _key(0), _key(1)
     ready = threading.Event()
