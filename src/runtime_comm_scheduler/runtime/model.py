@@ -1,4 +1,4 @@
-"""Immutable control-plane model for the Stage 3.1 runtime."""
+"""Immutable control-plane model for the Phase 3 runtime."""
 
 from __future__ import annotations
 

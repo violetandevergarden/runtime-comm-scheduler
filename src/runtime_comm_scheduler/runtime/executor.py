@@ -21,10 +21,6 @@ class DirectExecutor:
         return work
 
 
-class GlooExecutor(DirectExecutor):
-    """CPU executor; kept concrete so the runtime has no torch dependency."""
-
-
 class WorkIsCompletedProbe:
     supports_physical_completion = True
 

@@ -1,8 +1,8 @@
 # Phase 3.1 / 3.2 结构整理实施计划
 
-日期：2026-09-21。状态：待实施；本文不表示重构或重新验收已经完成。
+日期：2026-09-21。状态：已完成；实际改动和验收见 [结果记录](../result/phase3.12fix.md)。
 
-依据当前 `runtime/`、包根目录 `dag.py`、JobPacer replay 及 [Phase 3.2 实施说明](phase3.2.md)。遵循 [设计讨论](../plan/discussion.md)、[Phase 3.1 计划](../plan/phase3.1.md) 和 [Phase 3.2 计划](../plan/phase3.2.md) 的职责边界。历史验收见 [Phase 3.1 结果](../result/phase3.1.md)、[Phase 3.2 结果](../result/phase3.2.md)，不能代替重构后的回归。
+实施前依据为 `runtime/`、包根目录 `dag.py`、JobPacer replay 及 [Phase 3.2 实施说明](phase3.2.md)。遵循 [设计讨论](../plan/discussion.md)、[Phase 3.1 计划](../plan/phase3.1.md) 和 [Phase 3.2 计划](../plan/phase3.2.md) 的职责边界。历史验收见 [Phase 3.1 结果](../result/phase3.1.md)、[Phase 3.2 结果](../result/phase3.2.md)，不能代替重构后的回归。
 
 ## 1. 目标、非目标与不变量
 
@@ -19,7 +19,7 @@
 
 线性 replay 与 DAG replay 暂时保留各自的单 job 执行逻辑。线性 submit 后独立计算、消费等待和旧 tail 不能在结构重构中悄悄替换成不同的 DAG 语义。
 
-## 2. 当前证据与处理决定
+## 2. 实施前证据与处理决定
 
 | 当前位置 | 现状 | 本次处理 |
 | --- | --- | --- |
@@ -345,8 +345,8 @@ def metrics(results) -> dict: ...
 5. 保持 Python >=3.10；不用本机 3.13 专有语法，兼容性检查与本机测试分开报告。
 6. 不重新生成或覆盖历史 validation batch 的 manifest、源码 SHA 和结果；重构验收建立新产物。
 7. `process/phase3.2.md` 保留历史实现上下文，可追加迁移说明链接；`result/phase3.2.md` 不改写历史通过数字来冒充当前验收。
-8. 当前另有 `process/phase3.1&2fix.md` 空文件，本次不删除、不合并；以用户指定的本文路径为实施计划入口。
-9. 工作区已有大量修改，实施前保存状态清单并逐文件审查重叠；不 reset、不提交 commit、不删除历史 benchmark。
+8. 仓库中未找到 `process/phase3.1&2fix.md`，本次不创建、不删除或合并该文件；以用户指定的本文路径为实施计划入口。
+9. 实施前逐文件检查工作区状态和重叠；本次开始时 worktree 干净。保护已有修改，不 reset、不提交 commit、不删除历史 benchmark。
 
 ## 8. 实施顺序
 
@@ -397,3 +397,16 @@ git diff --check
 - `docs/JobPacer/result/phase3.12fix.md` 记录实际命令、环境、通过/失败/跳过、运行时长、产物位置与源码状态，GPU 等未验收范围单列。
 
 此次交付是更清晰、少重复的同一套能力，不宣称重构自动带来性能收益或真实框架接入完成。
+
+## 11. 后续问题修复（2026-09-21）
+
+对初次重构验收中发现的边界补充修复，保留上文原实施记录：
+
+1. 增加独立 `--setup-timeout`。ProcessGroup/group/control 初始化按 setup deadline 收敛；初始化完成后只创建一次 replay 绝对 deadline，runner、通信等待和 `finish_epoch()` 都使用其剩余时间。Coordinator 的 epoch watchdog 从首个控制事件启动，预算设为 setup + replay，避免在 rank setup 尚未结束时抢先超时；父进程回收期限为两段预算之和再加 5 秒。
+2. 将指标字段改名为 `coordinator_epoch_duration_s`，明确它是首个 coordinator 记录到 `FINISHED`，包含注册阶段；不再称作 replay makespan。
+3. `_collective()` 在 DAG 输入预检时只接受 `sum` reduction，并以 CLI 集成测试验证错误在 rank worker 启动前被拒绝。
+4. 补 DAG runner 的重复完成、submit 失败 abort/后继不运行、deadline 诊断/不刷新预算测试；补 worker 错误后不执行 `finish_epoch()` 的直接测试，以及 Gloo launch/probe failure 集成覆盖。
+5. 将 worker 并发测试中的 Timer、短 sleep 和耗时区间断言替换为 Event 与受控 join deadline。
+6. 删除未使用的 `compute_ids`，去掉 `DagInput.tails` 的重算属性；每 rank 对 DAG 只算一次 tails，并传给静态排序和所有 job runner 复用。
+
+这些修正的最终命令、实际测试结果和独立产物记录在结果文档的后续修复附录中。

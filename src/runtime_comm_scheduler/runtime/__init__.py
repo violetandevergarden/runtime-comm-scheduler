@@ -1,11 +1,11 @@
-"""Stage 3.1 online collective runtime.
+"""Phase 3 online collective runtime.
 
 The package is deliberately small: control-plane objects are serializable and
 rank-local bindings never cross the coordinator boundary.
 """
 
 from .coordinator import CoordinatorState, CoordinatorError
-from .executor import DirectExecutor, GlooExecutor, WorkIsCompletedProbe
+from .executor import DirectExecutor, WorkIsCompletedProbe
 from .handle import RuntimeHandle, HandleState
 from .model import (
     CollectiveSpec,
@@ -45,7 +45,6 @@ __all__ = [
     "Dispatch",
     "EventLog",
     "FifoPolicy",
-    "GlooExecutor",
     "GroupSpec",
     "HandleState",
     "Idle",

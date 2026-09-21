@@ -15,5 +15,11 @@ PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
   --output /tmp/jobpacer-phase3-fifo.json
 ```
 
-DAG 的解析、校验、策略摘要和本地推进实现位于
-`src/runtime_comm_scheduler/dag.py`；`examples/jobpacer/` 只保留可执行 harness。
+DAG 模型、校验、tail、静态序列与通用依赖 runner 位于
+`src/runtime_comm_scheduler/dag/`；JSON schema、canonical digest、CPU compute sampling 和
+rank-local collective binding 位于 `examples/jobpacer/runtime_adapter.py`。结果校验/指标在
+`runtime_results.py`，启动与生命周期在 `runtime_worker.py` 和 `run_runtime_replay.py`。
+
+依赖方向是 `examples → dag → runtime`；正式 `src/` 不依赖 examples，runtime 不依赖 DAG。
+benchmark 输入 schema 和策略估计不变。重构后的 CPU/Gloo 回归记录见
+[`docs/JobPacer/result/phase3.12fix.md`](../../docs/JobPacer/result/phase3.12fix.md)。

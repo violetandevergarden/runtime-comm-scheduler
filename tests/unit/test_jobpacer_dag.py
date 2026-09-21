@@ -11,16 +11,22 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
 from runtime_comm_scheduler.dag import (
+    CommNode,
+    ComputeNode,
+    DagGraph,
+    DagJob,
     DagRunner,
+    NodeState,
     build_static_order,
     dag_task_hint,
     dag_task_spec,
-    load_dag,
-    parse_dag,
-    sample_compute_duration,
+    validate_graph,
     validate_static_order,
 )
-from runtime_comm_scheduler.runtime import CoordinatorState, TaskHint
+from runtime_comm_scheduler.runtime import CollectiveSpec, CoordinatorState, GroupSpec, TaskHint
+from runtime_comm_scheduler.dag.model import compute_tails
+from runtime_comm_scheduler.dag import runner as runner_module
+from examples.jobpacer.runtime_adapter import load_dag, parse_dag, sample_compute_duration
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -75,8 +81,9 @@ def test_diamond_tail_uses_longest_branch_not_sum_or_execution_samples():
     raw = _payload(nodes, execution={"job/root": 0.0, "job/short": 0.9,
                                      "job/long": 0.1})
     dag = parse_dag(raw)
-    assert dag.tails["job/comm"] == pytest.approx(0.018)
-    assert dag.tails["job/end"] == 0
+    tails = compute_tails(dag.graph)
+    assert tails["job/comm"] == pytest.approx(0.018)
+    assert tails["job/end"] == 0
 
 
 def test_tail_uses_successor_duration_and_excludes_current_communication():
@@ -86,9 +93,10 @@ def test_tail_uses_successor_duration_and_excludes_current_communication():
         _compute("middle", ["first"], 0.003),
         _comm("last", 1, ["middle"], estimated=0.011),
     ]))
-    assert dag.tails["job/first"] == pytest.approx(0.014)
-    assert dag.tails["job/middle"] == pytest.approx(0.011)
-    assert dag.tails["job/last"] == 0
+    tails = compute_tails(dag.graph)
+    assert tails["job/first"] == pytest.approx(0.014)
+    assert tails["job/middle"] == pytest.approx(0.011)
+    assert tails["job/last"] == 0
 
 
 @pytest.mark.parametrize(("policy", "expected"), [
@@ -97,23 +105,24 @@ def test_tail_uses_successor_duration_and_excludes_current_communication():
 ])
 def test_multigroup_dag_tail_changes_coordinator_choice(policy, expected):
     dag = load_dag(DAGS / "multi-group.json", world_size=2)
-    assert dag.tails["job-0/comm-a0"] == pytest.approx(0.021)
-    assert dag.tails["job-0/comm-b0"] == pytest.approx(0.003)
+    tails = compute_tails(dag.graph)
+    assert tails["job-0/comm-a0"] == pytest.approx(0.021)
+    assert tails["job-0/comm-b0"] == pytest.approx(0.003)
     nodes = {
         f"{job.job_id}/{node.node_id}": (job, node)
-        for job in dag.jobs for node in job.nodes
+        for job in dag.graph.jobs for node in job.nodes
         if node.node_id in {"comm-a0", "comm-b0", "comm-c0"}
     }
     coordinator = CoordinatorState((0, 1), policy=policy)
     for endpoint in (0, 1):
-        for seq, group in enumerate(dag.groups, 1):
+        for seq, group in enumerate(dag.graph.groups, 1):
             coordinator.apply(endpoint, "REGISTER_GROUP", seq,
                               {"group": group.to_dict()}, 0.0)
 
     def offer(task_id, endpoint, event_seq, now):
         job, node = nodes[task_id]
         spec = dag_task_spec(job, node, epoch=0)
-        hint = dag_task_hint(dag, node, job_id=job.job_id)
+        hint = dag_task_hint(node, tail_s=tails[task_id])
         return coordinator.apply(endpoint, "OFFER", event_seq,
                                  {"task": spec.to_dict(), "hint": hint.to_dict()}, now)
 
@@ -135,21 +144,22 @@ def test_multigroup_dag_tail_changes_coordinator_choice(policy, expected):
 
 def test_multigroup_lookahead_waits_for_its_declared_frontier_until_offer():
     dag = load_dag(DAGS / "multi-group.json", world_size=2)
+    tails = compute_tails(dag.graph)
     comms = {
         f"{job.job_id}/{node.node_id}": (job, node)
-        for job in dag.jobs for node in job.nodes
+        for job in dag.graph.jobs for node in job.nodes
         if node.node_id in {"comm-a0", "comm-b0", "comm-c0"}
     }
     coordinator = CoordinatorState((0, 1), policy="lookahead", wait_budget_s=0.02)
     for endpoint in (0, 1):
-        for seq, group in enumerate(dag.groups, 1):
+        for seq, group in enumerate(dag.graph.groups, 1):
             coordinator.apply(endpoint, "REGISTER_GROUP", seq,
                               {"group": group.to_dict()}, 0.0)
 
     def payload(task_id, ready_after_s=0.0):
         job, node = comms[task_id]
         spec = dag_task_spec(job, node, epoch=0)
-        hint = dag_task_hint(dag, node, job_id=job.job_id)
+        hint = dag_task_hint(node, tail_s=tails[task_id])
         hint = TaskHint(ready_after_s, hint.estimated_comm_s, hint.remaining_tail_s)
         return {"task": spec.to_dict(), "hint": hint.to_dict()}
 
@@ -199,10 +209,10 @@ def test_rejects_local_cycles_group_sequence_gaps_and_static_order_errors():
 
     dag = load_dag(DAGS / "diamond.json")
     with pytest.raises(ValueError, match="cover all communication"):
-        validate_static_order(["job-0/comm-a"], dag)
+        validate_static_order(["job-0/comm-a"], dag.graph)
     with pytest.raises(ValueError, match="dependency"):
-        validate_static_order(["job-0/comm-c", "job-0/comm-a"], dag)
-    assert set(build_static_order(dag, "static_fifo")) == set(dag.expected_task_ids)
+        validate_static_order(["job-0/comm-c", "job-0/comm-a"], dag.graph)
+    assert set(build_static_order(dag.graph, "static_fifo")) == set(dag.expected_task_ids)
 
 
 def test_rejects_cross_job_group_order_cycle():
@@ -223,6 +233,22 @@ def test_jitter_sample_is_stable_by_seed_epoch_node_and_rank():
     assert sample_compute_duration(*args) == first
     assert 1.0 <= first <= 3.0
     assert sample_compute_duration(*args[:-2], 0.0, 0.5) == 0
+
+
+def test_direct_graph_construction_uses_the_same_validation():
+    collective = CollectiveSpec("all_reduce", 2, 8, "float32", (2,))
+    group = GroupSpec(0, "g", (0, 1))
+    graph = DagGraph((group,), (DagJob("job", (
+        ComputeNode("root", (), 0.0),
+        CommNode("comm", ("root",), "g", 0, 0.001, collective),
+    )),))
+    validate_graph(graph, world_size=2)
+    invalid = DagGraph((group,), (DagJob("job", (
+        ComputeNode("root", ("missing",), 0.0),
+        CommNode("comm", (), "g", 0, 0.001, collective),
+    )),))
+    with pytest.raises(ValueError, match="missing deps"):
+        validate_graph(invalid)
 
 
 class _Handle:
@@ -267,9 +293,66 @@ class _Runtime:
 
 def _runner(raw, runtime, **kwargs):
     dag = parse_dag(raw)
-    return DagRunner(dag, dag.jobs[0], runtime, epoch=0, rank=0,
-                     make_binding=lambda _comm: object(), timeout=2,
-                     poll_interval=0.001, **kwargs)
+    compute_fn = kwargs.pop("compute_fn", lambda _node, _stop: None)
+    deadline = kwargs.pop("deadline", time.monotonic() + 2)
+    return DagRunner(dag.graph, dag.graph.jobs[0], runtime, epoch=0, rank=0,
+                     compute_fn=compute_fn, make_binding=lambda _comm: object(),
+                     deadline=deadline, poll_interval=0.001, **kwargs)
+
+
+def test_runner_reuses_precomputed_tail_map(monkeypatch):
+    raw = _payload([_compute("root"), _comm("comm", 0, ["root"])])
+    dag = parse_dag(raw)
+    tails = compute_tails(dag.graph)
+    monkeypatch.setattr(runner_module, "compute_tails",
+                        lambda _graph: pytest.fail("precomputed tails should be reused"))
+    runner = _runner(raw, _Runtime(), tails=tails)
+    assert runner.tails is tails
+
+
+def test_duplicate_completion_cannot_unlock_a_successor_twice():
+    runner = _runner(_payload([_compute("root"), _comm("comm", 0, ["root"])]), _Runtime())
+    runner.states["root"] = NodeState.RUNNING
+    runner._complete("root")
+    assert runner.remaining_deps["comm"] == 0
+    assert runner.states["comm"] is NodeState.READY
+    with pytest.raises(RuntimeError, match="completed from completed"):
+        runner._complete("root")
+    assert runner.remaining_deps["comm"] == 0
+
+
+def test_submit_failure_aborts_once_and_never_runs_successor(monkeypatch):
+    runtime = _Runtime()
+    raw = _payload([_compute("root"), _comm("comm", 0, ["root"]),
+                    _compute("successor", ["comm"])])
+    runner = _runner(raw, runtime)
+
+    def fail_submit(spec, _binding, _hint):
+        runtime.submitted.append(spec.task_id)
+        raise ValueError("submit failed")
+
+    monkeypatch.setattr(runtime, "submit", fail_submit)
+    with pytest.raises(ValueError, match="submit failed"):
+        runner.run()
+    assert len(runtime.aborts) == 1
+    assert runtime.aborts[0][1]["node_id"] == "comm"
+    assert runner.states["comm"] is NodeState.FAILED
+    assert not any(event.get("node_id") == "successor" and event["kind"] == "compute_started"
+                   for event in runner.event_log.events)
+
+
+def test_deadline_timeout_reports_node_state_without_refreshing_budget():
+    deadline = time.monotonic() - 1
+    runtime = _Runtime()
+    runner = _runner(_payload([_compute("root"), _comm("comm", 0, ["root"]),
+                               _compute("successor", ["comm"])]),
+                     runtime, deadline=deadline)
+    with pytest.raises(TimeoutError, match="exceeded replay deadline"):
+        runner.run()
+    timeout = next(event for event in runner.event_log.events if event["kind"] == "job_timeout")
+    assert timeout["states"] == {"root": "ready", "comm": "pending", "successor": "pending"}
+    assert runner.deadline == deadline
+    assert len(runtime.aborts) == 1
 
 
 def _wait_for(predicate, runtime, timeout=1):
@@ -308,7 +391,7 @@ def test_fork_offers_every_ready_comm_while_serial_compute_runs_independently():
     peak_compute = 0
     compute_lock = threading.Lock()
 
-    def compute(node, _duration, _stop):
+    def compute(node, _stop):
         nonlocal active_compute, peak_compute
         with compute_lock:
             active_compute += 1
@@ -334,9 +417,9 @@ def test_fork_offers_every_ready_comm_while_serial_compute_runs_independently():
     dag = parse_dag(raw)
     from runtime_comm_scheduler.runtime import EventLog
     events = EventLog("dag", 0)
-    runner = DagRunner(dag, dag.jobs[0], runtime, epoch=0, rank=0,
-                       make_binding=lambda _comm: object(), timeout=2, poll_interval=0.001,
-                       compute_fn=compute, event_log=events)
+    runner = DagRunner(dag.graph, dag.graph.jobs[0], runtime, epoch=0, rank=0,
+                       make_binding=lambda _comm: object(), deadline=time.monotonic() + 2,
+                       poll_interval=0.001, compute_fn=compute, event_log=events)
     thread = threading.Thread(target=runner.run)
     thread.start()
     _wait_for(lambda: set(runtime.submitted) == {"job/comm-a", "job/comm-b"}, runtime)
@@ -362,7 +445,7 @@ def test_lookahead_declares_only_safe_running_compute_frontier_once():
     runtime = _Runtime()
     started, release = threading.Event(), threading.Event()
 
-    def compute(node, _duration, _stop):
+    def compute(node, _stop):
         if node.node_id == "producer":
             started.set()
             release.wait(1)

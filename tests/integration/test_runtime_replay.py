@@ -14,6 +14,7 @@ import pytest
 LINEAR_CASES = (
     ("fifo", "balanced", None, 0.0),
     ("static_fifo", "delayed", None, 0.0),
+    ("static_ltf", "tail", None, 0.0),
     ("ltf", "tail", None, 0.0),
     ("lookahead", "delayed", None, 0.0),
 )
@@ -137,6 +138,46 @@ def test_static_ltf_loads_and_executes_external_order(tmp_path):
     assert dispatches[0] == order[0]
 
 
+def test_linear_metadata_mismatch_fails_before_launch(tmp_path):
+    if os.environ.get("RUN_JOBPACER_RUNTIME_REPLAY") != "1":
+        pytest.skip("set RUN_JOBPACER_RUNTIME_REPLAY=1 to run the local TCP replay")
+    pytest.importorskip("torch")
+    root = Path(__file__).resolve().parents[2]
+    output = tmp_path / "linear-metadata-mismatch.json"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    command = [sys.executable, str(root / "examples/jobpacer/run_runtime_replay.py"),
+               "--policy", "fifo", "--workload", "balanced", "--backend", "gloo",
+               "--world-size", "2", "--timeout", "3", "--fault", "metadata_mismatch",
+               "--output", str(output)]
+    completed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, timeout=15)
+    assert completed.returncode != 0
+    payload = json.loads(output.read_text())
+    assert payload["validation"]["status"] == "failed"
+    assert payload["validation"]["errors"]
+
+
+@pytest.mark.parametrize("fault", ("launch_failure", "completion_probe_failure"))
+def test_linear_launch_and_probe_failures_are_bounded(fault, tmp_path):
+    if os.environ.get("RUN_JOBPACER_RUNTIME_REPLAY") != "1":
+        pytest.skip("set RUN_JOBPACER_RUNTIME_REPLAY=1 to run the local TCP replay")
+    pytest.importorskip("torch")
+    root = Path(__file__).resolve().parents[2]
+    output = tmp_path / f"linear-{fault}.json"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    command = [sys.executable, str(root / "examples/jobpacer/run_runtime_replay.py"),
+               "--policy", "fifo", "--workload", "balanced", "--backend", "gloo",
+               "--world-size", "2", "--setup-timeout", "5", "--timeout", "3",
+               "--fault", fault, "--output", str(output)]
+    completed = subprocess.run(command, cwd=root, env=env, capture_output=True,
+                               text=True, timeout=15)
+    assert completed.returncode != 0
+    payload = json.loads(output.read_text())
+    assert payload["validation"]["status"] == "failed"
+    assert payload["validation"]["errors"]
+
+
 @pytest.mark.parametrize("fault", ("compute_failure", "binding_failure", "missing_task"))
 def test_dag_failures_are_bounded(fault, tmp_path):
     if os.environ.get("RUN_JOBPACER_RUNTIME_REPLAY") != "1":
@@ -168,3 +209,22 @@ def test_invalid_dag_manifest_is_rejected_before_rank_workers(tmp_path):
     completed = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=5)
     assert completed.returncode == 2
     assert "schema_version" in completed.stderr
+
+
+def test_unsupported_reduction_is_rejected_before_rank_workers(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    invalid = tmp_path / "unsupported-reduction.json"
+    data = json.loads((root / "benchmark/phase3/linear.json").read_text())
+    comm = next(node for job in data["jobs"] for node in job["nodes"] if node["kind"] == "comm")
+    comm["collective"]["reduction"] = "max"
+    invalid.write_text(json.dumps(data))
+    output = tmp_path / "should-not-start.json"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    command = [sys.executable, str(root / "examples/jobpacer/run_runtime_replay.py"),
+               "--dag", str(invalid), "--world-size", "2", "--output", str(output)]
+    completed = subprocess.run(command, cwd=root, env=env, capture_output=True,
+                               text=True, timeout=5)
+    assert completed.returncode == 2
+    assert "reduction" in completed.stderr and "unsupported" in completed.stderr
+    assert not output.exists()

@@ -2,6 +2,11 @@
 
 日期：2026-09-20。状态：完成（CPU/Gloo）；NCCL/GPU 未验收。
 
+> 2026-09-21 结构迁移说明：本文主体记录 Phase 3.2 首次实现时的设计与路径，原文路径不回写。
+> 之后的模块迁移和重新验收见 [Phase 3.1/3.2 结构整理](phase3.12fix.md) 与
+> [结构整理验收](../result/phase3.12fix.md)。当前 DAG 库位于 `src/runtime_comm_scheduler/dag/`；
+> replay schema、采样和绑定位于 `examples/jobpacer/runtime_adapter.py`。
+
 本文把 [Phase 3.2 计划](../plan/phase3.2.md) 落到当前代码结构上，给出数据格式、
 校验算法、本地推进状态机、策略衔接、文件改动、测试矩阵和验收顺序。设计基础是当前
 `src/runtime_comm_scheduler/runtime/` 的 Phase 3.1 实现及
@@ -611,7 +616,7 @@ runtime 自己的 declared/offered/grant/launch/completion 事件继续保留，
 新增或明确：
 
 - job duration：本 rank runner 从统一释放到所有节点完成；跨 rank job JCT 取成员最大值；
-- replay makespan：统一启动后到 coordinator FINISHED 的同一运行边界；
+- coordinator epoch duration：首个 coordinator 控制事件（通常为 `group_registered`）到 `FINISHED`；该值包含控制连接/group 注册，不等于 replay makespan。没有中央 replay-start 时间戳时，不把它解释为统一启动到完成的 replay 时长；
 - node ready wait：ready 到 compute start 或 comm submit call；
 - runtime admission wait：offer 到 grant，继续使用各自 rank 本地事件；
 - predicted-ready error：实际 DAG-ready 减 `predicted_ready_at_us`，该时间在调用 `declare()` 前按同一 monotonic 时钟固定，仅同 rank 计算；不使用 `comm_declared.time_us` 反推，避免混入控制发送耗时；

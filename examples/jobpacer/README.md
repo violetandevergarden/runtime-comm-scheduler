@@ -1,9 +1,9 @@
-# JobPacer Phase 2 示例
+# JobPacer replay 示例
 
-本目录提供多 job 线性通信 workload 的真实 PyTorch collective 重放工具。它可以直接并发
-发射通信作为 baseline，也可以通过 `AdmissionScheduler` 按静态 FIFO 或 longest-tail-first
-（LTF）Plan 控制发射顺序。正式比较 FIFO/LTF 前，可先在相同通信环境中生成离线 profile，
-用实测的无竞争通信时间替换 workload 中的手工估值。
+本目录保留历史 Phase 2 线性 replay/profile 工具，并提供当前 Phase 3 中心化 runtime replay。
+两条路径用途和完成语义不同：下文原有的 `run_replay.py`、`replay_worker.py` 与
+`AdmissionScheduler` 是 Phase 2 基线；Phase 3 入口见后面的“Phase 3 runtime replay”。
+旧工具可以作为历史对照，不是新 runtime 的内部依赖。
 
 以下命令均从仓库根目录执行。
 
@@ -198,3 +198,43 @@ pytest -q tests/integration/test_jobpacer_profile.py
 ```
 
 集成测试需要允许本机 TCP loopback socket；没有该权限时测试会跳过。
+
+## Phase 3 runtime replay（当前主线）
+
+Phase 3 通过独立控制通道上的 coordinator 决定通信准入。线性 workload 和手写 DAG 都调用新
+runtime；DAG runner 只推进 compute/communication 依赖，通信成员匹配、group 顺序、grant 和完成
+仍由 runtime 负责。CPU/Gloo 是当前验收路径；这不代表 GPU/NCCL 已验收。
+
+线性 workload 示例：
+
+```bash
+PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
+  --policy fifo --workload balanced --backend gloo --world-size 2 \
+  --timeout 20 --output /tmp/jobpacer-runtime-linear.json
+```
+
+DAG 示例：
+
+```bash
+PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
+  --policy ltf --dag benchmark/phase3/multi-group.json \
+  --backend gloo --world-size 2 --timeout 20 \
+  --output /tmp/jobpacer-runtime-dag.json
+```
+
+`--static-order` 只用于 DAG 的 `static_fifo` / `static_ltf`；静态队首未 ready 时会等待，不能跳过。
+`--compute-jitter` 只改变 adapter 的实际 CPU compute 样本，不改变 DAG 的估计值。replay 的校验和指标
+在子进程返回后纯离线计算。`--setup-timeout`（默认 20 秒）限制 ProcessGroup/group/control 初始化；
+`--timeout` 在初始化完成后创建唯一 replay deadline，runner 与 `finish_epoch()` 只消耗其剩余预算。父进程
+回收期限为 setup timeout + replay timeout + 5 秒安全余量。
+
+| 文件 | 用途 |
+| --- | --- |
+| `runtime_adapter.py` | 输入 schema/digest、线性映射、计算采样、tensor/collective 绑定及历史线性 Plan 桥接 |
+| `runtime_worker.py` | rank 生命周期、共享 job 线程 harness、故障注入和结果装配 |
+| `runtime_results.py` | 预期 DAG 任务集、结果校验与指标；不启动进程、不导入 torch |
+| `run_runtime_replay.py` | CLI、输入预检、rank 子进程启动/回收 |
+| `workloads.py`、`plan_builder.py` | Phase 2 线性输入和静态 Plan；新 runtime 的静态线性桥接只在 adapter 中使用 |
+
+正式库入口分别为 `runtime_comm_scheduler.runtime` 和 `runtime_comm_scheduler.dag`；包根
+`runtime_comm_scheduler` 保留旧 Plan/TaskKey 等历史导出。
