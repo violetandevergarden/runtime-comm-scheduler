@@ -1,0 +1,3197 @@
+{
+  "config": {
+    "backend": "gloo",
+    "code_revision": "67f079119b3fb7f34ebb9f8827123da4fffca728",
+    "compute_jitter": 0.0,
+    "dag": "benchmark/phase3/multi-group.json",
+    "dag_poll_interval": 0.001,
+    "epoch": 7,
+    "fault": "none",
+    "output": "docs/JobPacer/result/phase3.2-validation/fifo-multi-group.json",
+    "policy": "fifo",
+    "poll_interval": 0.001,
+    "static_order": null,
+    "timeout": 20.0,
+    "working_tree_dirty": true,
+    "workload": null,
+    "world_size": 2
+  },
+  "metrics": {
+    "coordinator_idle_s": {
+      "CAPACITY_FULL": 0.2601606880198233
+    },
+    "coordinator_makespan_s": 0.3063036169623956,
+    "coordinator_task_timings": {
+      "job-0/comm-a0": {
+        "all_submitted_to_all_completed_s": 0.04284991399617866,
+        "eligible_to_grant_s": 0.0437529330374673,
+        "grant_to_all_submitted_s": 0.0013104029931128025
+      },
+      "job-0/comm-a1": {
+        "all_submitted_to_all_completed_s": 0.042053683020640165,
+        "eligible_to_grant_s": 0.08758439298253506,
+        "grant_to_all_submitted_s": 0.0018886189791373909
+      },
+      "job-0/comm-b0": {
+        "all_submitted_to_all_completed_s": 0.04240661102812737,
+        "eligible_to_grant_s": 0.0,
+        "grant_to_all_submitted_s": 0.0014450279995799065
+      },
+      "job-0/comm-b1": {
+        "all_submitted_to_all_completed_s": 0.042240131995640695,
+        "eligible_to_grant_s": 0.04404318699380383,
+        "grant_to_all_submitted_s": 0.001637984998524189
+      },
+      "job-1/comm-c0": {
+        "all_submitted_to_all_completed_s": 0.04229266400216147,
+        "eligible_to_grant_s": 0.08789295598398894,
+        "grant_to_all_submitted_s": 0.0015583279891870916
+      },
+      "job-1/comm-c1": {
+        "all_submitted_to_all_completed_s": 0.04341647797264159,
+        "eligible_to_grant_s": 0.0,
+        "grant_to_all_submitted_s": 0.0013866970548406243
+      }
+    },
+    "dag_node_ready_wait_s": {
+      "0": {
+        "job-0/compute-a-tail": 1.5e-05,
+        "job-0/compute-b-tail": 1.3e-05,
+        "job-0/producer": 2.2e-05,
+        "job-1/compute-c-tail": 1e-05,
+        "job-1/setup": 2.6e-05,
+        "job-1/skew": 1.4e-05
+      },
+      "1": {
+        "job-0/compute-a-tail": 1.4e-05,
+        "job-0/compute-b-tail": 1.2e-05,
+        "job-0/producer": 2e-05,
+        "job-1/compute-c-tail": 1e-05,
+        "job-1/setup": 2.5e-05,
+        "job-1/skew": 1.5e-05
+      }
+    },
+    "dag_rank_task_timings": {
+      "0": {
+        "job-0/comm-a0": {
+          "grant_to_launch_s": 0.000113,
+          "offer_to_grant_s": 0.083167,
+          "ready_to_submit_s": 0.000699
+        },
+        "job-0/comm-a1": {
+          "grant_to_launch_s": 7.1e-05,
+          "offer_to_grant_s": 0.108405,
+          "ready_to_submit_s": 0.000118
+        },
+        "job-0/comm-b0": {
+          "grant_to_launch_s": 6e-05,
+          "offer_to_grant_s": 0.039439,
+          "ready_to_submit_s": 0.00054
+        },
+        "job-0/comm-b1": {
+          "grant_to_launch_s": 0.000104,
+          "offer_to_grant_s": 0.081498,
+          "ready_to_submit_s": 6.2e-05
+        },
+        "job-1/comm-c0": {
+          "grant_to_launch_s": 4.5e-05,
+          "offer_to_grant_s": 0.126625,
+          "ready_to_submit_s": 0.000113
+        },
+        "job-1/comm-c1": {
+          "grant_to_launch_s": 4.5e-05,
+          "offer_to_grant_s": 0.034207,
+          "ready_to_submit_s": 9.3e-05
+        }
+      },
+      "1": {
+        "job-0/comm-a0": {
+          "grant_to_launch_s": 5.3e-05,
+          "offer_to_grant_s": 0.082748,
+          "ready_to_submit_s": 0.001025
+        },
+        "job-0/comm-a1": {
+          "grant_to_launch_s": 6.7e-05,
+          "offer_to_grant_s": 0.108446,
+          "ready_to_submit_s": 0.000146
+        },
+        "job-0/comm-b0": {
+          "grant_to_launch_s": 6.9e-05,
+          "offer_to_grant_s": 0.039277,
+          "ready_to_submit_s": 0.000668
+        },
+        "job-0/comm-b1": {
+          "grant_to_launch_s": 5.3e-05,
+          "offer_to_grant_s": 0.083739,
+          "ready_to_submit_s": 9.7e-05
+        },
+        "job-1/comm-c0": {
+          "grant_to_launch_s": 6.6e-05,
+          "offer_to_grant_s": 0.126776,
+          "ready_to_submit_s": 8.4e-05
+        },
+        "job-1/comm-c1": {
+          "grant_to_launch_s": 5.2e-05,
+          "offer_to_grant_s": 0.035537,
+          "ready_to_submit_s": 0.00011
+        }
+      }
+    },
+    "dag_timing_clock": "rank-local monotonic; never compare values across ranks",
+    "job_duration_s": {
+      "job-0": 0.221851,
+      "job-1": 0.264559
+    },
+    "predicted_ready_error_s": {},
+    "rank_task_timings": {}
+  },
+  "ranks": [
+    {
+      "backend": "gloo",
+      "canonical_dag": {
+        "execution": {
+          "compute_duration_s": {
+            "job-0/compute-a-tail": 0.02,
+            "job-0/compute-b-tail": 0.002,
+            "job-0/producer": 0.001,
+            "job-1/compute-c-tail": 0.05,
+            "job-1/setup": 0.03,
+            "job-1/skew": 0.015
+          }
+        },
+        "groups": [
+          {
+            "group_id": "group-a",
+            "ranks": [
+              0,
+              1
+            ]
+          },
+          {
+            "group_id": "group-b",
+            "ranks": [
+              0,
+              1
+            ]
+          },
+          {
+            "group_id": "group-c",
+            "ranks": [
+              0,
+              1
+            ]
+          }
+        ],
+        "jobs": [
+          {
+            "job_id": "job-0",
+            "nodes": [
+              {
+                "deps": [],
+                "estimated_duration_s": 0.001,
+                "kind": "compute",
+                "node_id": "producer"
+              },
+              {
+                "collective": {
+                  "dtype": "float32",
+                  "num_bytes": 4096,
+                  "numel": 1024,
+                  "op": "all_reduce",
+                  "reduction": "sum",
+                  "shape": [
+                    1024
+                  ]
+                },
+                "deps": [
+                  "producer"
+                ],
+                "estimated_comm_s": 0.02,
+                "group_id": "group-b",
+                "group_seq": 0,
+                "kind": "comm",
+                "node_id": "comm-b0"
+              },
+              {
+                "collective": {
+                  "dtype": "float32",
+                  "num_bytes": 4096,
+                  "numel": 1024,
+                  "op": "all_reduce",
+                  "reduction": "sum",
+                  "shape": [
+                    1024
+                  ]
+                },
+                "deps": [
+                  "producer"
+                ],
+                "estimated_comm_s": 0.02,
+                "group_id": "group-a",
+                "group_seq": 0,
+                "kind": "comm",
+                "node_id": "comm-a0"
+              },
+              {
+                "deps": [
+                  "comm-a0"
+                ],
+                "estimated_duration_s": 0.02,
+                "kind": "compute",
+                "node_id": "compute-a-tail"
+              },
+              {
+                "collective": {
+                  "dtype": "float32",
+                  "num_bytes": 4096,
+                  "numel": 1024,
+                  "op": "all_reduce",
+                  "reduction": "sum",
+                  "shape": [
+                    1024
+                  ]
+                },
+                "deps": [
+                  "compute-a-tail"
+                ],
+                "estimated_comm_s": 0.001,
+                "group_id": "group-a",
+                "group_seq": 1,
+                "kind": "comm",
+                "node_id": "comm-a1"
+              },
+              {
+                "deps": [
+                  "comm-b0"
+                ],
+                "estimated_duration_s": 0.002,
+                "kind": "compute",
+                "node_id": "compute-b-tail"
+              },
+              {
+                "collective": {
+                  "dtype": "float32",
+                  "num_bytes": 4096,
+                  "numel": 1024,
+                  "op": "all_reduce",
+                  "reduction": "sum",
+                  "shape": [
+                    1024
+                  ]
+                },
+                "deps": [
+                  "compute-b-tail"
+                ],
+                "estimated_comm_s": 0.001,
+                "group_id": "group-b",
+                "group_seq": 1,
+                "kind": "comm",
+                "node_id": "comm-b1"
+              }
+            ]
+          },
+          {
+            "job_id": "job-1",
+            "nodes": [
+              {
+                "deps": [],
+                "estimated_duration_s": 0.03,
+                "kind": "compute",
+                "node_id": "setup"
+              },
+              {
+                "deps": [
+                  "setup"
+                ],
+                "estimated_duration_s": 0.02,
+                "kind": "compute",
+                "node_id": "skew"
+              },
+              {
+                "collective": {
+                  "dtype": "float32",
+                  "num_bytes": 4096,
+                  "numel": 1024,
+                  "op": "all_reduce",
+                  "reduction": "sum",
+                  "shape": [
+                    1024
+                  ]
+                },
+                "deps": [
+                  "skew"
+                ],
+                "estimated_comm_s": 0.001,
+                "group_id": "group-c",
+                "group_seq": 0,
+                "kind": "comm",
+                "node_id": "comm-c0"
+              },
+              {
+                "deps": [
+                  "comm-c0"
+                ],
+                "estimated_duration_s": 0.05,
+                "kind": "compute",
+                "node_id": "compute-c-tail"
+              },
+              {
+                "collective": {
+                  "dtype": "float32",
+                  "num_bytes": 4096,
+                  "numel": 1024,
+                  "op": "all_reduce",
+                  "reduction": "sum",
+                  "shape": [
+                    1024
+                  ]
+                },
+                "deps": [
+                  "compute-c-tail"
+                ],
+                "estimated_comm_s": 0.001,
+                "group_id": "group-c",
+                "group_seq": 1,
+                "kind": "comm",
+                "node_id": "comm-c1"
+              }
+            ]
+          }
+        ],
+        "name": "multi-group",
+        "schema_version": 1,
+        "seed": 37
+      },
+      "completion_poll_interval_s": 0.001,
+      "compute_jitter": 0.0,
+      "dag_events": [
+        {
+          "endpoint": 0,
+          "job_id": "job-0",
+          "kind": "job_barrier_wait",
+          "source": "dag",
+          "time_us": 310913539444
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-1",
+          "kind": "job_barrier_wait",
+          "source": "dag",
+          "time_us": 310913539670
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-1",
+          "kind": "job_started",
+          "source": "dag",
+          "time_us": 310913539724
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-1",
+          "kind": "node_ready",
+          "node_id": "setup",
+          "node_kind": "compute",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913539744
+        },
+        {
+          "endpoint": 0,
+          "estimated_duration_s": 0.03,
+          "job_id": "job-1",
+          "kind": "compute_started",
+          "node_id": "setup",
+          "sampled_duration_s": 0.03,
+          "source": "dag",
+          "time_us": 310913539770
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-0",
+          "kind": "job_started",
+          "source": "dag",
+          "time_us": 310913540105
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "producer",
+          "node_kind": "compute",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913540120
+        },
+        {
+          "endpoint": 0,
+          "estimated_duration_s": 0.001,
+          "job_id": "job-0",
+          "kind": "compute_started",
+          "node_id": "producer",
+          "sampled_duration_s": 0.001,
+          "source": "dag",
+          "time_us": 310913540142
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-0",
+          "kind": "compute_completed",
+          "node_id": "producer",
+          "sampled_duration_s": 0.001,
+          "source": "dag",
+          "time_us": 310913541587
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "comm-b0",
+          "node_kind": "comm",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913541599
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "comm-a0",
+          "node_kind": "comm",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913541604
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-b",
+          "group_seq": 0,
+          "job_id": "job-0",
+          "kind": "comm_submit_call",
+          "node_id": "comm-b0",
+          "source": "dag",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913542139
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-b",
+          "group_seq": 0,
+          "job_id": "job-0",
+          "kind": "comm_submit_return",
+          "node_id": "comm-b0",
+          "source": "dag",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913542264
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-a",
+          "group_seq": 0,
+          "job_id": "job-0",
+          "kind": "comm_submit_call",
+          "node_id": "comm-a0",
+          "source": "dag",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913542303
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-a",
+          "group_seq": 0,
+          "job_id": "job-0",
+          "kind": "comm_submit_return",
+          "node_id": "comm-a0",
+          "source": "dag",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913542366
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-1",
+          "kind": "compute_completed",
+          "node_id": "setup",
+          "sampled_duration_s": 0.03,
+          "source": "dag",
+          "time_us": 310913570607
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-1",
+          "kind": "node_ready",
+          "node_id": "skew",
+          "node_kind": "compute",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913570620
+        },
+        {
+          "endpoint": 0,
+          "estimated_duration_s": 0.02,
+          "job_id": "job-1",
+          "kind": "compute_started",
+          "node_id": "skew",
+          "sampled_duration_s": 0.015,
+          "source": "dag",
+          "time_us": 310913570634
+        },
+        {
+          "endpoint": 0,
+          "handle_state": "completed",
+          "job_id": "job-0",
+          "kind": "comm_completed_observed",
+          "node_id": "comm-b0",
+          "source": "dag",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913584797
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "compute-b-tail",
+          "node_kind": "compute",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913584805
+        },
+        {
+          "endpoint": 0,
+          "estimated_duration_s": 0.002,
+          "job_id": "job-0",
+          "kind": "compute_started",
+          "node_id": "compute-b-tail",
+          "sampled_duration_s": 0.002,
+          "source": "dag",
+          "time_us": 310913584818
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-1",
+          "kind": "compute_completed",
+          "node_id": "skew",
+          "sampled_duration_s": 0.015,
+          "source": "dag",
+          "time_us": 310913586645
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-1",
+          "kind": "node_ready",
+          "node_id": "comm-c0",
+          "node_kind": "comm",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913586655
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-c",
+          "group_seq": 0,
+          "job_id": "job-1",
+          "kind": "comm_submit_call",
+          "node_id": "comm-c0",
+          "source": "dag",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913586768
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-c",
+          "group_seq": 0,
+          "job_id": "job-1",
+          "kind": "comm_submit_return",
+          "node_id": "comm-c0",
+          "source": "dag",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913586864
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-0",
+          "kind": "compute_completed",
+          "node_id": "compute-b-tail",
+          "sampled_duration_s": 0.002,
+          "source": "dag",
+          "time_us": 310913588139
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "comm-b1",
+          "node_kind": "comm",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913588147
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-b",
+          "group_seq": 1,
+          "job_id": "job-0",
+          "kind": "comm_submit_call",
+          "node_id": "comm-b1",
+          "source": "dag",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913588209
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-b",
+          "group_seq": 1,
+          "job_id": "job-0",
+          "kind": "comm_submit_return",
+          "node_id": "comm-b1",
+          "source": "dag",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913588282
+        },
+        {
+          "endpoint": 0,
+          "handle_state": "completed",
+          "job_id": "job-0",
+          "kind": "comm_completed_observed",
+          "node_id": "comm-a0",
+          "source": "dag",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913628369
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "compute-a-tail",
+          "node_kind": "compute",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913628379
+        },
+        {
+          "endpoint": 0,
+          "estimated_duration_s": 0.02,
+          "job_id": "job-0",
+          "kind": "compute_started",
+          "node_id": "compute-a-tail",
+          "sampled_duration_s": 0.02,
+          "source": "dag",
+          "time_us": 310913628394
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-0",
+          "kind": "compute_completed",
+          "node_id": "compute-a-tail",
+          "sampled_duration_s": 0.02,
+          "source": "dag",
+          "time_us": 310913649105
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "comm-a1",
+          "node_kind": "comm",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913649118
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-a",
+          "group_seq": 1,
+          "job_id": "job-0",
+          "kind": "comm_submit_call",
+          "node_id": "comm-a1",
+          "source": "dag",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913649236
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-a",
+          "group_seq": 1,
+          "job_id": "job-0",
+          "kind": "comm_submit_return",
+          "node_id": "comm-a1",
+          "source": "dag",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913649346
+        },
+        {
+          "endpoint": 0,
+          "handle_state": "completed",
+          "job_id": "job-0",
+          "kind": "comm_completed_observed",
+          "node_id": "comm-b1",
+          "source": "dag",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913672235
+        },
+        {
+          "endpoint": 0,
+          "handle_state": "completed",
+          "job_id": "job-1",
+          "kind": "comm_completed_observed",
+          "node_id": "comm-c0",
+          "source": "dag",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913716364
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-1",
+          "kind": "node_ready",
+          "node_id": "compute-c-tail",
+          "node_kind": "compute",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913716373
+        },
+        {
+          "endpoint": 0,
+          "estimated_duration_s": 0.05,
+          "job_id": "job-1",
+          "kind": "compute_started",
+          "node_id": "compute-c-tail",
+          "sampled_duration_s": 0.05,
+          "source": "dag",
+          "time_us": 310913716383
+        },
+        {
+          "endpoint": 0,
+          "handle_state": "completed",
+          "job_id": "job-0",
+          "kind": "comm_completed_observed",
+          "node_id": "comm-a1",
+          "source": "dag",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913760198
+        },
+        {
+          "duration_s": 0.22011,
+          "endpoint": 0,
+          "job_id": "job-0",
+          "kind": "job_completed",
+          "source": "dag",
+          "time_us": 310913760216
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-1",
+          "kind": "compute_completed",
+          "node_id": "compute-c-tail",
+          "sampled_duration_s": 0.05,
+          "source": "dag",
+          "time_us": 310913766790
+        },
+        {
+          "endpoint": 0,
+          "job_id": "job-1",
+          "kind": "node_ready",
+          "node_id": "comm-c1",
+          "node_kind": "comm",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913766807
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-c",
+          "group_seq": 1,
+          "job_id": "job-1",
+          "kind": "comm_submit_call",
+          "node_id": "comm-c1",
+          "source": "dag",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913766900
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-c",
+          "group_seq": 1,
+          "job_id": "job-1",
+          "kind": "comm_submit_return",
+          "node_id": "comm-c1",
+          "source": "dag",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913767165
+        },
+        {
+          "endpoint": 0,
+          "handle_state": "completed",
+          "job_id": "job-1",
+          "kind": "comm_completed_observed",
+          "node_id": "comm-c1",
+          "source": "dag",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913803195
+        },
+        {
+          "duration_s": 0.263483,
+          "endpoint": 0,
+          "job_id": "job-1",
+          "kind": "job_completed",
+          "source": "dag",
+          "time_us": 310913803208
+        }
+      ],
+      "dag_name": "multi-group",
+      "dag_poll_interval_s": 0.001,
+      "dag_seed": 37,
+      "dag_tails_s": {
+        "job-0/comm-a0": 0.021,
+        "job-0/comm-a1": 0.0,
+        "job-0/comm-b0": 0.003,
+        "job-0/comm-b1": 0.0,
+        "job-1/comm-c0": 0.051000000000000004,
+        "job-1/comm-c1": 0.0
+      },
+      "decision_records": [
+        {
+          "endpoint": 0,
+          "group_id": "group-a",
+          "kind": "group_registered",
+          "now": 310913.539334495
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.539334495
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-a",
+          "kind": "group_registered",
+          "now": 310913.540185932
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.540185932
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-b",
+          "kind": "group_registered",
+          "now": 310913.580881169
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.580881169
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-c",
+          "kind": "group_registered",
+          "now": 310913.580926155
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.580926155
+        },
+        {
+          "endpoint": 1,
+          "kind": "offer",
+          "now": 310913.580941889,
+          "task_id": "job-0/comm-b0"
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.580941889
+        },
+        {
+          "endpoint": 1,
+          "kind": "offer",
+          "now": 310913.581003342,
+          "task_id": "job-0/comm-a0"
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.581003342
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-b",
+          "kind": "group_registered",
+          "now": 310913.581037073
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.581037073
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-c",
+          "kind": "group_registered",
+          "now": 310913.581058644
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.581058644
+        },
+        {
+          "endpoint": 0,
+          "kind": "offer",
+          "now": 310913.581074967,
+          "task_id": "job-0/comm-b0"
+        },
+        {
+          "eligible_seq": 1,
+          "kind": "eligible",
+          "now": 310913.581074967,
+          "task_id": "job-0/comm-b0"
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [
+            {
+              "eligible_seq": 1,
+              "estimated_comm_s": 0.02,
+              "remaining_tail_s": 0.003,
+              "task_id": "job-0/comm-b0"
+            }
+          ],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.581074967
+        },
+        {
+          "anticipated": [],
+          "decision": "dispatch",
+          "decision_seq": 1,
+          "eligible": [
+            "job-0/comm-b0"
+          ],
+          "kind": "decision",
+          "now": 310913.581074967,
+          "reason": "dynamic_fifo",
+          "task_id": "job-0/comm-b0"
+        },
+        {
+          "endpoint": 0,
+          "kind": "offer",
+          "now": 310913.581173673,
+          "task_id": "job-0/comm-a0"
+        },
+        {
+          "eligible_seq": 2,
+          "kind": "eligible",
+          "now": 310913.581173673,
+          "task_id": "job-0/comm-a0"
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 1,
+          "kind": "submitted",
+          "now": 310913.582490793,
+          "task_id": "job-0/comm-b0"
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 0,
+          "kind": "submitted",
+          "now": 310913.582519995,
+          "task_id": "job-0/comm-b0"
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 0,
+          "kind": "completed",
+          "now": 310913.624830411,
+          "task_id": "job-0/comm-b0"
+        },
+        {
+          "endpoint": 0,
+          "kind": "offer",
+          "now": 310913.624859588,
+          "task_id": "job-1/comm-c0"
+        },
+        {
+          "endpoint": 0,
+          "kind": "offer",
+          "now": 310913.624905742,
+          "task_id": "job-0/comm-b1"
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 1,
+          "kind": "completed",
+          "now": 310913.624926606,
+          "task_id": "job-0/comm-b0"
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [
+            {
+              "eligible_seq": 2,
+              "estimated_comm_s": 0.02,
+              "remaining_tail_s": 0.021,
+              "task_id": "job-0/comm-a0"
+            }
+          ],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.624926606
+        },
+        {
+          "duration": 0.0437529330374673,
+          "end": 310913.624926606,
+          "kind": "idle_interval",
+          "reason": "CAPACITY_FULL",
+          "start": 310913.581173673
+        },
+        {
+          "anticipated": [],
+          "decision": "dispatch",
+          "decision_seq": 2,
+          "eligible": [
+            "job-0/comm-a0"
+          ],
+          "kind": "decision",
+          "now": 310913.624926606,
+          "reason": "dynamic_fifo",
+          "task_id": "job-0/comm-a0"
+        },
+        {
+          "endpoint": 1,
+          "kind": "offer",
+          "now": 310913.625043736,
+          "task_id": "job-0/comm-b1"
+        },
+        {
+          "eligible_seq": 3,
+          "kind": "eligible",
+          "now": 310913.625043736,
+          "task_id": "job-0/comm-b1"
+        },
+        {
+          "endpoint": 1,
+          "kind": "offer",
+          "now": 310913.625072084,
+          "task_id": "job-1/comm-c0"
+        },
+        {
+          "eligible_seq": 4,
+          "kind": "eligible",
+          "now": 310913.625072084,
+          "task_id": "job-1/comm-c0"
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 1,
+          "kind": "submitted",
+          "now": 310913.626212795,
+          "task_id": "job-0/comm-a0"
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 0,
+          "kind": "submitted",
+          "now": 310913.626237009,
+          "task_id": "job-0/comm-a0"
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 0,
+          "kind": "completed",
+          "now": 310913.66886357,
+          "task_id": "job-0/comm-a0"
+        },
+        {
+          "endpoint": 0,
+          "kind": "offer",
+          "now": 310913.668892408,
+          "task_id": "job-0/comm-a1"
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 1,
+          "kind": "completed",
+          "now": 310913.669086923,
+          "task_id": "job-0/comm-a0"
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [
+            {
+              "eligible_seq": 4,
+              "estimated_comm_s": 0.001,
+              "remaining_tail_s": 0.051000000000000004,
+              "task_id": "job-1/comm-c0"
+            },
+            {
+              "eligible_seq": 3,
+              "estimated_comm_s": 0.001,
+              "remaining_tail_s": 0.0,
+              "task_id": "job-0/comm-b1"
+            }
+          ],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.669086923
+        },
+        {
+          "duration": 0.04404318699380383,
+          "end": 310913.669086923,
+          "kind": "idle_interval",
+          "reason": "CAPACITY_FULL",
+          "start": 310913.625043736
+        },
+        {
+          "anticipated": [],
+          "decision": "dispatch",
+          "decision_seq": 3,
+          "eligible": [
+            "job-1/comm-c0",
+            "job-0/comm-b1"
+          ],
+          "kind": "decision",
+          "now": 310913.669086923,
+          "reason": "dynamic_fifo",
+          "task_id": "job-0/comm-b1"
+        },
+        {
+          "endpoint": 1,
+          "kind": "offer",
+          "now": 310913.669231639,
+          "task_id": "job-0/comm-a1"
+        },
+        {
+          "eligible_seq": 5,
+          "kind": "eligible",
+          "now": 310913.669231639,
+          "task_id": "job-0/comm-a1"
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 1,
+          "kind": "submitted",
+          "now": 310913.67070193,
+          "task_id": "job-0/comm-b1"
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 0,
+          "kind": "submitted",
+          "now": 310913.670724908,
+          "task_id": "job-0/comm-b1"
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 1,
+          "kind": "completed",
+          "now": 310913.712741001,
+          "task_id": "job-0/comm-b1"
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 0,
+          "kind": "completed",
+          "now": 310913.71296504,
+          "task_id": "job-0/comm-b1"
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [
+            {
+              "eligible_seq": 4,
+              "estimated_comm_s": 0.001,
+              "remaining_tail_s": 0.051000000000000004,
+              "task_id": "job-1/comm-c0"
+            },
+            {
+              "eligible_seq": 5,
+              "estimated_comm_s": 0.001,
+              "remaining_tail_s": 0.0,
+              "task_id": "job-0/comm-a1"
+            }
+          ],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.71296504
+        },
+        {
+          "duration": 0.0437334009911865,
+          "end": 310913.71296504,
+          "kind": "idle_interval",
+          "reason": "CAPACITY_FULL",
+          "start": 310913.669231639
+        },
+        {
+          "anticipated": [],
+          "decision": "dispatch",
+          "decision_seq": 4,
+          "eligible": [
+            "job-1/comm-c0",
+            "job-0/comm-a1"
+          ],
+          "kind": "decision",
+          "now": 310913.71296504,
+          "reason": "dynamic_fifo",
+          "task_id": "job-1/comm-c0"
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 1,
+          "kind": "submitted",
+          "now": 310913.7142563,
+          "task_id": "job-1/comm-c0"
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 0,
+          "kind": "submitted",
+          "now": 310913.714523368,
+          "task_id": "job-1/comm-c0"
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 1,
+          "kind": "completed",
+          "now": 310913.756781727,
+          "task_id": "job-1/comm-c0"
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 0,
+          "kind": "completed",
+          "now": 310913.756816032,
+          "task_id": "job-1/comm-c0"
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [
+            {
+              "eligible_seq": 5,
+              "estimated_comm_s": 0.001,
+              "remaining_tail_s": 0.0,
+              "task_id": "job-0/comm-a1"
+            }
+          ],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.756816032
+        },
+        {
+          "duration": 0.04255973198451102,
+          "end": 310913.756816032,
+          "kind": "idle_interval",
+          "reason": "CAPACITY_FULL",
+          "start": 310913.7142563
+        },
+        {
+          "anticipated": [],
+          "decision": "dispatch",
+          "decision_seq": 5,
+          "eligible": [
+            "job-0/comm-a1"
+          ],
+          "kind": "decision",
+          "now": 310913.756816032,
+          "reason": "dynamic_fifo",
+          "task_id": "job-0/comm-a1"
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 1,
+          "kind": "submitted",
+          "now": 310913.758437379,
+          "task_id": "job-0/comm-a1"
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 0,
+          "kind": "submitted",
+          "now": 310913.758704651,
+          "task_id": "job-0/comm-a1"
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 1,
+          "kind": "completed",
+          "now": 310913.800677927,
+          "task_id": "job-0/comm-a1"
+        },
+        {
+          "endpoint": 1,
+          "kind": "offer",
+          "now": 310913.800707952,
+          "task_id": "job-1/comm-c1"
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 0,
+          "kind": "completed",
+          "now": 310913.800758334,
+          "task_id": "job-0/comm-a1"
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.800758334
+        },
+        {
+          "endpoint": 0,
+          "kind": "offer",
+          "now": 310913.800784605,
+          "task_id": "job-1/comm-c1"
+        },
+        {
+          "eligible_seq": 6,
+          "kind": "eligible",
+          "now": 310913.800784605,
+          "task_id": "job-1/comm-c1"
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [
+            {
+              "eligible_seq": 6,
+              "estimated_comm_s": 0.001,
+              "remaining_tail_s": 0.0,
+              "task_id": "job-1/comm-c1"
+            }
+          ],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.800784605
+        },
+        {
+          "duration": 0.04234722600085661,
+          "end": 310913.800784605,
+          "kind": "idle_interval",
+          "reason": "CAPACITY_FULL",
+          "start": 310913.758437379
+        },
+        {
+          "anticipated": [],
+          "decision": "dispatch",
+          "decision_seq": 6,
+          "eligible": [
+            "job-1/comm-c1"
+          ],
+          "kind": "decision",
+          "now": 310913.800784605,
+          "reason": "dynamic_fifo",
+          "task_id": "job-1/comm-c1"
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 1,
+          "kind": "submitted",
+          "now": 310913.801913903,
+          "task_id": "job-1/comm-c1"
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 0,
+          "kind": "submitted",
+          "now": 310913.802171302,
+          "task_id": "job-1/comm-c1"
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 1,
+          "kind": "completed",
+          "now": 310913.845213921,
+          "task_id": "job-1/comm-c1"
+        },
+        {
+          "endpoint": 1,
+          "kind": "input_closed",
+          "now": 310913.845271742
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 0,
+          "kind": "completed",
+          "now": 310913.84558778,
+          "task_id": "job-1/comm-c1"
+        },
+        {
+          "active_wait": null,
+          "anticipated": [],
+          "eligible": [],
+          "kind": "policy_snapshot",
+          "must_dispatch": false,
+          "now": 310913.84558778
+        },
+        {
+          "endpoint": 0,
+          "kind": "input_closed",
+          "now": 310913.845638112
+        },
+        {
+          "duration": 0.04372420901199803,
+          "end": 310913.845638112,
+          "kind": "idle_interval",
+          "reason": "CAPACITY_FULL",
+          "start": 310913.801913903
+        },
+        {
+          "decision_seq": 6,
+          "epoch": 7,
+          "kind": "finished",
+          "now": 310913.845638112,
+          "task_count": 6
+        }
+      ],
+      "epoch": 7,
+      "expected_node_ids": [
+        "job-0/producer",
+        "job-0/comm-b0",
+        "job-0/comm-a0",
+        "job-0/compute-a-tail",
+        "job-0/comm-a1",
+        "job-0/compute-b-tail",
+        "job-0/comm-b1",
+        "job-1/setup",
+        "job-1/skew",
+        "job-1/comm-c0",
+        "job-1/compute-c-tail",
+        "job-1/comm-c1"
+      ],
+      "expected_task_ids": [
+        "job-0/comm-b0",
+        "job-0/comm-a0",
+        "job-0/comm-a1",
+        "job-0/comm-b1",
+        "job-1/comm-c0",
+        "job-1/comm-c1"
+      ],
+      "grant_sequence": [
+        "job-0/comm-b0",
+        "job-0/comm-a0",
+        "job-0/comm-b1",
+        "job-1/comm-c0",
+        "job-0/comm-a1",
+        "job-1/comm-c1"
+      ],
+      "groups": [
+        {
+          "group_id": "group-a",
+          "ranks": [
+            0,
+            1
+          ]
+        },
+        {
+          "group_id": "group-b",
+          "ranks": [
+            0,
+            1
+          ]
+        },
+        {
+          "group_id": "group-c",
+          "ranks": [
+            0,
+            1
+          ]
+        }
+      ],
+      "input_mode": "dag",
+      "jobs": [
+        {
+          "completed_node_ids": [
+            "job-0/producer",
+            "job-0/comm-b0",
+            "job-0/comm-a0",
+            "job-0/compute-a-tail",
+            "job-0/comm-a1",
+            "job-0/compute-b-tail",
+            "job-0/comm-b1"
+          ],
+          "compute_samples_s": {
+            "compute-a-tail": 0.02,
+            "compute-b-tail": 0.002,
+            "producer": 0.001
+          },
+          "job_end_ts": 310913761093,
+          "job_id": "job-0",
+          "job_start_ts": 310913540081,
+          "node_count": 7,
+          "status": "ok",
+          "tasks": [
+            {
+              "correct": true,
+              "decision_seq": 1,
+              "group_id": "group-b",
+              "group_seq": 0,
+              "job_id": "job-0",
+              "node_id": "comm-b0",
+              "task_id": "job-0/comm-b0"
+            },
+            {
+              "correct": true,
+              "decision_seq": 2,
+              "group_id": "group-a",
+              "group_seq": 0,
+              "job_id": "job-0",
+              "node_id": "comm-a0",
+              "task_id": "job-0/comm-a0"
+            },
+            {
+              "correct": true,
+              "decision_seq": 5,
+              "group_id": "group-a",
+              "group_seq": 1,
+              "job_id": "job-0",
+              "node_id": "comm-a1",
+              "task_id": "job-0/comm-a1"
+            },
+            {
+              "correct": true,
+              "decision_seq": 3,
+              "group_id": "group-b",
+              "group_seq": 1,
+              "job_id": "job-0",
+              "node_id": "comm-b1",
+              "task_id": "job-0/comm-b1"
+            }
+          ]
+        },
+        {
+          "completed_node_ids": [
+            "job-1/setup",
+            "job-1/skew",
+            "job-1/comm-c0",
+            "job-1/compute-c-tail",
+            "job-1/comm-c1"
+          ],
+          "compute_samples_s": {
+            "compute-c-tail": 0.05,
+            "setup": 0.03,
+            "skew": 0.015
+          },
+          "job_end_ts": 310913803510,
+          "job_id": "job-1",
+          "job_start_ts": 310913539694,
+          "node_count": 5,
+          "status": "ok",
+          "tasks": [
+            {
+              "correct": true,
+              "decision_seq": 4,
+              "group_id": "group-c",
+              "group_seq": 0,
+              "job_id": "job-1",
+              "node_id": "comm-c0",
+              "task_id": "job-1/comm-c0"
+            },
+            {
+              "correct": true,
+              "decision_seq": 6,
+              "group_id": "group-c",
+              "group_seq": 1,
+              "job_id": "job-1",
+              "node_id": "comm-c1",
+              "task_id": "job-1/comm-c1"
+            }
+          ]
+        }
+      ],
+      "launch_sequence": [
+        "job-0/comm-b0",
+        "job-0/comm-a0",
+        "job-0/comm-b1",
+        "job-1/comm-c0",
+        "job-0/comm-a1",
+        "job-1/comm-c1"
+      ],
+      "manifest_digest": "e3fa6b60b22a1e9bda8e1277968c12d01d3e8206646691e0f95afe2a5db9431a",
+      "max_inflight": 1,
+      "mode": "runtime",
+      "policy": "fifo",
+      "rank": 0,
+      "runtime_events": [
+        {
+          "endpoint": 0,
+          "group_id": "group-a",
+          "kind": "group_registered",
+          "source": "runtime",
+          "time_us": 310913534512
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-b",
+          "kind": "group_registered",
+          "source": "runtime",
+          "time_us": 310913534521
+        },
+        {
+          "endpoint": 0,
+          "group_id": "group-c",
+          "kind": "group_registered",
+          "source": "runtime",
+          "time_us": 310913534525
+        },
+        {
+          "endpoint": 0,
+          "kind": "offered",
+          "source": "runtime",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913542260
+        },
+        {
+          "endpoint": 0,
+          "kind": "offered",
+          "source": "runtime",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913542364
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 0,
+          "kind": "grant_received",
+          "source": "runtime",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913581699
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 0,
+          "kind": "launch_start",
+          "source": "runtime",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913581759
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 0,
+          "kind": "submitted_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913582147
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 0,
+          "kind": "completion_observed",
+          "source": "runtime",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913583756
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 0,
+          "kind": "completed_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913583802
+        },
+        {
+          "endpoint": 0,
+          "kind": "offered",
+          "source": "runtime",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913586861
+        },
+        {
+          "endpoint": 0,
+          "kind": "offered",
+          "source": "runtime",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913588280
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 0,
+          "kind": "grant_received",
+          "source": "runtime",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913625531
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 0,
+          "kind": "launch_start",
+          "source": "runtime",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913625644
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 0,
+          "kind": "submitted_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913625889
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 0,
+          "kind": "completion_observed",
+          "source": "runtime",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913627553
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 0,
+          "kind": "completed_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913627603
+        },
+        {
+          "endpoint": 0,
+          "kind": "offered",
+          "source": "runtime",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913649342
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 0,
+          "kind": "grant_received",
+          "source": "runtime",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913669778
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 0,
+          "kind": "launch_start",
+          "source": "runtime",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913669882
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 0,
+          "kind": "submitted_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913670138
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 0,
+          "kind": "completion_observed",
+          "source": "runtime",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913671895
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 0,
+          "kind": "completed_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913671940
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 0,
+          "kind": "grant_received",
+          "source": "runtime",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913713486
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 0,
+          "kind": "launch_start",
+          "source": "runtime",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913713531
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 0,
+          "kind": "submitted_sent",
+          "source": "runtime",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913714306
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 0,
+          "kind": "completion_observed",
+          "source": "runtime",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913715432
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 0,
+          "kind": "completed_sent",
+          "source": "runtime",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913715472
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 0,
+          "kind": "grant_received",
+          "source": "runtime",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913757747
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 0,
+          "kind": "launch_start",
+          "source": "runtime",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913757818
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 0,
+          "kind": "submitted_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913758072
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 0,
+          "kind": "completion_observed",
+          "source": "runtime",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913759744
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 0,
+          "kind": "completed_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913759808
+        },
+        {
+          "endpoint": 0,
+          "kind": "offered",
+          "source": "runtime",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913767161
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 0,
+          "kind": "grant_received",
+          "source": "runtime",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913801368
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 0,
+          "kind": "launch_start",
+          "source": "runtime",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913801413
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 0,
+          "kind": "submitted_sent",
+          "source": "runtime",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913801609
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 0,
+          "kind": "completion_observed",
+          "source": "runtime",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913803089
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 0,
+          "kind": "completed_sent",
+          "source": "runtime",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913803147
+        },
+        {
+          "endpoint": 0,
+          "kind": "input_closed",
+          "source": "runtime",
+          "time_us": 310913803697
+        },
+        {
+          "endpoint": 0,
+          "kind": "finished_received",
+          "source": "runtime",
+          "time_us": 310913846380
+        }
+      ],
+      "status": "ok",
+      "task_sequence": [
+        "job-0/comm-b0",
+        "job-0/comm-a0",
+        "job-0/comm-a1",
+        "job-0/comm-b1",
+        "job-1/comm-c0",
+        "job-1/comm-c1"
+      ],
+      "world_size": 2
+    },
+    {
+      "backend": "gloo",
+      "canonical_dag": {
+        "execution": {
+          "compute_duration_s": {
+            "job-0/compute-a-tail": 0.02,
+            "job-0/compute-b-tail": 0.002,
+            "job-0/producer": 0.001,
+            "job-1/compute-c-tail": 0.05,
+            "job-1/setup": 0.03,
+            "job-1/skew": 0.015
+          }
+        },
+        "groups": [
+          {
+            "group_id": "group-a",
+            "ranks": [
+              0,
+              1
+            ]
+          },
+          {
+            "group_id": "group-b",
+            "ranks": [
+              0,
+              1
+            ]
+          },
+          {
+            "group_id": "group-c",
+            "ranks": [
+              0,
+              1
+            ]
+          }
+        ],
+        "jobs": [
+          {
+            "job_id": "job-0",
+            "nodes": [
+              {
+                "deps": [],
+                "estimated_duration_s": 0.001,
+                "kind": "compute",
+                "node_id": "producer"
+              },
+              {
+                "collective": {
+                  "dtype": "float32",
+                  "num_bytes": 4096,
+                  "numel": 1024,
+                  "op": "all_reduce",
+                  "reduction": "sum",
+                  "shape": [
+                    1024
+                  ]
+                },
+                "deps": [
+                  "producer"
+                ],
+                "estimated_comm_s": 0.02,
+                "group_id": "group-b",
+                "group_seq": 0,
+                "kind": "comm",
+                "node_id": "comm-b0"
+              },
+              {
+                "collective": {
+                  "dtype": "float32",
+                  "num_bytes": 4096,
+                  "numel": 1024,
+                  "op": "all_reduce",
+                  "reduction": "sum",
+                  "shape": [
+                    1024
+                  ]
+                },
+                "deps": [
+                  "producer"
+                ],
+                "estimated_comm_s": 0.02,
+                "group_id": "group-a",
+                "group_seq": 0,
+                "kind": "comm",
+                "node_id": "comm-a0"
+              },
+              {
+                "deps": [
+                  "comm-a0"
+                ],
+                "estimated_duration_s": 0.02,
+                "kind": "compute",
+                "node_id": "compute-a-tail"
+              },
+              {
+                "collective": {
+                  "dtype": "float32",
+                  "num_bytes": 4096,
+                  "numel": 1024,
+                  "op": "all_reduce",
+                  "reduction": "sum",
+                  "shape": [
+                    1024
+                  ]
+                },
+                "deps": [
+                  "compute-a-tail"
+                ],
+                "estimated_comm_s": 0.001,
+                "group_id": "group-a",
+                "group_seq": 1,
+                "kind": "comm",
+                "node_id": "comm-a1"
+              },
+              {
+                "deps": [
+                  "comm-b0"
+                ],
+                "estimated_duration_s": 0.002,
+                "kind": "compute",
+                "node_id": "compute-b-tail"
+              },
+              {
+                "collective": {
+                  "dtype": "float32",
+                  "num_bytes": 4096,
+                  "numel": 1024,
+                  "op": "all_reduce",
+                  "reduction": "sum",
+                  "shape": [
+                    1024
+                  ]
+                },
+                "deps": [
+                  "compute-b-tail"
+                ],
+                "estimated_comm_s": 0.001,
+                "group_id": "group-b",
+                "group_seq": 1,
+                "kind": "comm",
+                "node_id": "comm-b1"
+              }
+            ]
+          },
+          {
+            "job_id": "job-1",
+            "nodes": [
+              {
+                "deps": [],
+                "estimated_duration_s": 0.03,
+                "kind": "compute",
+                "node_id": "setup"
+              },
+              {
+                "deps": [
+                  "setup"
+                ],
+                "estimated_duration_s": 0.02,
+                "kind": "compute",
+                "node_id": "skew"
+              },
+              {
+                "collective": {
+                  "dtype": "float32",
+                  "num_bytes": 4096,
+                  "numel": 1024,
+                  "op": "all_reduce",
+                  "reduction": "sum",
+                  "shape": [
+                    1024
+                  ]
+                },
+                "deps": [
+                  "skew"
+                ],
+                "estimated_comm_s": 0.001,
+                "group_id": "group-c",
+                "group_seq": 0,
+                "kind": "comm",
+                "node_id": "comm-c0"
+              },
+              {
+                "deps": [
+                  "comm-c0"
+                ],
+                "estimated_duration_s": 0.05,
+                "kind": "compute",
+                "node_id": "compute-c-tail"
+              },
+              {
+                "collective": {
+                  "dtype": "float32",
+                  "num_bytes": 4096,
+                  "numel": 1024,
+                  "op": "all_reduce",
+                  "reduction": "sum",
+                  "shape": [
+                    1024
+                  ]
+                },
+                "deps": [
+                  "compute-c-tail"
+                ],
+                "estimated_comm_s": 0.001,
+                "group_id": "group-c",
+                "group_seq": 1,
+                "kind": "comm",
+                "node_id": "comm-c1"
+              }
+            ]
+          }
+        ],
+        "name": "multi-group",
+        "schema_version": 1,
+        "seed": 37
+      },
+      "completion_poll_interval_s": 0.001,
+      "compute_jitter": 0.0,
+      "dag_events": [
+        {
+          "endpoint": 1,
+          "job_id": "job-0",
+          "kind": "job_barrier_wait",
+          "source": "dag",
+          "time_us": 310913539501
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-1",
+          "kind": "job_barrier_wait",
+          "source": "dag",
+          "time_us": 310913539690
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-1",
+          "kind": "job_started",
+          "source": "dag",
+          "time_us": 310913539743
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-1",
+          "kind": "node_ready",
+          "node_id": "setup",
+          "node_kind": "compute",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913539763
+        },
+        {
+          "endpoint": 1,
+          "estimated_duration_s": 0.03,
+          "job_id": "job-1",
+          "kind": "compute_started",
+          "node_id": "setup",
+          "sampled_duration_s": 0.03,
+          "source": "dag",
+          "time_us": 310913539788
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-0",
+          "kind": "job_started",
+          "source": "dag",
+          "time_us": 310913540142
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "producer",
+          "node_kind": "compute",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913540157
+        },
+        {
+          "endpoint": 1,
+          "estimated_duration_s": 0.001,
+          "job_id": "job-0",
+          "kind": "compute_started",
+          "node_id": "producer",
+          "sampled_duration_s": 0.001,
+          "source": "dag",
+          "time_us": 310913540177
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-0",
+          "kind": "compute_completed",
+          "node_id": "producer",
+          "sampled_duration_s": 0.001,
+          "source": "dag",
+          "time_us": 310913541599
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "comm-b0",
+          "node_kind": "comm",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913541626
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "comm-a0",
+          "node_kind": "comm",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913541662
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-b",
+          "group_seq": 0,
+          "job_id": "job-0",
+          "kind": "comm_submit_call",
+          "node_id": "comm-b0",
+          "source": "dag",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913542294
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-b",
+          "group_seq": 0,
+          "job_id": "job-0",
+          "kind": "comm_submit_return",
+          "node_id": "comm-b0",
+          "source": "dag",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913542559
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-a",
+          "group_seq": 0,
+          "job_id": "job-0",
+          "kind": "comm_submit_call",
+          "node_id": "comm-a0",
+          "source": "dag",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913542687
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-a",
+          "group_seq": 0,
+          "job_id": "job-0",
+          "kind": "comm_submit_return",
+          "node_id": "comm-a0",
+          "source": "dag",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913542864
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-1",
+          "kind": "compute_completed",
+          "node_id": "setup",
+          "sampled_duration_s": 0.03,
+          "source": "dag",
+          "time_us": 310913570392
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-1",
+          "kind": "node_ready",
+          "node_id": "skew",
+          "node_kind": "compute",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913570431
+        },
+        {
+          "endpoint": 1,
+          "estimated_duration_s": 0.02,
+          "job_id": "job-1",
+          "kind": "compute_started",
+          "node_id": "skew",
+          "sampled_duration_s": 0.015,
+          "source": "dag",
+          "time_us": 310913570446
+        },
+        {
+          "endpoint": 1,
+          "handle_state": "completed",
+          "job_id": "job-0",
+          "kind": "comm_completed_observed",
+          "node_id": "comm-b0",
+          "source": "dag",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913583709
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "compute-b-tail",
+          "node_kind": "compute",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913583719
+        },
+        {
+          "endpoint": 1,
+          "estimated_duration_s": 0.002,
+          "job_id": "job-0",
+          "kind": "compute_started",
+          "node_id": "compute-b-tail",
+          "sampled_duration_s": 0.002,
+          "source": "dag",
+          "time_us": 310913583731
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-0",
+          "kind": "compute_completed",
+          "node_id": "compute-b-tail",
+          "sampled_duration_s": 0.002,
+          "source": "dag",
+          "time_us": 310913585927
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "comm-b1",
+          "node_kind": "comm",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913585936
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-b",
+          "group_seq": 1,
+          "job_id": "job-0",
+          "kind": "comm_submit_call",
+          "node_id": "comm-b1",
+          "source": "dag",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913586033
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-b",
+          "group_seq": 1,
+          "job_id": "job-0",
+          "kind": "comm_submit_return",
+          "node_id": "comm-b1",
+          "source": "dag",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913586124
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-1",
+          "kind": "compute_completed",
+          "node_id": "skew",
+          "sampled_duration_s": 0.015,
+          "source": "dag",
+          "time_us": 310913586540
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-1",
+          "kind": "node_ready",
+          "node_id": "comm-c0",
+          "node_kind": "comm",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913586546
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-c",
+          "group_seq": 0,
+          "job_id": "job-1",
+          "kind": "comm_submit_call",
+          "node_id": "comm-c0",
+          "source": "dag",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913586630
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-c",
+          "group_seq": 0,
+          "job_id": "job-1",
+          "kind": "comm_submit_return",
+          "node_id": "comm-c0",
+          "source": "dag",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913586780
+        },
+        {
+          "endpoint": 1,
+          "handle_state": "completed",
+          "job_id": "job-0",
+          "kind": "comm_completed_observed",
+          "node_id": "comm-a0",
+          "source": "dag",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913627655
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "compute-a-tail",
+          "node_kind": "compute",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913627666
+        },
+        {
+          "endpoint": 1,
+          "estimated_duration_s": 0.02,
+          "job_id": "job-0",
+          "kind": "compute_started",
+          "node_id": "compute-a-tail",
+          "sampled_duration_s": 0.02,
+          "source": "dag",
+          "time_us": 310913627680
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-0",
+          "kind": "compute_completed",
+          "node_id": "compute-a-tail",
+          "sampled_duration_s": 0.02,
+          "source": "dag",
+          "time_us": 310913648982
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-0",
+          "kind": "node_ready",
+          "node_id": "comm-a1",
+          "node_kind": "comm",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913648996
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-a",
+          "group_seq": 1,
+          "job_id": "job-0",
+          "kind": "comm_submit_call",
+          "node_id": "comm-a1",
+          "source": "dag",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913649142
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-a",
+          "group_seq": 1,
+          "job_id": "job-0",
+          "kind": "comm_submit_return",
+          "node_id": "comm-a1",
+          "source": "dag",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913649259
+        },
+        {
+          "endpoint": 1,
+          "handle_state": "completed",
+          "job_id": "job-0",
+          "kind": "comm_completed_observed",
+          "node_id": "comm-b1",
+          "source": "dag",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913671834
+        },
+        {
+          "endpoint": 1,
+          "handle_state": "completed",
+          "job_id": "job-1",
+          "kind": "comm_completed_observed",
+          "node_id": "comm-c0",
+          "source": "dag",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913715082
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-1",
+          "kind": "node_ready",
+          "node_id": "compute-c-tail",
+          "node_kind": "compute",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913715090
+        },
+        {
+          "endpoint": 1,
+          "estimated_duration_s": 0.05,
+          "job_id": "job-1",
+          "kind": "compute_started",
+          "node_id": "compute-c-tail",
+          "sampled_duration_s": 0.05,
+          "source": "dag",
+          "time_us": 310913715100
+        },
+        {
+          "endpoint": 1,
+          "handle_state": "completed",
+          "job_id": "job-0",
+          "kind": "comm_completed_observed",
+          "node_id": "comm-a1",
+          "source": "dag",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913760645
+        },
+        {
+          "duration_s": 0.220521,
+          "endpoint": 1,
+          "job_id": "job-0",
+          "kind": "job_completed",
+          "source": "dag",
+          "time_us": 310913760663
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-1",
+          "kind": "compute_completed",
+          "node_id": "compute-c-tail",
+          "sampled_duration_s": 0.05,
+          "source": "dag",
+          "time_us": 310913765640
+        },
+        {
+          "endpoint": 1,
+          "job_id": "job-1",
+          "kind": "node_ready",
+          "node_id": "comm-c1",
+          "node_kind": "comm",
+          "remaining_deps": 0,
+          "source": "dag",
+          "time_us": 310913765653
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-c",
+          "group_seq": 1,
+          "job_id": "job-1",
+          "kind": "comm_submit_call",
+          "node_id": "comm-c1",
+          "source": "dag",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913765763
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-c",
+          "group_seq": 1,
+          "job_id": "job-1",
+          "kind": "comm_submit_return",
+          "node_id": "comm-c1",
+          "source": "dag",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913765880
+        },
+        {
+          "endpoint": 1,
+          "handle_state": "completed",
+          "job_id": "job-1",
+          "kind": "comm_completed_observed",
+          "node_id": "comm-c1",
+          "source": "dag",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913803987
+        },
+        {
+          "duration_s": 0.264296,
+          "endpoint": 1,
+          "job_id": "job-1",
+          "kind": "job_completed",
+          "source": "dag",
+          "time_us": 310913804040
+        }
+      ],
+      "dag_name": "multi-group",
+      "dag_poll_interval_s": 0.001,
+      "dag_seed": 37,
+      "dag_tails_s": {
+        "job-0/comm-a0": 0.021,
+        "job-0/comm-a1": 0.0,
+        "job-0/comm-b0": 0.003,
+        "job-0/comm-b1": 0.0,
+        "job-1/comm-c0": 0.051000000000000004,
+        "job-1/comm-c1": 0.0
+      },
+      "epoch": 7,
+      "expected_node_ids": [
+        "job-0/producer",
+        "job-0/comm-b0",
+        "job-0/comm-a0",
+        "job-0/compute-a-tail",
+        "job-0/comm-a1",
+        "job-0/compute-b-tail",
+        "job-0/comm-b1",
+        "job-1/setup",
+        "job-1/skew",
+        "job-1/comm-c0",
+        "job-1/compute-c-tail",
+        "job-1/comm-c1"
+      ],
+      "expected_task_ids": [
+        "job-0/comm-b0",
+        "job-0/comm-a0",
+        "job-0/comm-a1",
+        "job-0/comm-b1",
+        "job-1/comm-c0",
+        "job-1/comm-c1"
+      ],
+      "grant_sequence": [
+        "job-0/comm-b0",
+        "job-0/comm-a0",
+        "job-0/comm-b1",
+        "job-1/comm-c0",
+        "job-0/comm-a1",
+        "job-1/comm-c1"
+      ],
+      "groups": [
+        {
+          "group_id": "group-a",
+          "ranks": [
+            0,
+            1
+          ]
+        },
+        {
+          "group_id": "group-b",
+          "ranks": [
+            0,
+            1
+          ]
+        },
+        {
+          "group_id": "group-c",
+          "ranks": [
+            0,
+            1
+          ]
+        }
+      ],
+      "input_mode": "dag",
+      "jobs": [
+        {
+          "completed_node_ids": [
+            "job-0/producer",
+            "job-0/comm-b0",
+            "job-0/comm-a0",
+            "job-0/compute-a-tail",
+            "job-0/comm-a1",
+            "job-0/compute-b-tail",
+            "job-0/comm-b1"
+          ],
+          "compute_samples_s": {
+            "compute-a-tail": 0.02,
+            "compute-b-tail": 0.002,
+            "producer": 0.001
+          },
+          "job_end_ts": 310913761964,
+          "job_id": "job-0",
+          "job_start_ts": 310913540113,
+          "node_count": 7,
+          "status": "ok",
+          "tasks": [
+            {
+              "correct": true,
+              "decision_seq": 1,
+              "group_id": "group-b",
+              "group_seq": 0,
+              "job_id": "job-0",
+              "node_id": "comm-b0",
+              "task_id": "job-0/comm-b0"
+            },
+            {
+              "correct": true,
+              "decision_seq": 2,
+              "group_id": "group-a",
+              "group_seq": 0,
+              "job_id": "job-0",
+              "node_id": "comm-a0",
+              "task_id": "job-0/comm-a0"
+            },
+            {
+              "correct": true,
+              "decision_seq": 5,
+              "group_id": "group-a",
+              "group_seq": 1,
+              "job_id": "job-0",
+              "node_id": "comm-a1",
+              "task_id": "job-0/comm-a1"
+            },
+            {
+              "correct": true,
+              "decision_seq": 3,
+              "group_id": "group-b",
+              "group_seq": 1,
+              "job_id": "job-0",
+              "node_id": "comm-b1",
+              "task_id": "job-0/comm-b1"
+            }
+          ]
+        },
+        {
+          "completed_node_ids": [
+            "job-1/setup",
+            "job-1/skew",
+            "job-1/comm-c0",
+            "job-1/compute-c-tail",
+            "job-1/comm-c1"
+          ],
+          "compute_samples_s": {
+            "compute-c-tail": 0.05,
+            "setup": 0.03,
+            "skew": 0.015
+          },
+          "job_end_ts": 310913804271,
+          "job_id": "job-1",
+          "job_start_ts": 310913539712,
+          "node_count": 5,
+          "status": "ok",
+          "tasks": [
+            {
+              "correct": true,
+              "decision_seq": 4,
+              "group_id": "group-c",
+              "group_seq": 0,
+              "job_id": "job-1",
+              "node_id": "comm-c0",
+              "task_id": "job-1/comm-c0"
+            },
+            {
+              "correct": true,
+              "decision_seq": 6,
+              "group_id": "group-c",
+              "group_seq": 1,
+              "job_id": "job-1",
+              "node_id": "comm-c1",
+              "task_id": "job-1/comm-c1"
+            }
+          ]
+        }
+      ],
+      "launch_sequence": [
+        "job-0/comm-b0",
+        "job-0/comm-a0",
+        "job-0/comm-b1",
+        "job-1/comm-c0",
+        "job-0/comm-a1",
+        "job-1/comm-c1"
+      ],
+      "manifest_digest": "e3fa6b60b22a1e9bda8e1277968c12d01d3e8206646691e0f95afe2a5db9431a",
+      "max_inflight": 1,
+      "mode": "runtime",
+      "policy": "fifo",
+      "rank": 1,
+      "runtime_events": [
+        {
+          "endpoint": 1,
+          "group_id": "group-a",
+          "kind": "group_registered",
+          "source": "runtime",
+          "time_us": 310913532264
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-b",
+          "kind": "group_registered",
+          "source": "runtime",
+          "time_us": 310913532273
+        },
+        {
+          "endpoint": 1,
+          "group_id": "group-c",
+          "kind": "group_registered",
+          "source": "runtime",
+          "time_us": 310913532277
+        },
+        {
+          "endpoint": 1,
+          "kind": "offered",
+          "source": "runtime",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913542552
+        },
+        {
+          "endpoint": 1,
+          "kind": "offered",
+          "source": "runtime",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913542860
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 1,
+          "kind": "grant_received",
+          "source": "runtime",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913581829
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 1,
+          "kind": "launch_start",
+          "source": "runtime",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913581898
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 1,
+          "kind": "submitted_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913582169
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 1,
+          "kind": "completion_observed",
+          "source": "runtime",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913583438
+        },
+        {
+          "decision_seq": 1,
+          "endpoint": 1,
+          "kind": "completed_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-b0",
+          "time_us": 310913583492
+        },
+        {
+          "endpoint": 1,
+          "kind": "offered",
+          "source": "runtime",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913586121
+        },
+        {
+          "endpoint": 1,
+          "kind": "offered",
+          "source": "runtime",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913586777
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 1,
+          "kind": "grant_received",
+          "source": "runtime",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913625608
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 1,
+          "kind": "launch_start",
+          "source": "runtime",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913625661
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 1,
+          "kind": "submitted_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913625860
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 1,
+          "kind": "completion_observed",
+          "source": "runtime",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913627249
+        },
+        {
+          "decision_seq": 2,
+          "endpoint": 1,
+          "kind": "completed_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-a0",
+          "time_us": 310913627305
+        },
+        {
+          "endpoint": 1,
+          "kind": "offered",
+          "source": "runtime",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913649255
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 1,
+          "kind": "grant_received",
+          "source": "runtime",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913669860
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 1,
+          "kind": "launch_start",
+          "source": "runtime",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913669913
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 1,
+          "kind": "submitted_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913670141
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 1,
+          "kind": "completion_observed",
+          "source": "runtime",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913671728
+        },
+        {
+          "decision_seq": 3,
+          "endpoint": 1,
+          "kind": "completed_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-b1",
+          "time_us": 310913671889
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 1,
+          "kind": "grant_received",
+          "source": "runtime",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913713553
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 1,
+          "kind": "launch_start",
+          "source": "runtime",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913713619
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 1,
+          "kind": "submitted_sent",
+          "source": "runtime",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913713834
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 1,
+          "kind": "completion_observed",
+          "source": "runtime",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913714774
+        },
+        {
+          "decision_seq": 4,
+          "endpoint": 1,
+          "kind": "completed_sent",
+          "source": "runtime",
+          "task_id": "job-1/comm-c0",
+          "time_us": 310913714828
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 1,
+          "kind": "grant_received",
+          "source": "runtime",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913757701
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 1,
+          "kind": "launch_start",
+          "source": "runtime",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913757768
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 1,
+          "kind": "submitted_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913758075
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 1,
+          "kind": "completion_observed",
+          "source": "runtime",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913759577
+        },
+        {
+          "decision_seq": 5,
+          "endpoint": 1,
+          "kind": "completed_sent",
+          "source": "runtime",
+          "task_id": "job-0/comm-a1",
+          "time_us": 310913759644
+        },
+        {
+          "endpoint": 1,
+          "kind": "offered",
+          "source": "runtime",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913765876
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 1,
+          "kind": "grant_received",
+          "source": "runtime",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913801413
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 1,
+          "kind": "launch_start",
+          "source": "runtime",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913801465
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 1,
+          "kind": "submitted_sent",
+          "source": "runtime",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913801715
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 1,
+          "kind": "completion_observed",
+          "source": "runtime",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913803691
+        },
+        {
+          "decision_seq": 6,
+          "endpoint": 1,
+          "kind": "completed_sent",
+          "source": "runtime",
+          "task_id": "job-1/comm-c1",
+          "time_us": 310913803741
+        },
+        {
+          "endpoint": 1,
+          "kind": "input_closed",
+          "source": "runtime",
+          "time_us": 310913804402
+        },
+        {
+          "endpoint": 1,
+          "kind": "finished_received",
+          "source": "runtime",
+          "time_us": 310913846396
+        }
+      ],
+      "status": "ok",
+      "task_sequence": [
+        "job-0/comm-b0",
+        "job-0/comm-a0",
+        "job-0/comm-a1",
+        "job-0/comm-b1",
+        "job-1/comm-c0",
+        "job-1/comm-c1"
+      ],
+      "world_size": 2
+    }
+  ],
+  "validation": {
+    "all_collectives_correct": true,
+    "errors": [],
+    "rank_count": 2,
+    "rank_task_sequences": [
+      [
+        "job-0/comm-b0",
+        "job-0/comm-a0",
+        "job-0/comm-b1",
+        "job-1/comm-c0",
+        "job-0/comm-a1",
+        "job-1/comm-c1"
+      ],
+      [
+        "job-0/comm-b0",
+        "job-0/comm-a0",
+        "job-0/comm-b1",
+        "job-1/comm-c0",
+        "job-0/comm-a1",
+        "job-1/comm-c1"
+      ]
+    ],
+    "status": "ok"
+  }
+}

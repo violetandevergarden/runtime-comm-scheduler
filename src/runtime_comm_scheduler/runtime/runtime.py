@@ -241,6 +241,12 @@ class RankRuntime:
         with self._condition:
             return self._failure
 
+    def abort(self, error: BaseException, *, stage: str = "application", **details: Any) -> None:
+        """Fail this epoch from an application-owned execution path."""
+        if not isinstance(error, BaseException):
+            raise TypeError("error must be an exception")
+        self._fail(error, stage=stage, **details)
+
     @property
     def grant_order(self) -> list[str]:
         with self._condition:

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "name": "multi-group",
+  "seed": 37,
+  "groups": [
+    {"group_id": "group-a", "ranks": [0, 1]},
+    {"group_id": "group-b", "ranks": [0, 1]},
+    {"group_id": "group-c", "ranks": [0, 1]}
+  ],
+  "execution": {
+    "compute_duration_s": {
+      "job-0/producer": 0.001,
+      "job-0/compute-a-tail": 0.020,
+      "job-0/compute-b-tail": 0.002,
+      "job-1/setup": 0.030,
+      "job-1/skew": 0.015,
+      "job-1/compute-c-tail": 0.050
+    }
+  },
+  "jobs": [
+    {
+      "job_id": "job-0",
+      "nodes": [
+        {"node_id": "producer", "kind": "compute", "deps": [], "estimated_duration_s": 0.001},
+        {"node_id": "comm-b0", "kind": "comm", "deps": ["producer"], "group_id": "group-b", "group_seq": 0, "estimated_comm_s": 0.020, "collective": {"op": "all_reduce", "numel": 1024, "num_bytes": 4096, "dtype": "float32", "shape": [1024], "reduction": "sum"}},
+        {"node_id": "comm-a0", "kind": "comm", "deps": ["producer"], "group_id": "group-a", "group_seq": 0, "estimated_comm_s": 0.020, "collective": {"op": "all_reduce", "numel": 1024, "num_bytes": 4096, "dtype": "float32", "shape": [1024], "reduction": "sum"}},
+        {"node_id": "compute-a-tail", "kind": "compute", "deps": ["comm-a0"], "estimated_duration_s": 0.020},
+        {"node_id": "comm-a1", "kind": "comm", "deps": ["compute-a-tail"], "group_id": "group-a", "group_seq": 1, "estimated_comm_s": 0.001, "collective": {"op": "all_reduce", "numel": 1024, "num_bytes": 4096, "dtype": "float32", "shape": [1024], "reduction": "sum"}},
+        {"node_id": "compute-b-tail", "kind": "compute", "deps": ["comm-b0"], "estimated_duration_s": 0.002},
+        {"node_id": "comm-b1", "kind": "comm", "deps": ["compute-b-tail"], "group_id": "group-b", "group_seq": 1, "estimated_comm_s": 0.001, "collective": {"op": "all_reduce", "numel": 1024, "num_bytes": 4096, "dtype": "float32", "shape": [1024], "reduction": "sum"}}
+      ]
+    },
+    {
+      "job_id": "job-1",
+      "nodes": [
+        {"node_id": "setup", "kind": "compute", "deps": [], "estimated_duration_s": 0.030},
+        {"node_id": "skew", "kind": "compute", "deps": ["setup"], "estimated_duration_s": 0.020},
+        {"node_id": "comm-c0", "kind": "comm", "deps": ["skew"], "group_id": "group-c", "group_seq": 0, "estimated_comm_s": 0.001, "collective": {"op": "all_reduce", "numel": 1024, "num_bytes": 4096, "dtype": "float32", "shape": [1024], "reduction": "sum"}},
+        {"node_id": "compute-c-tail", "kind": "compute", "deps": ["comm-c0"], "estimated_duration_s": 0.050},
+        {"node_id": "comm-c1", "kind": "comm", "deps": ["compute-c-tail"], "group_id": "group-c", "group_seq": 1, "estimated_comm_s": 0.001, "collective": {"op": "all_reduce", "numel": 1024, "num_bytes": 4096, "dtype": "float32", "shape": [1024], "reduction": "sum"}}
+      ]
+    }
+  ]
+}

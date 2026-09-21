@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-21",
+  "status": "passed",
+  "git_head": "67f079119b3fb7f34ebb9f8827123da4fffca728",
+  "working_tree_dirty": true,
+  "source_snapshot_sha256": "04161d72d0ee08800ea02a57d68bc50e3636fff8f13f45f1aa6bfe61dde3378b",
+  "source_snapshot_algorithm": "SHA256 of newline-joined sorted records: relative_path<TAB>SHA256(file_bytes), UTF-8 encoded",
+  "source_files": {
+    ".gitignore": "dc24b75610f2721dc36cf9752d82fffb015a5de497c98f3dfc7558bb71a5418c",
+    "docs/JobPacer/plan/phase3.2.md": "b4f8fa5220e97a94c19a3de2405380c26cf473d536fe788f2c602623ccc963bd",
+    "docs/JobPacer/process/phase3.2.md": "cbb1e7ad283fbb7f4a23b67b6b1c09abdc87ab5c99c3f0c2048e48e27074f784",
+    "docs/JobPacer/result/phase3.2-validation/README.md": "f6ee55ac7ee8e35c7486bd1c92ac1024b1faf0f54b379d7769d04f0831904369",
+    "docs/JobPacer/result/phase3.2-validation/static-ltf-order.json": "ed2d063ba5cfb4348d186c057bd6b8bf78fa5446190fd739980c2db8cae2bb84",
+    "docs/JobPacer/result/phase3.2.md": "c1f6da8e9b294a027874e436cb648bc4869423f6a1d8d8d1a0ad138f16d188fb",
+    "benchmark/phase3/README.md": "78283c7ed9445f3413d5593abd9057e443d8139a0e378a13e46943d279f77be2",
+    "benchmark/phase3/diamond.json": "47a4a724b46718f60f6bfd7fd87444c7600dc9f0f9499494563f8ad1aafa665d",
+    "benchmark/phase3/linear.json": "fb2ef8a75e3f3e71dbb3856a222b49b05d4db7c14f2b7a6e4303d7925645fba7",
+    "benchmark/phase3/multi-group.json": "1c9e92a5aa672117e28146c31b6508057d8097d49b6e699531d15d1674391a59",
+    "examples/jobpacer/run_runtime_replay.py": "8102a2659057a746503bf10e6154e6000548002202048788f113df81f27ffb06",
+    "examples/jobpacer/runtime_adapter.py": "8c9b5641c368ee56c5413aedd85433c0986f0e5d7a120252a04363cb7321d8fd",
+    "examples/jobpacer/runtime_worker.py": "f8bb53a3e49cae72574b4a5c9b6beb5b308607bd0136ba30374f2d52b5b66e6e",
+    "src/runtime_comm_scheduler/dag.py": "9539af02e6135f37822b752f72b801d39d0cb30270485de4b14697721cfbec19",
+    "src/runtime_comm_scheduler/runtime/coordinator.py": "fac51cb918b0f6cff3cd7dc395c4834b65957f0e925727e658e24c96332ced71",
+    "src/runtime_comm_scheduler/runtime/policy.py": "b34d1a2595584487d8722afaf2cea8aff6d61ade6470ffbe1f8d8b2a937eb58b",
+    "src/runtime_comm_scheduler/runtime/runtime.py": "2fcfd076d967330652ba9d13e4aaa0009faaca564a171463cb22a8868a2b36fa",
+    "src/runtime_comm_scheduler/runtime/telemetry.py": "6563f54c74a8b4f4ecc89bbfe936a189329004a7b18e1542f1cc96edf5cbd64c",
+    "tests/integration/test_runtime_replay.py": "0bbdb663efcef489cf7c973b26391a1248ffe21e802ae5998bba2d184954333d",
+    "tests/unit/runtime/test_rank_runtime.py": "e86b9de734e7ae7679c0877e219fc26e047a581a3fc1064e4808192e06f9daba",
+    "tests/unit/runtime/test_runtime_core.py": "ca63deaeee3f21638ccefaf38bf25c6bbd3c449a314e176d41eb3fa27072bdb3",
+    "tests/unit/test_jobpacer_dag.py": "ac99202d4fa8a528bdd13876845821de4c6a198fa9ece213fc7b30f895f59922"
+  },
+  "artifacts": {
+    "fifo-multi-group.json": "f9998e436e9151de00d56fbaaa455dcc2b2305b2a34cf8a54cc8bd86b8c4239b",
+    "lookahead-multi-group.json": "0e9f216cf2f5a555af6372a5844a83bae33a80c86a8184ab62ad1d06f7fd4277",
+    "ltf-multi-group.json": "a316dd375f387f42b9cc059b56260c431b3bd5d82223c997eb66ca8926a99722",
+    "static-fifo-multi-group.json": "739c171dda2c5bbebd1529837ffb8a748a0c482e2fc1ea62f41f4fa1ba9eefbc",
+    "static-ltf-external-multi-group.json": "0769206eaa50c763f92f9d2f47b4b39c5d4390899799688af9b7f59be78ebb40",
+    "static-ltf-generated-multi-group.json": "9dc9477d4f12b15d47ff2a76faf225059dd926e119c2c5fb699004f2cef2d467",
+    "static-ltf-order.json": "ed2d063ba5cfb4348d186c057bd6b8bf78fa5446190fd739980c2db8cae2bb84"
+  },
+  "environment": {
+    "python": "3.13.15",
+    "pytorch": "2.13.0+cu129",
+    "backend": "Gloo",
+    "world_size": 2,
+    "max_inflight": 1,
+    "cuda_available": false
+  },
+  "verification": {
+    "unit": "115 passed",
+    "default_suite": "116 passed, 30 skipped",
+    "opt_in_gloo_integration": "25 passed",
+    "py_compile": "passed",
+    "git_diff_check": "passed"
+  },
+  "commands": [
+    "PYTHONPATH=src pytest -q tests/unit",
+    "PYTHONPATH=src pytest -q",
+    "env PYTHONPATH=src RUN_JOBPACER_RUNTIME_REPLAY=1 pytest -q tests/integration/test_runtime_replay.py",
+    "PYTHONPATH=src python -m py_compile src/runtime_comm_scheduler/dag.py examples/jobpacer/runtime_adapter.py examples/jobpacer/runtime_worker.py examples/jobpacer/run_runtime_replay.py src/runtime_comm_scheduler/runtime/runtime.py src/runtime_comm_scheduler/runtime/coordinator.py src/runtime_comm_scheduler/runtime/policy.py tests/unit/test_jobpacer_dag.py tests/unit/runtime/test_runtime_core.py tests/integration/test_runtime_replay.py",
+    "git diff --check"
+  ],
+  "note": "Source file hashes include untracked Phase 3.2 files. manifest.json is excluded from its own source snapshot to avoid a recursive digest."
+}

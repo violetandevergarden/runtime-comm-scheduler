@@ -155,6 +155,61 @@ def test_input_close_rejects_new_tasks():
     runtime.close()
 
 
+def test_abort_from_created_and_failed_states_is_idempotent():
+    transport = FakeTransport()
+    runtime = RankRuntime(0, 0, transport, executor=FakeExecutor())
+    first = RuntimeError("application failed")
+    runtime.abort(first, stage="test")
+    assert runtime.state is RuntimeState.FAILED
+    assert runtime.failure is first
+    runtime.abort(RuntimeError("later failure"), stage="test")
+    assert runtime.failure is first
+    assert transport.sent == []
+    runtime.close()
+
+
+def test_abort_from_running_fails_submitted_handle_and_notifies_coordinator():
+    runtime, transport = _runtime()
+    task = _task()
+    handle = runtime.submit(
+        task,
+        LocalBinding(FakeTensor(), runtime._process_groups["job"], lambda: ImmediateWork()),
+        TaskHint(0, 0.001, 0),
+    )
+    error = RuntimeError("compute failed")
+    runtime.abort(error, stage="application", job_id="job")
+    assert runtime.state is RuntimeState.FAILED
+    assert runtime.failure is error
+    assert handle.state.value == "failed"
+    assert any(kind == "FAILED" for kind, _ in transport.sent)
+    runtime.close()
+
+
+def test_abort_from_input_closed_unblocks_finish_epoch():
+    runtime, transport = _runtime()
+    errors = []
+
+    def finish():
+        try:
+            runtime.finish_epoch(5)
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    thread = threading.Thread(target=finish)
+    thread.start()
+    deadline = time.monotonic() + 1
+    while time.monotonic() < deadline and not any(kind == "INPUT_CLOSED" for kind, _ in transport.sent):
+        time.sleep(0.001)
+    assert any(kind == "INPUT_CLOSED" for kind, _ in transport.sent)
+    error = RuntimeError("runner failed after close")
+    runtime.abort(error, stage="dag_runner")
+    thread.join(1)
+    assert not thread.is_alive()
+    assert errors == [error]
+    assert runtime.state is RuntimeState.FAILED
+    runtime.close()
+
+
 def test_submit_message_cannot_be_overtaken_by_finish_epoch():
     transport = FakeTransport(block_kind="OFFER")
     runtime, _ = _runtime(transport)

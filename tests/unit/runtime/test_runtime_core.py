@@ -145,3 +145,12 @@ def test_lookahead_deadline_falls_back_without_refreshing():
     assert deadline == 0.004
     assert [item.kind for item in out] == ["GRANT", "GRANT"]
     assert coordinator.active_wait is None
+    assert any(item.get("kind") == "lookahead_deadline" and item.get("target") == b.task_id
+               for item in coordinator.records)
+    assert any(item.get("kind") == "decision" and item.get("decision") == "wait"
+               and item.get("target") == b.task_id for item in coordinator.records)
+    assert any(item.get("kind") == "idle_interval" and item.get("reason") == "ACTIVE_LOOKAHEAD"
+               and item.get("duration", 0) > 0 for item in coordinator.records)
+    assert any(item.get("kind") == "decision" and item.get("decision") == "dispatch"
+               and item.get("reason") == "LOOKAHEAD_DEADLINE_FALLBACK"
+               for item in coordinator.records)

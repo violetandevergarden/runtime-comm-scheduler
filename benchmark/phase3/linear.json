@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "name": "linear",
+  "seed": 11,
+  "groups": [
+    {"group_id": "group-0", "ranks": [0, 1]},
+    {"group_id": "group-1", "ranks": [0, 1]}
+  ],
+  "execution": {
+    "compute_duration_s": {
+      "job-0/compute-0": 0.002,
+      "job-0/compute-1": 0.001,
+      "job-1/compute-0": 0.001,
+      "job-1/compute-1": 0.002
+    }
+  },
+  "jobs": [
+    {
+      "job_id": "job-0",
+      "nodes": [
+        {"node_id": "compute-0", "kind": "compute", "deps": [], "estimated_duration_s": 0.002},
+        {"node_id": "comm-0", "kind": "comm", "deps": ["compute-0"], "group_id": "group-0", "group_seq": 0, "estimated_comm_s": 0.001, "collective": {"op": "all_reduce", "numel": 1024, "num_bytes": 4096, "dtype": "float32", "shape": [1024], "reduction": "sum"}},
+        {"node_id": "compute-1", "kind": "compute", "deps": ["comm-0"], "estimated_duration_s": 0.001},
+        {"node_id": "comm-1", "kind": "comm", "deps": ["compute-1"], "group_id": "group-0", "group_seq": 1, "estimated_comm_s": 0.001, "collective": {"op": "all_reduce", "numel": 1024, "num_bytes": 4096, "dtype": "float32", "shape": [1024], "reduction": "sum"}}
+      ]
+    },
+    {
+      "job_id": "job-1",
+      "nodes": [
+        {"node_id": "compute-0", "kind": "compute", "deps": [], "estimated_duration_s": 0.001},
+        {"node_id": "comm-0", "kind": "comm", "deps": ["compute-0"], "group_id": "group-1", "group_seq": 0, "estimated_comm_s": 0.001, "collective": {"op": "all_reduce", "numel": 1024, "num_bytes": 4096, "dtype": "float32", "shape": [1024], "reduction": "sum"}},
+        {"node_id": "compute-1", "kind": "compute", "deps": ["comm-0"], "estimated_duration_s": 0.002},
+        {"node_id": "comm-1", "kind": "comm", "deps": ["compute-1"], "group_id": "group-1", "group_seq": 1, "estimated_comm_s": 0.001, "collective": {"op": "all_reduce", "numel": 1024, "num_bytes": 4096, "dtype": "float32", "shape": [1024], "reduction": "sum"}}
+      ]
+    }
+  ]
+}
