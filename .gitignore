@@ -10,3 +10,4 @@ logs/
 artifacts/
 *.tmp
 tmp/
+benchmark/*

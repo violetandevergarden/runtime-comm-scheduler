@@ -87,7 +87,9 @@ CommIntent
 ## 目录结构
 
 - `docs/design/architecture.md`：长期维护的系统边界、事件模型、机制和正确性约束。
-- `docs/phase1-plan.md`：当前 Phase 1 的目标、设计、里程碑和验收标准。
+- `docs/phase1-plan.md`：runtime scheduler 核心 Phase 1 的目标、设计、里程碑和验收标准。
+- `docs/JobPacer/plan/phase1.md`：JobPacer 多 job 裸发 replay baseline（Phase 1）及 workload 契约。
+- `docs/JobPacer/plan/phase2.md`：JobPacer 接入 scheduler 的调度实验计划。
 - `docs/experiments/`：实验记录和 profiler/Nsight 产物索引。
 - `src/runtime_comm_scheduler/`：机制接口和后续实现。
 - `src/runtime_comm_scheduler/adapters/`：框架语义适配器，首先适配 Megatron。
@@ -125,3 +127,19 @@ CommIntent
   [docs/experiments/m4.5-gpu3080.md](docs/experiments/m4.5-gpu3080.md)。
 - **待开发**：Megatron DP adapter 与 plan 版本切换，
   详见 [docs/phase1-plan.md](docs/phase1-plan.md)。
+
+### JobPacer replay
+
+JobPacer Phase 1 提供 scheduler-free 的多 job 基线：每个 rank 内以线程执行
+通信—计算交替 workload，通信通过真实 Gloo/NCCL `all_reduce` 裸发，并输出每个
+job 的 makespan、实际提交顺序和逐 task trace。Phase 2 使用同一 workload 与输出
+格式，将通信提交替换为 `AdmissionScheduler`。
+
+```bash
+PYTHONPATH=src:. python examples/jobpacer/run_phase1.py \
+  --workload balanced --backend gloo --world-size 2 \
+  --output artifacts/jobpacer-phase1-gloo.json
+```
+
+可用 workload：`balanced`、`tail`、`delayed`，也可传入符合
+[`phase1.md`](docs/JobPacer/plan/phase1.md) schema 的 JSON manifest。

@@ -90,6 +90,9 @@ class ScheduledWork:
         """
         if timeout is not None and timeout < 0:
             raise ValueError("timeout must be non-negative or None")
+        # This is deliberately before the binding condition: time spent
+        # waiting for the scheduler is application wait, not backend wait.
+        self._timing.set_wait_start(now_us())
         deadline = None if timeout is None else time.monotonic() + timeout
 
         with self._condition:
@@ -101,22 +104,24 @@ class ScheduledWork:
             if self._error is not None:
                 raise self._error
             underlying = self._underlying
-            if self._timing.first_wait_ts is None:
-                self._timing.first_wait_ts = now_us()
 
         if underlying is None:  # defensive: condition predicate guarantees it
             return False
         try:
+            self._timing.set_underlying_wait_start(now_us())
             remaining = self._remaining(deadline)
             if remaining == 0:
                 if not bool(underlying.is_completed()):
                     return False
                 # Preserve CUDA consumer-stream dependency insertion even for
                 # a zero-timeout query that observes an already-complete Work.
-                return bool(underlying.wait())
-            if remaining is None:
-                return bool(underlying.wait())
-            return bool(underlying.wait(timeout=timedelta(seconds=remaining)))
+                result = bool(underlying.wait())
+            elif remaining is None:
+                result = bool(underlying.wait())
+            else:
+                result = bool(underlying.wait(timeout=timedelta(seconds=remaining)))
+            self._timing.set_wait_return(now_us())
+            return result
         except BaseException as exc:  # noqa: BLE001 - preserve backend error
             first = self.fail(exc)
             if first and self._on_error is not None:
@@ -168,11 +173,7 @@ class ScheduledWork:
             self._condition.notify_all()
 
         complete_ts = now_us()
-        self._timing.complete_ts = complete_ts
-        if self._timing.submit_ts is not None:
-            self._timing.actual_duration_us = float(
-                complete_ts - self._timing.submit_ts
-            )
+        self._timing.set_completion_observed(complete_ts)
         if self._intent.state is IntentState.SUBMITTED:
             self._intent.transition(IntentState.COMPLETED)
         return True

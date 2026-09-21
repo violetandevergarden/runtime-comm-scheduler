@@ -32,7 +32,7 @@ def test_profile_then_replay_two_message_sizes(tmp_path):
         "jobs": [
             {"job_id": "a", "communications": [
                 {"id": 0, "num_bytes": 4096},
-                {"id": 1, "num_bytes": 8192},
+                {"id": 1, "num_bytes": 1048576},
             ]},
             {"job_id": "b", "communications": [
                 {"id": 0, "num_bytes": 4096},
@@ -63,3 +63,22 @@ def test_profile_then_replay_two_message_sizes(tmp_path):
         task["estimate_source"] == "offline_profile" and task["estimated_comm_s"] > 0
         for rank in trace["ranks"] for job in rank["jobs"] for task in job["tasks"]
     )
+
+    observed_parallelism = False
+    for policy, capacity in (("fifo", 2), ("ltf", 3), ("srjf", 1), ("srjf", 0)):
+        output = tmp_path / f"trace-{policy}-{capacity}.json"
+        subprocess.run([
+            sys.executable, "examples/jobpacer/run_replay.py", "--mode", "scheduler",
+            "--policy", policy, "--workload", str(manifest), "--backend", "gloo",
+            "--world-size", "2", "--max-outstanding", str(capacity), "--timeout", "20",
+            "--comm-profile", str(profile_path), "--output", str(output),
+        ], cwd=ROOT, check=True, timeout=30)
+        replay = json.loads(output.read_text())
+        assert replay["validation"]["status"] == "ok"
+        assert len({rank["plan"]["digest"] for rank in replay["ranks"]}) == 1
+        observations = replay["performance"]["capacity_observations"]
+        if capacity:
+            assert all(item["peak_admission_occupancy"] <= capacity for item in observations)
+        if capacity > 1:
+            observed_parallelism |= any(item["peak_admission_occupancy"] > 1 for item in observations)
+    assert observed_parallelism, "the two-rank fixture must actually observe k>1 admission overlap"

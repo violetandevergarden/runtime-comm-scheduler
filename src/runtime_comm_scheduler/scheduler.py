@@ -12,7 +12,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Collection, Optional
+from typing import Any, Collection, Optional
 
 from .executor import (
     CompletionProbe,
@@ -69,6 +69,8 @@ class AdmissionScheduler:
         completion_probe: Optional[CompletionProbe] = None,
         max_outstanding: int = 0,
         completion_poll_interval_s: float = 0.001,
+        selection_controller: Any = None,
+        selection_serial: bool = False,
     ) -> None:
         if max_outstanding < 0:
             raise ValueError("max_outstanding must be non-negative")
@@ -96,6 +98,9 @@ class AdmissionScheduler:
         self._completion_probe = probe
         self._max_outstanding = max_outstanding
         self._completion_poll_interval_s = completion_poll_interval_s
+        self._selection_controller = selection_controller
+        self._selection_serial = selection_serial
+        self._selection_last_key: Optional[TaskKey] = None
 
         projection = plan.local_projection(groups)
         self._local_projection = projection
@@ -123,6 +128,7 @@ class AdmissionScheduler:
 
     def submit(self, intent: CommIntent) -> ScheduledWork:
         """Validate and park ``intent``; never invoke its launcher here."""
+        submit_api_start_ts = now_us()
         validate_intent(intent, self._plan)
         key = intent.key
         with self._condition:
@@ -147,6 +153,7 @@ class AdmissionScheduler:
                 key=key,
                 intent_ts=timestamp,
                 ready_record_ts=timestamp,
+                submit_api_start_ts=submit_api_start_ts,
             )
             work = ScheduledWork(intent, timing, on_error=self._on_work_error)
             task = _PendingTask(intent=intent, work=work, timing=timing)
@@ -155,6 +162,10 @@ class AdmissionScheduler:
             self._timings[key] = timing
             self._timing_order.append(key)
             self._condition.notify_all()
+            timing.submit_api_return_ts = now_us()
+            timing.submit_api_duration_us = float(
+                timing.submit_api_return_ts - submit_api_start_ts
+            )
             return work
 
     def nudge(self) -> None:
@@ -259,16 +270,80 @@ class AdmissionScheduler:
             if not self._poll_completions():
                 return
 
-            with self._condition:
-                if self._state is not _SchedulerState.RUNNING:
+            if self._selection_controller is not None:
+                task, done = self._reserve_selected()
+                if done:
                     return
-                task = self._reserve_next_locked()
                 if task is None:
-                    self._condition.wait(timeout=self._next_poll_timeout_locked())
+                    with self._condition:
+                        if self._state is not _SchedulerState.RUNNING:
+                            return
+                        self._condition.wait(timeout=self._next_poll_timeout_locked())
                     continue
+            else:
+                with self._condition:
+                    if self._state is not _SchedulerState.RUNNING:
+                        return
+                    task = self._reserve_next_locked()
+                    if task is None:
+                        self._condition.wait(timeout=self._next_poll_timeout_locked())
+                        continue
 
             if not self._launch_reserved(task):
                 return
+
+    def _reserve_selected(self) -> tuple[Optional[_PendingTask], bool]:
+        """Reserve the key selected by a cross-rank control plane."""
+        with self._condition:
+            if self._state is not _SchedulerState.RUNNING:
+                return None, True
+            last_key = self._selection_last_key
+            if last_key is not None and self._selection_serial:
+                local_done = (
+                    last_key not in self._inflight
+                    and (self._launching is None or self._launching.intent.key != last_key)
+                )
+            else:
+                local_done = True
+        if last_key is not None and self._selection_serial:
+            if not local_done:
+                return None, False
+            self._selection_controller.wait_for_completion(last_key)
+            with self._condition:
+                self._selection_last_key = None
+
+        with self._condition:
+            if self._state is not _SchedulerState.RUNNING:
+                return None, True
+            if self._max_outstanding and self._outstanding_locked() >= self._max_outstanding:
+                return None, False
+            local_ready = [
+                key for key in self._remaining
+                if (task := self._pending.get(key)) is not None and self._cpu_ready(task.intent)
+            ]
+        done, selected = self._selection_controller.choose(local_ready)
+        if done:
+            with self._condition:
+                drained = not (
+                    self._pending or self._launching is not None or self._inflight
+                )
+            return None, drained
+        if selected is None:
+            return None, False
+        with self._condition:
+            task = self._pending.get(selected)
+            if task is None or not self._cpu_ready(task.intent):
+                # The controller only selects globally ready work. A local
+                # rank can be a non-member and therefore has no task here.
+                self._selection_last_key = selected
+                return None, False
+            self._remaining.remove(selected)
+            del self._pending[selected]
+            task.intent.transition(IntentState.ADMITTED)
+            task.timing.admit_ts = now_us()
+            self._launching = task
+            self._selection_last_key = selected
+            return task, False
 
     def _reserve_next_locked(self) -> Optional[_PendingTask]:
         if not self._remaining:
@@ -289,10 +364,16 @@ class AdmissionScheduler:
 
     def _launch_reserved(self, task: _PendingTask) -> bool:
         task.timing.launch_start_ts = now_us()
+        task.timing.collective_call_start_ts = task.timing.launch_start_ts
         try:
             underlying = self._executor.launch(task.intent)
             validate_underlying_work(underlying)
-            task.timing.submit_ts = now_us()
+            task.timing.collective_call_return_ts = now_us()
+            task.timing.submit_ts = task.timing.collective_call_return_ts
+            task.timing.collective_call_duration_us = float(
+                task.timing.collective_call_return_ts
+                - task.timing.collective_call_start_ts
+            )
         except BaseException as exc:  # noqa: BLE001 - scheduler is fail-stop
             self._fail_scheduler(exc, task, "launch")
             return False
@@ -427,6 +508,8 @@ class AdmissionScheduler:
         return len(self._inflight) + (self._launching is not None)
 
     def _next_poll_timeout_locked(self) -> Optional[float]:
+        if self._selection_controller is not None:
+            return self._completion_poll_interval_s
         if self._inflight:
             return self._completion_poll_interval_s
         if self._remaining:

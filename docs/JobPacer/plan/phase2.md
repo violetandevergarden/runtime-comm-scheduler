@@ -2,7 +2,7 @@
 
 ## 目标与边界
 
-本阶段以 [JobPacer 实验计划](../260914项目计划讨论/JobPacer实验计划.md)的 Phase 1 手工通信—计算交替 workload 为输入，把各 job 线程原本直接调用 `torch.distributed` 的通信路径替换为 `AdmissionScheduler.submit(CommIntent)`。在同一套 replay 中运行 FIFO 和 longest-tail-first（LTF）等**预先确定的静态 Plan**，验证多线程请求能安全地按计划被提交，且非抢占式串行模式下，前一通信物理完成后才发射下一通信。
+本阶段以 [Phase 1 baseline](phase1.md) 的手工通信—计算交替 workload 为输入，把各 job 线程原本直接调用 `torch.distributed` 的通信路径替换为 `AdmissionScheduler.submit(CommIntent)`。在同一套 replay 中运行 FIFO 和 longest-tail-first（LTF）等**预先确定的静态 Plan**，验证多线程请求能安全地按计划被提交，且非抢占式串行模式下，前一通信物理完成后才发射下一通信。
 
 本次验收聚焦接入正确性、调度顺序、完成边界、故障退出和可观测性。**暂不进行“对比上一步”**：不在此阶段报告与裸发 Phase 1 baseline 的 makespan/throughput 优劣或原因分析；保留相同 workload 配置和原始结果，供后续比较。已有双 all-reduce 实验显示并发可能比强制顺序更快，因此串行模式是待研究的实验条件，不能预设性能收益。
 
