@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "runtime-comm-scheduler"
 version = "0.1.0"
-description = "Mechanism prototype for single-job runtime collective scheduling"
+description = "Prototype for runtime collective scheduling"
 requires-python = ">=3.10"
 
 [project.optional-dependencies]

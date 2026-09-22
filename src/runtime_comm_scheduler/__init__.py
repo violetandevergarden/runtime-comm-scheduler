@@ -1,4 +1,9 @@
-"""Mechanism skeleton for single-job runtime collective scheduling."""
+"""Historical scheduling API retained for Phase 2 compatibility.
+
+New Phase 3 code should import the online runtime from
+``runtime_comm_scheduler.runtime`` and DAG support from
+``runtime_comm_scheduler.dag``.
+"""
 
 from .executor import (
     CompletionProbe,

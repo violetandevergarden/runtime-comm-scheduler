@@ -11,3 +11,7 @@ artifacts/
 *.tmp
 tmp/
 benchmark/*
+!benchmark/phase3/
+benchmark/phase3/*
+!benchmark/phase3/README.md
+!benchmark/phase3/*.json

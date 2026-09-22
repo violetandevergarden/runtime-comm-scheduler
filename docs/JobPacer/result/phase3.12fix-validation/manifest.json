@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "baseline": {
+    "git_head": "232f4495309cba59b7f874e9aafb460b5da2a0bb",
+    "working_tree_clean": true,
+    "full_test_result": "116 passed, 30 skipped in 4.86s"
+  },
+  "final_source": {
+    "git_head": "232f4495309cba59b7f874e9aafb460b5da2a0bb",
+    "working_tree_dirty": true,
+    "tracked_diff_sha256": "4e9fe1bc02d1225ce9c656593a3ada92c6ea52611453a3f33ad5d25be4878941",
+    "tracked_diff_method": "git diff --binary | sha256sum",
+    "source_snapshot_sha256": "7d158eda7e32ff21b42ed2fcfd475480beec894ea6fa82d9ede604db459fa06d",
+    "source_snapshot_method": "sha256sum of source_snapshot_files in listed order, then sha256sum of that output",
+    "source_snapshot_files": [
+      {"path": "src/runtime_comm_scheduler/__init__.py", "sha256": "544cd69dea44e1725fc0b99ae056d507fc4eb000c49ad52998a9407f308817ef"},
+      {"path": "src/runtime_comm_scheduler/runtime/__init__.py", "sha256": "926770930430ae53df3280ea958159cb27e2bd45248335a1595e19b60ea88b2c"},
+      {"path": "src/runtime_comm_scheduler/runtime/executor.py", "sha256": "db72423d6b9656a439855ebca01ffcec55bad4d28879a7db4b568d33a2233a88"},
+      {"path": "src/runtime_comm_scheduler/runtime/model.py", "sha256": "9a4e0bed9150baf9684d3e4d12076ddfead0b3a14002af07370255d40447f17b"},
+      {"path": "src/runtime_comm_scheduler/dag/__init__.py", "sha256": "ff0ee275574c7c99e4f71bdf0f3be9c5253ec85d2972a1c33cb5e4f3e5d65fcc"},
+      {"path": "src/runtime_comm_scheduler/dag/model.py", "sha256": "a9c0522d601bed55ec5d3dc1bed465825c4a1a08c3fe57ec3764942f221a665f"},
+      {"path": "src/runtime_comm_scheduler/dag/runner.py", "sha256": "d71e547616be3a4e27388d5541f36ed32e34a016e88440397526989fec140ac9"},
+      {"path": "examples/jobpacer/README.md", "sha256": "04b0bee0fbb15abf62609bd54a65fed811fd1f841a63bf3c0409660493f11963"},
+      {"path": "examples/jobpacer/run_runtime_replay.py", "sha256": "548693240892c91859921d2a33b1d569a41834f8e0b24ade1ecb54465b770a6d"},
+      {"path": "examples/jobpacer/runtime_adapter.py", "sha256": "98bf02c32f90ffad21115fd28c5b74c1c6c9589f560b24cf7ac3658c29ff5206"},
+      {"path": "examples/jobpacer/runtime_worker.py", "sha256": "47ec2dfe0ff66665c0a28889655c3d64653969feb0a03b37a4245d8a9087d1c6"},
+      {"path": "examples/jobpacer/runtime_results.py", "sha256": "8a98a05111dc8c36f9ac66ef6b551bede69e6bfa39588b4006d8c6271584ffe1"},
+      {"path": "benchmark/phase3/README.md", "sha256": "4b81942ed7dc15b14241ff2b98fe70b551fed3b0c72b1146fddb974e1166cc37"},
+      {"path": "pyproject.toml", "sha256": "11815ae213be7f2891a2d5c5dc70c4b3ad5396c64fa156cfa962a13435d68450"},
+      {"path": "tests/unit/test_jobpacer_dag.py", "sha256": "d79c84785ca9c4f135fc4cc0b1ac85a15f30c4d91765cec014294d0806db9435"},
+      {"path": "tests/unit/test_jobpacer_runtime_adapter.py", "sha256": "b2cac467515b4568d1f77ec444c3c662dabe7bab00edb21b4d9e26d449c3050a"},
+      {"path": "tests/unit/test_jobpacer_runtime_worker.py", "sha256": "6a1c3599e4d01e59cc294162f2aac416b9aa589a1faefc8c202d84ca07ea29f7"},
+      {"path": "tests/unit/test_jobpacer_runtime_results.py", "sha256": "57f0d3797aa6277b7ec6deae5902d839692ba4f98f9186ffc2cdbe7d55c4efd3"},
+      {"path": "tests/integration/test_runtime_replay.py", "sha256": "409bf862a4d2f4036bf068bd0b74c2b9c17cea335b83c1732096554a3303ced2"},
+      {"path": "docs/JobPacer/process/phase3.2.md", "sha256": "5313c8bfc80d035fa1a0d0788b5c4d6aa79b7fc44b1a01b071eaad408ac63a1b"},
+      {"path": "docs/JobPacer/process/phase3.12fix.md", "sha256": "093d29cd622be546369ff25fd9e37ad855ae66db4a5b59ddaafbff23025142af"},
+      {"path": "benchmark/phase3/linear.json", "sha256": "fb2ef8a75e3f3e71dbb3856a222b49b05d4db7c14f2b7a6e4303d7925645fba7"},
+      {"path": "benchmark/phase3/diamond.json", "sha256": "47a4a724b46718f60f6bfd7fd87444c7600dc9f0f9499494563f8ad1aafa665d"},
+      {"path": "benchmark/phase3/multi-group.json", "sha256": "1c9e92a5aa672117e28146c31b6508057d8097d49b6e699531d15d1674391a59"},
+      {"path": "docs/JobPacer/result/phase3.12fix-validation/static-ltf-multi-group.json", "sha256": "a2ad8488f370694cd3aba68351f12391167b8879bf9c5fa438f2ff45ecdcf0e9"}
+    ],
+    "removed_paths": ["src/runtime_comm_scheduler/dag.py"]
+  },
+  "environment": {
+    "python": "3.13.15",
+    "pytorch": "2.13.0+cu129",
+    "cuda_available": false,
+    "backend": "gloo",
+    "world_size": 2,
+    "max_inflight": 1
+  },
+  "validation": {
+    "full_unit_and_repo_tests": "131 passed, 32 skipped",
+    "gloo_matrix": "26 passed in 79.36s",
+    "gloo_linear_metadata_mismatch": "1 passed in 4.12s",
+    "artifact": {
+      "path": "static-ltf-multi-group.json",
+      "status": "ok",
+      "all_collectives_correct": true
+    }
+  },
+  "followup_20260921": {
+    "working_tree_dirty": true,
+    "full_tests": "139 passed, 34 skipped in 4.01s",
+    "targeted_tests": "40 passed in 1.60s",
+    "gloo_matrix": "30 passed in 86.78s",
+    "metric_field": "coordinator_epoch_duration_s",
+    "artifact": {
+      "path": "static-ltf-multi-group-followup.json",
+      "sha256": "94da9e94317c6349318f0fca224498fc496be7611a06f4dea07a3e00051cd462",
+      "status": "ok",
+      "all_collectives_correct": true
+    },
+    "source_sha256": {
+      "examples/jobpacer/runtime_worker.py": "9c48f5671b37b2910f1c194a1a91d8edc5e4741a7fba91df2a4cb98f4e65f37c",
+      "examples/jobpacer/run_runtime_replay.py": "9e9daa3d16670df21c343d806f16fc23edf481bfbb4fe439c702fb0134772b09",
+      "examples/jobpacer/runtime_adapter.py": "91b2811044686191a5481419cd3c84a3e1c55322380cad95b25de1fef61dbd24",
+      "examples/jobpacer/runtime_results.py": "c91c272787f5febfa7edf69cd767ee55bcb737180b63a6cdaac26341b8f6bcf4",
+      "src/runtime_comm_scheduler/dag/model.py": "b47a2f8604371dd7faf51dc8733ecd7a0a50dc42918f9a2d57df077e7cd0301e",
+      "src/runtime_comm_scheduler/dag/runner.py": "862fc00a64f038e9893d9babec65282e81dcf17b25f3fe075d4489938d3cfcc9",
+      "tests/unit/test_jobpacer_dag.py": "f4782344b258bdfc1ad49f3849ffbaa043f3faca5218e9fd5b2a094543c27a97",
+      "tests/unit/test_jobpacer_runtime_adapter.py": "c9580a779397b55298b03a153d00e6371e15353181131d3d77a6580bdec6b5b4",
+      "tests/unit/test_jobpacer_runtime_worker.py": "c4eb71e1d0a363e88360dc37533daa5bc8a180980f5d199551bd4a59338c7ece",
+      "tests/unit/test_jobpacer_runtime_results.py": "4fce0a9267a6de0d7caec80be6674d7c0008f7d5c7e70d7bb1a01986d2d45418",
+      "tests/integration/test_runtime_replay.py": "8c2ea9f3f1913d94529857e9d8533839fe907f9d5546a400b9275a7f4f09f764",
+      "docs/JobPacer/process/phase3.2.md": "4edb3391cd6f974321d8c682cac05808c8ad83eb54fb461895eba6ee207db093",
+      "docs/JobPacer/process/phase3.12fix.md": "177e4d2521f3db68c1f4a55b5cfe41cde0bf4a1ac76741c5076b9af0ca84af81",
+      "docs/JobPacer/result/phase3.12fix.md": "b8a4e3dfaed65384a36fde236106ae1f209cb7dc6cd3d3e1e98efa30fd412df2"
+    }
+  }
+}
