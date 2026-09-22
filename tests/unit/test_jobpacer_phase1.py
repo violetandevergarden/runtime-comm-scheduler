@@ -6,8 +6,8 @@ import argparse
 
 import pytest
 
-from examples.jobpacer import run_phase1
-from examples.jobpacer.run_replay import _summarize_performance
+from examples.jobpacer.scripts import run_phase1
+from examples.jobpacer.scripts.run_phase2 import _summarize_performance
 from examples.jobpacer.workloads import built_workload
 
 

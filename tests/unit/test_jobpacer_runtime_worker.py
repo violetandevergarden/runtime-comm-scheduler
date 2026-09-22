@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from examples.jobpacer import runtime_worker
+from examples.jobpacer.runtime import runtime_worker
 from examples.jobpacer.workloads import built_workload
 
 

@@ -19,15 +19,12 @@ from typing import Any
 import torch
 import torch.distributed as dist
 
-try:
-    from .comm_profile import CommSignature, CommunicationProfile, ProfileRecord
-    from .workloads import load_workload, ranks_for_job
-except ImportError:  # pragma: no cover - direct script execution
-    from comm_profile import CommSignature, CommunicationProfile, ProfileRecord
-    from workloads import load_workload, ranks_for_job
+from examples.jobpacer.comm_profile import CommSignature, CommunicationProfile, ProfileRecord
+from examples.jobpacer.workloads import load_workload, ranks_for_job
 
 
 HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[2]
 
 
 def _free_port() -> int:
@@ -192,16 +189,16 @@ def _profile_rank(args: argparse.Namespace) -> dict[str, Any]:
 def _spawn(rank: int, args: argparse.Namespace, port: int) -> subprocess.Popen[str]:
     env = dict(os.environ)
     env.update(MASTER_ADDR="127.0.0.1", MASTER_PORT=str(port), RANK=str(rank), WORLD_SIZE=str(args.world_size))
-    env["PYTHONPATH"] = str(HERE.parents[1] / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "src"), str(ROOT), env.get("PYTHONPATH", "")))
     if args.backend == "nccl":
         env["CUDA_VISIBLE_DEVICES"] = str(rank)
     command = [
-        sys.executable, str(Path(__file__).resolve()), "--workload", args.workload,
+        sys.executable, "-m", "examples.jobpacer.scripts.run_comm_profile", "--workload", args.workload,
         "--backend", args.backend, "--world-size", str(args.world_size),
         "--warmup", str(args.warmup), "--iterations", str(args.iterations),
         "--timeout", str(args.timeout), "--output", str(args.output), "--rank", str(rank),
     ]
-    return subprocess.Popen(command, env=env, cwd=HERE.parents[1], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return subprocess.Popen(command, env=env, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
 
 def _collect(process: subprocess.Popen[str], timeout: float) -> tuple[bool, str]:

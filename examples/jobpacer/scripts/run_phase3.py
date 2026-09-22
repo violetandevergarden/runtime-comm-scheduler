@@ -13,15 +13,14 @@ from pathlib import Path
 from typing import Any
 
 from runtime_comm_scheduler.dag import build_static_order
-
-try:
-    from .runtime_results import expected_dag_results, metrics, validate_results
-except ImportError:  # pragma: no cover - direct script execution
-    from runtime_results import expected_dag_results, metrics, validate_results
+from examples.jobpacer.analysis.runtime_results import expected_dag_results, metrics, performance, validate_results
+from examples.jobpacer.runtime.runtime_adapter import all_specs, load_dag, load_static_order
+from examples.jobpacer.workloads import load_workload, ranks_for_job
+from examples.jobpacer.comm_profile import apply_profile, load_profile
 
 
 HERE = Path(__file__).resolve().parent
-WORKER = HERE / "runtime_worker.py"
+ROOT = HERE.parents[2]
 
 
 def _free_port() -> int:
@@ -34,14 +33,16 @@ def _start(rank: int, args: argparse.Namespace, rendezvous_port: int, control_po
     env = dict(os.environ)
     env.update(MASTER_ADDR="127.0.0.1", MASTER_PORT=str(rendezvous_port), RANK=str(rank),
                WORLD_SIZE=str(args.world_size), LOCAL_RANK="0")
-    env["PYTHONPATH"] = str(HERE.parents[1] / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "src"), str(ROOT), env.get("PYTHONPATH", "")))
     if args.backend == "nccl":
         env["CUDA_VISIBLE_DEVICES"] = str(rank)
-    command = [sys.executable, str(WORKER), "--policy", args.policy, "--backend", args.backend,
+    command = [sys.executable, "-m", "examples.jobpacer.runtime.runtime_worker",
+               "--policy", args.policy, "--backend", args.backend,
                "--epoch", str(args.epoch), "--timeout", str(args.timeout),
                "--setup-timeout", str(args.setup_timeout),
                "--poll-interval", str(args.poll_interval), "--dag-poll-interval", str(args.dag_poll_interval),
-               "--compute-jitter", str(args.compute_jitter), "--control-port", str(control_port),
+               "--compute-jitter", str(args.compute_jitter), "--wait-budget-s", str(args.wait_budget_s),
+               "--control-port", str(control_port),
                "--fault", args.fault]
     if args.dag:
         command.extend(("--dag", str(args.dag)))
@@ -49,9 +50,12 @@ def _start(rank: int, args: argparse.Namespace, rendezvous_port: int, control_po
         command.extend(("--workload", args.workload or "balanced"))
     if args.static_order:
         command.extend(("--static-order", str(args.static_order)))
+    if args.comm_profile:
+        command.extend(("--comm-profile", str(args.comm_profile)))
+    command.append("--profile-strict" if args.profile_strict else "--no-profile-strict")
     return subprocess.Popen(
         command,
-        cwd=str(HERE.parents[1]), env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        cwd=str(ROOT), env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
 
 
@@ -85,6 +89,9 @@ def main() -> int:
     parser.add_argument("--poll-interval", type=float, default=0.001)
     parser.add_argument("--dag-poll-interval", type=float, default=0.001)
     parser.add_argument("--compute-jitter", type=float, default=0.0)
+    parser.add_argument("--wait-budget-s", type=float, default=0.02)
+    parser.add_argument("--comm-profile", type=Path)
+    parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--fault", choices=("none", "missing_task", "metadata_mismatch", "launch_failure",
                                               "completion_probe_failure", "compute_failure", "binding_failure"),
@@ -92,10 +99,14 @@ def main() -> int:
     args = parser.parse_args()
     if args.timeout <= 0 or args.setup_timeout <= 0 or args.poll_interval <= 0 or args.dag_poll_interval <= 0:
         parser.error("setup/replay timeouts and poll intervals must be positive")
+    if args.wait_budget_s < 0:
+        parser.error("wait-budget-s must be non-negative")
     if not 0 <= args.compute_jitter < 1:
         parser.error("compute-jitter must be in [0, 1)")
     if args.epoch < 0 or args.world_size <= 0:
         parser.error("epoch must be non-negative and world-size positive")
+    if args.comm_profile and args.dag:
+        parser.error("--comm-profile currently applies to linear workloads only")
 
     expected: dict[str, dict[str, Any]] = {str(rank): {} for rank in range(args.world_size)}
     expected["__all__"] = {}
@@ -103,10 +114,6 @@ def main() -> int:
     expected_nodes: dict[int, set[str]] | None = None
     digests: set[str] | None = None
     if args.dag:
-        try:
-            from .runtime_adapter import load_dag, load_static_order
-        except ImportError:  # pragma: no cover - direct script execution
-            from runtime_adapter import load_dag, load_static_order
         try:
             dag = load_dag(args.dag, epoch=args.epoch, world_size=args.world_size)
         except (OSError, ValueError) as exc:
@@ -125,13 +132,17 @@ def main() -> int:
         expected_nodes = expected_dag["expected_nodes"]
         digests = {dag.manifest_digest}
     else:
-        try:
-            from .workloads import load_workload, ranks_for_job
-            from .runtime_adapter import all_specs
-        except ImportError:  # pragma: no cover - direct script execution
-            from workloads import load_workload, ranks_for_job
-            from runtime_adapter import all_specs
         workload = load_workload(args.workload or "balanced")
+        profile = None
+        if args.comm_profile:
+            profile = load_profile(args.comm_profile)
+            workload = apply_profile(
+                workload,
+                profile,
+                {"backend": args.backend, "device_type": "cuda" if args.backend == "nccl" else "cpu",
+                 "world_size": args.world_size},
+                strict=args.profile_strict,
+            )
         for job, _index, spec, _hint in all_specs(workload, epoch=args.epoch):
             meta = {"group_id": spec.group_id, "group_seq": spec.group_seq}
             expected["__all__"][spec.task_id] = meta
@@ -170,13 +181,19 @@ def main() -> int:
     config["output"] = str(args.output) if args.output else None
     config["dag"] = str(args.dag) if args.dag else None
     config["static_order"] = str(args.static_order) if args.static_order else None
-    git_head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=HERE.parents[1],
+    config["comm_profile"] = str(args.comm_profile) if args.comm_profile else None
+    config["profile_strict"] = args.profile_strict if args.comm_profile else None
+    config["wait_budget_s"] = args.wait_budget_s
+    if args.comm_profile:
+        config["profile_digest"] = load_profile(args.comm_profile).digest()
+    git_head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
                               capture_output=True, text=True, check=False)
-    git_status = subprocess.run(["git", "status", "--porcelain"], cwd=HERE.parents[1],
+    git_status = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT,
                                 capture_output=True, text=True, check=False)
     config["code_revision"] = git_head.stdout.strip() if git_head.returncode == 0 else None
     config["working_tree_dirty"] = bool(git_status.stdout.strip())
-    payload = {"config": config, "validation": validation, "metrics": metrics(results), "ranks": results}
+    payload = {"config": config, "validation": validation, "metrics": metrics(results),
+               "performance": performance(results), "ranks": results}
     if args.output:
         args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print(json.dumps(payload, indent=2, sort_keys=True))

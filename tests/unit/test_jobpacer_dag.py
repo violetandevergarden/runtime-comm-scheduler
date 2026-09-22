@@ -26,7 +26,7 @@ from runtime_comm_scheduler.dag import (
 from runtime_comm_scheduler.runtime import CollectiveSpec, CoordinatorState, GroupSpec, TaskHint
 from runtime_comm_scheduler.dag.model import compute_tails
 from runtime_comm_scheduler.dag import runner as runner_module
-from examples.jobpacer.runtime_adapter import load_dag, parse_dag, sample_compute_duration
+from examples.jobpacer.runtime.runtime_adapter import load_dag, parse_dag, sample_compute_duration
 
 
 ROOT = Path(__file__).resolve().parents[2]

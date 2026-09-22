@@ -33,7 +33,8 @@ def test_phase1_bare_replay_emits_job_makespans_and_trace(tmp_path):
     process = subprocess.run(
         [
             sys.executable,
-            str(root / "examples/jobpacer/run_phase1.py"),
+            "-m",
+            "examples.jobpacer.scripts.run_phase1",
             "--workload",
             "balanced",
             "--backend",

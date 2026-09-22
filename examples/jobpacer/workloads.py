@@ -10,6 +10,7 @@ overlap window while keeping the dependency graph explicit.
 from __future__ import annotations
 
 import json
+import hashlib
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -219,6 +220,26 @@ def load_workload(value: str | Path) -> Workload:
     if path.exists():
         return Workload.from_dict(json.loads(path.read_text()))
     return built_workload(str(value))
+
+
+def sample_linear_duration(
+    seed: int,
+    epoch: int,
+    job_id: str,
+    communication_id: int,
+    rank: int,
+    segment: str,
+    base_s: float,
+    jitter: float,
+) -> float:
+    """Return a reproducible producer/consumer duration sample."""
+    if not 0 <= jitter < 1:
+        raise ValueError("compute_jitter must be in [0, 1)")
+    if jitter == 0 or base_s == 0:
+        return base_s
+    key = f"{seed}:{epoch}:{job_id}:comm-{communication_id}:{rank}:{segment}".encode()
+    fraction = int.from_bytes(hashlib.sha256(key).digest()[:8], "big") / 2**64
+    return base_s * (1 + jitter * (2 * fraction - 1))
 
 
 def ranks_for_job(job: Job, world_size: int) -> tuple[int, ...]:

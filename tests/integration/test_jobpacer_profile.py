@@ -40,7 +40,7 @@ def test_profile_then_replay_two_message_sizes(tmp_path):
         ],
     }))
     subprocess.run([
-        sys.executable, "examples/jobpacer/profile_communication.py",
+        sys.executable, "-m", "examples.jobpacer.scripts.run_comm_profile",
         "--workload", str(manifest), "--backend", "gloo", "--world-size", "2",
         "--warmup", "1", "--iterations", "3", "--timeout", "20",
         "--output", str(profile_path),
@@ -51,7 +51,7 @@ def test_profile_then_replay_two_message_sizes(tmp_path):
     assert all(record["p10_s"] <= record["p50_s"] <= record["p90_s"] for record in profile["records"])
 
     subprocess.run([
-        sys.executable, "examples/jobpacer/run_replay.py", "--mode", "scheduler",
+        sys.executable, "-m", "examples.jobpacer.scripts.run_phase2", "--mode", "scheduler",
         "--policy", "ltf", "--workload", str(manifest), "--backend", "gloo",
         "--world-size", "2", "--max-outstanding", "1", "--timeout", "20",
         "--comm-profile", str(profile_path), "--output", str(trace_path),
@@ -68,7 +68,7 @@ def test_profile_then_replay_two_message_sizes(tmp_path):
     for policy, capacity in (("fifo", 2), ("ltf", 3), ("srjf", 1), ("srjf", 0)):
         output = tmp_path / f"trace-{policy}-{capacity}.json"
         subprocess.run([
-            sys.executable, "examples/jobpacer/run_replay.py", "--mode", "scheduler",
+            sys.executable, "-m", "examples.jobpacer.scripts.run_phase2", "--mode", "scheduler",
             "--policy", policy, "--workload", str(manifest), "--backend", "gloo",
             "--world-size", "2", "--max-outstanding", str(capacity), "--timeout", "20",
             "--comm-profile", str(profile_path), "--output", str(output),

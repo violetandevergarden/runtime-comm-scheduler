@@ -5,7 +5,9 @@
 > 2026-09-21 结构迁移说明：本文主体记录 Phase 3.2 首次实现时的设计与路径，原文路径不回写。
 > 之后的模块迁移和重新验收见 [Phase 3.1/3.2 结构整理](phase3.12fix.md) 与
 > [结构整理验收](../result/phase3.12fix.md)。当前 DAG 库位于 `src/runtime_comm_scheduler/dag/`；
-> replay schema、采样和绑定位于 `examples/jobpacer/runtime_adapter.py`。
+> 当前目录整理后，replay schema、采样和绑定位于
+> `examples/jobpacer/runtime/runtime_adapter.py`；本文保留的旧命令用于历史记录，当前入口见
+> `examples/jobpacer/scripts/run_phase3.py`。
 
 本文把 [Phase 3.2 计划](../plan/phase3.2.md) 落到当前代码结构上，给出数据格式、
 校验算法、本地推进状态机、策略衔接、文件改动、测试矩阵和验收顺序。设计基础是当前
@@ -68,9 +70,9 @@ DAG JSON
 | 文件 | 改动 |
 | --- | --- |
 | `src/runtime_comm_scheduler/dag.py` | 新增具体数据类、JSON 加载、联合校验、tail、静态顺序、runtime 映射和 `DagRunner`；保持 `runtime/` 核心不反向依赖 DAG |
-| `examples/jobpacer/runtime_adapter.py` | 保留历史线性 workload 的小型映射 |
-| `examples/jobpacer/runtime_worker.py` | 增加 DAG 分支，复用 group、runtime、server、tensor 和进程生命周期 |
-| `examples/jobpacer/run_runtime_replay.py` | 增加 `--dag`、DAG 参数传递、预期集合校验和 DAG 指标汇总 |
+| `examples/jobpacer/runtime/runtime_adapter.py` | 保留历史线性 workload 的小型映射 |
+| `examples/jobpacer/runtime/runtime_worker.py` | 增加 DAG 分支，复用 group、runtime、server、tensor 和进程生命周期 |
+| `examples/jobpacer/scripts/run_phase3.py` | 增加 `--dag`、DAG 参数传递、预期集合校验和 DAG 指标汇总 |
 | `src/runtime_comm_scheduler/runtime/runtime.py` | 增加公开 `abort()`，内部仍复用 `_fail()` |
 | `benchmark/phase3/*.json` | 三个确定性手写 benchmark 输入 |
 | `tests/unit/test_jobpacer_dag.py` | 模型、校验、tail、静态顺序和 runner 因果测试 |
@@ -463,7 +465,7 @@ dag_group_specs(workload, *, epoch) -> tuple[GroupSpec, ...]
 ```
 
 `dag_task_spec` 不复用线性 ordinal：task ID 来自 job/node，group_seq 来自 manifest，
-CollectiveSpec 直接来自节点。`examples/jobpacer/runtime_adapter.py` 只保留原有
+CollectiveSpec 直接来自节点。`examples/jobpacer/runtime/runtime_adapter.py` 只保留原有
 `group_spec/task_spec/task_hint/all_specs`，确保线性 replay 无需迁移，也避免正式库依赖 examples。
 
 LocalBinding 仍在 worker 创建，因为它需要本 rank 的 tensor、真实 ProcessGroup 和
@@ -808,31 +810,31 @@ PYTHONPATH=src pytest -q tests/unit/runtime tests/unit/test_jobpacer_dag.py
 RUN_JOBPACER_RUNTIME_REPLAY=1 PYTHONPATH=src \
   pytest -q tests/integration/test_runtime_replay.py
 
-PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
   --policy fifo \
   --dag benchmark/phase3/diamond.json \
   --backend gloo --world-size 2 --timeout 20 \
   --output /tmp/jobpacer-phase3.2-diamond-fifo.json
 
-PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
   --policy ltf \
   --dag benchmark/phase3/multi-group.json \
   --backend gloo --world-size 2 --timeout 20 \
   --output /tmp/jobpacer-phase3.2-multigroup-ltf.json
 
-PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
   --policy lookahead \
   --dag benchmark/phase3/multi-group.json \
   --backend gloo --world-size 2 --timeout 20 \
   --output /tmp/jobpacer-phase3.2-multigroup-lookahead.json
 
-PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
   --policy static_fifo \
   --dag benchmark/phase3/multi-group.json \
   --backend gloo --world-size 2 --timeout 20 \
   --output /tmp/jobpacer-phase3.2-multigroup-static.json
 
-PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
   --policy static_ltf \
   --dag benchmark/phase3/multi-group.json \
   --static-order docs/JobPacer/result/phase3.2-validation/static-ltf-order.json \
@@ -843,10 +845,10 @@ PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
 还需重新运行原线性四例，证明默认 CLI 和 Phase 3.1 入口未改变：
 
 ```bash
-PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py --policy fifo --workload balanced --backend gloo --timeout 20
-PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py --policy static_fifo --workload delayed --backend gloo --timeout 20
-PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py --policy ltf --workload tail --backend gloo --timeout 20
-PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py --policy lookahead --workload delayed --backend gloo --timeout 20
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 --policy fifo --workload balanced --backend gloo --timeout 20
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 --policy static_fifo --workload delayed --backend gloo --timeout 20
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 --policy ltf --workload tail --backend gloo --timeout 20
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 --policy lookahead --workload delayed --backend gloo --timeout 20
 ```
 
 ## 16. 最终验收清单

@@ -117,6 +117,10 @@ class CoordinatorServer:
                 continue
             except OSError:
                 return
+            # Grants and progress feedback are latency-sensitive control
+            # messages; delayed ACK/Nagle interaction can otherwise add a
+            # platform-dependent tens-of-milliseconds turn.
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             thread = threading.Thread(target=self._connection_loop, args=(conn,), daemon=True)
             thread.start()
             self._threads.append(thread)
@@ -246,6 +250,7 @@ class ControlClient:
                 if time.monotonic() >= deadline:
                     raise ConnectionError(f"could not connect to coordinator: {last_error}") from exc
                 time.sleep(0.01)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         sock.settimeout(None)
         self._socket = sock
         self._writer = sock.makefile("wb")

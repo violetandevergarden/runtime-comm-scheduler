@@ -1,7 +1,7 @@
 # JobPacer replay 示例
 
 本目录保留历史 Phase 2 线性 replay/profile 工具，并提供当前 Phase 3 中心化 runtime replay。
-两条路径用途和完成语义不同：下文原有的 `run_replay.py`、`replay_worker.py` 与
+两条路径用途和完成语义不同：`scripts/run_phase2.py`、`runtime/replay_worker.py` 与
 `AdmissionScheduler` 是 Phase 2 基线；Phase 3 入口见后面的“Phase 3 runtime replay”。
 旧工具可以作为历史对照，不是新 runtime 的内部依赖。
 
@@ -18,7 +18,7 @@ LTF 保留 CLI 名称，但 score 是零准入延迟假设下的估计剩余关�
 先运行无需 profile 的两 rank CPU/Gloo 示例：
 
 ```bash
-python examples/jobpacer/run_replay.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase2 \
   --mode scheduler \
   --policy fifo \
   --workload balanced \
@@ -28,13 +28,13 @@ python examples/jobpacer/run_replay.py \
   --output /tmp/jobpacer-fifo.json
 ```
 
-`run_replay.py` 会启动每个 rank 的子进程。成功时终端输出验收摘要，`--output` 保存完整 JSON
+`run_phase2.py` 会启动每个 rank 的子进程。成功时终端输出验收摘要，`--output` 保存完整 JSON
 trace。
 
 正式运行 LTF 时，先测量通信 profile：
 
 ```bash
-python examples/jobpacer/profile_communication.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_comm_profile \
   --workload balanced \
   --backend gloo \
   --world-size 2 \
@@ -46,13 +46,13 @@ python examples/jobpacer/profile_communication.py \
 再将同一 profile 用于 FIFO 和 LTF：
 
 ```bash
-python examples/jobpacer/run_replay.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase2 \
   --mode scheduler --policy fifo --workload balanced \
   --backend gloo --world-size 2 --max-outstanding 1 \
   --comm-profile /tmp/jobpacer-gloo-profile.json \
   --output /tmp/jobpacer-profiled-fifo.json
 
-python examples/jobpacer/run_replay.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase2 \
   --mode scheduler --policy ltf --workload balanced \
   --backend gloo --world-size 2 --max-outstanding 1 \
   --comm-profile /tmp/jobpacer-gloo-profile.json \
@@ -139,7 +139,7 @@ compute，并保持每个 job 内顺序。ready-first 按全局 ready round 和�
 
 ## Profile 的测量和输出
 
-`profile_communication.py` 对 workload 中的通信签名去重，并一次只测量一个签名。每轮流程为：
+`scripts/run_comm_profile.py` 对 workload 中的通信签名去重，并一次只测量一个签名。每轮流程为：
 
 1. 重新初始化输入 tensor；
 2. 在对应 ProcessGroup 上执行 barrier；
@@ -159,12 +159,12 @@ Profile 是实验环境的一部分，不应把一台机器生成的绝对耗时
 两张 GPU 的基本用法为：
 
 ```bash
-python examples/jobpacer/profile_communication.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_comm_profile \
   --workload balanced --backend nccl --world-size 2 \
   --warmup 10 --iterations 50 \
   --output /tmp/jobpacer-nccl-profile.json
 
-python examples/jobpacer/run_replay.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase2 \
   --mode scheduler --policy ltf --workload balanced \
   --backend nccl --world-size 2 --max-outstanding 1 \
   --comm-profile /tmp/jobpacer-nccl-profile.json \
@@ -197,11 +197,11 @@ Visualizer 只接受完整 batch manifest 列出的 schema-v2 trace，并拒绝�
 | 文件 | 职责 |
 | --- | --- |
 | `workloads.py` | workload 数据模型、内置 workload 和 JSON 加载 |
-| `plan_builder.py` | FIFO/LTF 静态 Plan 构造和 job 内顺序校验 |
+| `runtime/plan_builder.py` | FIFO/LTF 静态 Plan 构造和 job 内顺序校验 |
 | `comm_profile.py` | profile 数据模型、digest、严格匹配和 workload 覆盖 |
-| `profile_communication.py` | 多进程 Gloo/NCCL 离线测量入口 |
-| `run_replay.py` | 启动各 rank、回收超时进程、汇总和验证输出 |
-| `replay_worker.py` | 单 rank ProcessGroup、job 线程、scheduler 和 collective 执行 |
+| `scripts/run_comm_profile.py` | 多进程 Gloo/NCCL 离线测量入口 |
+| `scripts/run_phase2.py` | 启动各 rank、回收超时进程、汇总和验证输出 |
+| `runtime/replay_worker.py` | 单 rank ProcessGroup、job 线程、scheduler 和 collective 执行 |
 
 ## 测试
 
@@ -223,7 +223,7 @@ runtime；DAG runner 只推进 compute/communication 依赖，通信成员匹配
 线性 workload 示例：
 
 ```bash
-PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
   --policy fifo --workload balanced --backend gloo --world-size 2 \
   --timeout 20 --output /tmp/jobpacer-runtime-linear.json
 ```
@@ -231,25 +231,29 @@ PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
 DAG 示例：
 
 ```bash
-PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
   --policy ltf --dag benchmark/phase3/multi-group.json \
   --backend gloo --world-size 2 --timeout 20 \
   --output /tmp/jobpacer-runtime-dag.json
 ```
 
 `--static-order` 只用于 DAG 的 `static_fifo` / `static_ltf`；静态队首未 ready 时会等待，不能跳过。
-`--compute-jitter` 只改变 adapter 的实际 CPU compute 样本，不改变 DAG 的估计值。replay 的校验和指标
-在子进程返回后纯离线计算。`--setup-timeout`（默认 20 秒）限制 ProcessGroup/group/control 初始化；
+`--compute-jitter` 只改变实际 CPU compute 样本，不改变线性/DAG 的估计值；线性样本还按
+`seed/epoch/job/communication/rank/producer|consumer` 固定键生成。`--comm-profile` 可将严格匹配的
+离线 p50 注入线性新旧 replay，`--wait-budget-s` 固定 bounded lookahead 的等待预算。replay 的校验和指标
+由 rank worker 在通信 drain 后执行 tensor correctness scan，父进程再聚合 rank-local performance，
+不直接相减不同 rank 的时钟。`--setup-timeout`（默认 20 秒）限制 ProcessGroup/group/control 初始化；
 `--timeout` 在初始化完成后创建唯一 replay deadline，runner 与 `finish_epoch()` 只消耗其剩余预算。父进程
 回收期限为 setup timeout + replay timeout + 5 秒安全余量。
 
 | 文件 | 用途 |
 | --- | --- |
-| `runtime_adapter.py` | 输入 schema/digest、线性映射、计算采样、tensor/collective 绑定及历史线性 Plan 桥接 |
-| `runtime_worker.py` | rank 生命周期、共享 job 线程 harness、故障注入和结果装配 |
-| `runtime_results.py` | 预期 DAG 任务集、结果校验与指标；不启动进程、不导入 torch |
-| `run_runtime_replay.py` | CLI、输入预检、rank 子进程启动/回收 |
-| `workloads.py`、`plan_builder.py` | Phase 2 线性输入和静态 Plan；新 runtime 的静态线性桥接只在 adapter 中使用 |
+| `runtime/runtime_adapter.py` | 输入 schema/digest、线性映射、计算采样、tensor/collective 绑定及历史线性 Plan 桥接 |
+| `runtime/runtime_worker.py` | rank 生命周期、共享 job 线程 harness、故障注入和结果装配 |
+| `analysis/runtime_results.py` | 预期 DAG 任务集、结果校验与指标；不启动进程、不导入 torch |
+| `scripts/run_phase3.py` | CLI、输入预检、rank 子进程启动/回收 |
+| `scripts/run_experiments.py` | 串行运行线性/DAG pilot，保存 manifest、原始 JSON 和 summary CSV |
+| `workloads.py`、`runtime/plan_builder.py` | Phase 2 线性输入和静态 Plan；新 runtime 的静态线性桥接只在 adapter 中使用 |
 
 正式库入口分别为 `runtime_comm_scheduler.runtime` 和 `runtime_comm_scheduler.dag`；包根
 `runtime_comm_scheduler` 保留旧 Plan/TaskKey 等历史导出。

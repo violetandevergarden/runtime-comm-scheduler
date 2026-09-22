@@ -16,8 +16,8 @@
 ## 代码边界
 
 - `src/runtime_comm_scheduler/runtime/`：新 runtime 核心，包括模型、coordinator、policy、本地执行、控制通道和观测。
-- `examples/jobpacer/runtime_adapter.py`：workload 到新模型的映射。
-- `examples/jobpacer/runtime_worker.py`、`run_runtime_replay.py`：新 runtime 的 rank harness 与启动、汇总入口。
+- `examples/jobpacer/runtime/runtime_adapter.py`：workload 到新模型的映射。
+- `examples/jobpacer/runtime/runtime_worker.py`、`scripts/run_phase3.py`：新 runtime 的 rank harness 与启动、汇总入口。
 - `tests/unit/runtime/`、`tests/integration/test_runtime_replay.py`：新 runtime 的单元与双 rank 集成检查。
 - 包根目录的 `plan.py`、`scheduler.py`、`work.py` 等及旧 replay 属于历史路径，仍可用于基线和回归。
 
@@ -68,7 +68,7 @@ env PYTHONPATH=src RUN_JOBPACER_RUNTIME_REPLAY=1 \
   pytest -q tests/integration/test_runtime_replay.py
 
 # 单次 replay，输出存放在临时目录
-PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
   --policy fifo --workload balanced --backend gloo \
   --world-size 2 --timeout 20 --output /tmp/jobpacer-runtime-review.json
 

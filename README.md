@@ -136,7 +136,7 @@ job 的 makespan、实际提交顺序和逐 task trace。Phase 2 使用同一 wo
 格式，将通信提交替换为 `AdmissionScheduler`。
 
 ```bash
-PYTHONPATH=src:. python examples/jobpacer/run_phase1.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase1 \
   --workload balanced --backend gloo --world-size 2 \
   --output artifacts/jobpacer-phase1-gloo.json
 ```

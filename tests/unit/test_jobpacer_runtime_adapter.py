@@ -9,7 +9,7 @@ import threading
 
 import pytest
 
-from examples.jobpacer.runtime_adapter import (
+from examples.jobpacer.runtime.runtime_adapter import (
     linear_static_order,
     load_dag,
     make_collective_binding,
@@ -17,7 +17,7 @@ from examples.jobpacer.runtime_adapter import (
     parse_dag,
     sample_compute_duration,
 )
-from examples.jobpacer.plan_builder import build_plan
+from examples.jobpacer.runtime.plan_builder import build_plan
 from examples.jobpacer.workloads import built_workload
 from runtime_comm_scheduler.dag import ComputeNode
 from runtime_comm_scheduler.runtime import CollectiveSpec, EventLog, TaskSpec

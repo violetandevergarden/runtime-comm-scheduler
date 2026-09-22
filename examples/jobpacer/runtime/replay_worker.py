@@ -23,14 +23,9 @@ from runtime_comm_scheduler import (
     WorkIsCompletedProbe,
 )
 
-try:  # Support both package imports in tests and direct script execution.
-    from .comm_profile import apply_profile, load_profile, workload_digest
-    from .plan_builder import build_plan, planned_tasks, policy_diagnostics, policy_names
-    from .workloads import Workload, load_workload, ranks_for_job
-except ImportError:  # pragma: no cover - exercised by the subprocess driver
-    from comm_profile import apply_profile, load_profile, workload_digest
-    from plan_builder import build_plan, planned_tasks, policy_diagnostics, policy_names
-    from workloads import Workload, load_workload, ranks_for_job
+from examples.jobpacer.comm_profile import apply_profile, load_profile, workload_digest
+from examples.jobpacer.runtime.plan_builder import build_plan, planned_tasks, policy_diagnostics, policy_names
+from examples.jobpacer.workloads import Workload, load_workload, ranks_for_job, sample_linear_duration
 
 
 def _now_us() -> int:
@@ -301,6 +296,9 @@ class _GlobalReadyController:
 def _run_job(
     job,
     *,
+    workload_seed: int,
+    epoch: int,
+    compute_jitter: float,
     rank: int,
     device: str,
     tensors: dict[tuple[str, int], torch.Tensor],
@@ -349,7 +347,15 @@ def _run_job(
             )
             tensor = tensors[(job.job_id, spec.id)]
             compute_start = _now_us()
-            _sleep(spec.producer_compute_s)
+            producer_s = sample_linear_duration(
+                workload_seed, epoch, job.job_id, spec.id, rank, "producer",
+                spec.producer_compute_s, compute_jitter,
+            )
+            consumer_s = sample_linear_duration(
+                workload_seed, epoch, job.job_id, spec.id, rank, "consumer",
+                spec.consumer_compute_s, compute_jitter,
+            )
+            _sleep(producer_s)
             ready_ts = _now_us()
             group = groups[job.job_id]
 
@@ -413,7 +419,7 @@ def _run_job(
                 timing = None
                 work = underlying
             consumer_start = _now_us()
-            _sleep(spec.consumer_compute_s)
+            _sleep(consumer_s)
             consumer_compute_end = _now_us()
             application_wait_start_ts = _now_us()
             if not work.wait():
@@ -448,6 +454,8 @@ def _run_job(
                 "ordinal": spec.id,
                 "num_bytes": spec.num_bytes,
                 "estimated_comm_s": spec.estimated_comm_s,
+                "producer_compute_s": producer_s,
+                "consumer_compute_s": consumer_s,
                 "estimate_source": estimate_source,
                 # Filled by the deferred validation pass after communication
                 # drain.  Keeping the field on each task preserves the trace
@@ -561,6 +569,8 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     world_size = int(os.environ["WORLD_SIZE"])
     if world_size < 2:
         raise ValueError("JobPacer replay requires at least two ranks")
+    if not 0 <= args.compute_jitter < 1:
+        raise ValueError("compute_jitter must be in [0, 1)")
     workload = load_workload(args.workload)
     if args.backend == "nccl":
         torch.cuda.set_device(int(os.environ.get("LOCAL_RANK", "0")))
@@ -652,6 +662,9 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
         def run_one(job):
             result_by_job[job.job_id] = _run_job(
                 job,
+                workload_seed=workload.seed,
+                epoch=args.epoch,
+                compute_jitter=args.compute_jitter,
                 rank=rank,
                 device=device,
                 tensors=tensors,
@@ -985,6 +998,8 @@ def main() -> int:
     parser.add_argument("--finish-timeout", type=float, default=20.0)
     parser.add_argument("--thread-timeout", type=float, default=20.0)
     parser.add_argument("--completion-poll-interval-s", type=float, default=0.001)
+    parser.add_argument("--compute-jitter", type=float, default=0.0)
+    parser.add_argument("--epoch", type=int, default=0)
     parser.add_argument("--comm-profile", type=Path)
     parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(

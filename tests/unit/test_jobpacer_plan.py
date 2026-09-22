@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from examples.jobpacer.plan_builder import (
+from examples.jobpacer.runtime.plan_builder import (
     build_plan,
     key_labels,
     policy_diagnostics,

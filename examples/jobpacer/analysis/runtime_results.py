@@ -242,3 +242,34 @@ def metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         "predicted_ready_error_s": predicted_ready_error_s,
         "dag_timing_clock": "rank-local monotonic; never compare values across ranks",
     }
+
+
+def performance(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate common application boundaries without subtracting rank clocks."""
+    if not results or any("application_makespan_us" not in result for result in results):
+        return {}
+    ordered = sorted(results, key=lambda result: int(result.get("rank", -1)))
+    job_records: dict[str, list[float]] = {}
+    for result in ordered:
+        release = result["application_release_ts"]
+        for job in result.get("jobs", ()):
+            if "job_end_ts" not in job:
+                continue
+            job_records.setdefault(job["job_id"], []).append(job["job_end_ts"] - release)
+    job_makespans = [
+        {"job_id": job_id, "makespan_us": max(values)}
+        for job_id, values in sorted(job_records.items())
+    ]
+    application_values = [result["application_makespan_us"] for result in ordered]
+    drain_values = [
+        result.get("communication_drain_makespan_us", result["application_makespan_us"])
+        for result in ordered
+    ]
+    return {
+        "job_makespans": job_makespans,
+        "workload_makespan_us": max(application_values),
+        "rank_application_makespans_us": application_values,
+        "communication_drain_makespan_us": max(drain_values),
+        "rank_communication_drain_makespans_us": drain_values,
+        "clock_semantics": "rank-local durations; aggregate max, never subtract rank timestamps",
+    }

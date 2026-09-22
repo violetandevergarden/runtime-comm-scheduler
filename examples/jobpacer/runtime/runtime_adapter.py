@@ -18,11 +18,7 @@ from runtime_comm_scheduler.dag import (
     validate_static_order,
 )
 from runtime_comm_scheduler.runtime import CollectiveSpec, GroupSpec, LocalBinding, TaskHint, TaskSpec
-
-try:
-    from .workloads import CollectiveComm, Job, Workload
-except ImportError:  # pragma: no cover - direct worker execution
-    from workloads import CollectiveComm, Job, Workload
+from examples.jobpacer.workloads import CollectiveComm, Job, Workload
 
 
 @dataclass(frozen=True)
@@ -209,10 +205,7 @@ def linear_static_order(workload: Workload, policy: str) -> tuple[str, ...]:
         builder_policy = policy_map[policy]
     except KeyError as exc:
         raise ValueError("linear static order requires static_fifo or static_ltf") from exc
-    try:
-        from .plan_builder import build_plan
-    except ImportError:  # pragma: no cover - direct worker execution
-        from plan_builder import build_plan
+    from examples.jobpacer.runtime.plan_builder import build_plan
     plan = build_plan(workload, builder_policy)
     return tuple(f"{key.process_group_id}/comm-{key.ordinal}" for key in plan.keys)
 

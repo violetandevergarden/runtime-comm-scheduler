@@ -20,33 +20,19 @@ from runtime_comm_scheduler.dag import CommNode, ComputeNode, DagJob, DagRunner,
 from runtime_comm_scheduler.dag.model import compute_tails
 from runtime_comm_scheduler.runtime import CollectiveSpec, DirectExecutor, EventLog, LocalBinding, RankRuntime
 from runtime_comm_scheduler.runtime.transport import ControlClient
-
-try:
-    from .runtime_adapter import (
-        DagInput,
-        group_spec,
-        linear_static_order,
-        load_dag,
-        load_static_order,
-        make_collective_binding,
-        make_replay_compute,
-        task_hint,
-        task_spec,
-    )
-    from .workloads import Job, Workload, load_workload, ranks_for_job
-except ImportError:  # pragma: no cover - direct worker execution
-    from runtime_adapter import (
-        DagInput,
-        group_spec,
-        linear_static_order,
-        load_dag,
-        load_static_order,
-        make_collective_binding,
-        make_replay_compute,
-        task_hint,
-        task_spec,
-    )
-    from workloads import Job, Workload, load_workload, ranks_for_job
+from examples.jobpacer.runtime.runtime_adapter import (
+    DagInput,
+    group_spec,
+    linear_static_order,
+    load_dag,
+    load_static_order,
+    make_collective_binding,
+    make_replay_compute,
+    task_hint,
+    task_spec,
+)
+from examples.jobpacer.workloads import Job, Workload, load_workload, ranks_for_job, sample_linear_duration
+from examples.jobpacer.comm_profile import apply_profile, load_profile
 
 
 class _FailingProbe:
@@ -136,6 +122,19 @@ def _local_dag_jobs(dag: DagInput, rank: int) -> list[DagJob]:
             if rank in group_ranks[next(node.group_id for node in job.nodes if isinstance(node, CommNode))]]
 
 
+def _validate_deferred(
+    validation_records: list[tuple[dict[str, Any], torch.Tensor, int]],
+) -> tuple[int, int]:
+    """Validate tensors after communication drain, outside the application path."""
+    start_ts = time.perf_counter_ns() // 1000
+    for task_result, tensor, expected in validation_records:
+        correct = bool(torch.all(tensor == expected).item())
+        task_result["correct"] = correct
+        if not correct:
+            raise AssertionError(f"incorrect all_reduce result for {task_result['task_id']}")
+    return start_ts, time.perf_counter_ns() // 1000
+
+
 def _run_jobs(jobs, run_one, *, runtime, deadline: float, stop_event: threading.Event,
               thread_name_prefix: str) -> list[dict[str, Any]]:
     if not jobs:
@@ -186,9 +185,11 @@ def _run_jobs(jobs, run_one, *, runtime, deadline: float, stop_event: threading.
     return [result for result in results if result is not None]
 
 
-def _run_linear_job(job: Job, *, args, runtime, groups, rank: int, world_size: int,
-                    device: str, deadline: float, stop_event: threading.Event) -> dict[str, Any]:
+def _run_linear_job(job: Job, *, seed: int, args, runtime, groups, rank: int, world_size: int,
+                    device: str, deadline: float, stop_event: threading.Event,
+                    validation_records: list[tuple[dict[str, Any], torch.Tensor, int]]) -> dict[str, Any]:
     result: dict[str, Any] = {"job_id": job.job_id, "status": "ok", "tasks": [],
+                              "compute_samples_s": {},
                               "job_start_ts": time.perf_counter_ns() // 1000}
     for index, comm in enumerate(job.communications):
         if args.fault == "missing_task" and rank == 1 and job.job_id == "job-1" and index == len(job.communications) - 1:
@@ -199,7 +200,17 @@ def _run_linear_job(job: Job, *, args, runtime, groups, rank: int, world_size: i
         hint = task_hint(job, index)
         runtime.declare(spec, hint)
         producer_start = time.perf_counter_ns() // 1000
-        time.sleep(comm.producer_compute_s)
+        producer_s = sample_linear_duration(
+            seed, args.epoch, job.job_id, comm.id, rank, "producer",
+            comm.producer_compute_s, args.compute_jitter,
+        )
+        consumer_s = sample_linear_duration(
+            seed, args.epoch, job.job_id, comm.id, rank, "consumer",
+            comm.consumer_compute_s, args.compute_jitter,
+        )
+        result["compute_samples_s"][f"comm-{comm.id}/producer"] = producer_s
+        result["compute_samples_s"][f"comm-{comm.id}/consumer"] = consumer_s
+        stop_event.wait(producer_s)
         ready_ts = time.perf_counter_ns() // 1000
         group = groups[job.job_id]
         binding = make_collective_binding(spec, group, rank=rank, device=device)
@@ -215,24 +226,23 @@ def _run_linear_job(job: Job, *, args, runtime, groups, rank: int, world_size: i
         handle = runtime.submit(spec, binding, hint)
         submit_return_ts = time.perf_counter_ns() // 1000
         consume_start = time.perf_counter_ns() // 1000
-        time.sleep(comm.consumer_compute_s)
+        stop_event.wait(consumer_s)
         first_wait_ts = time.perf_counter_ns() // 1000
         if not handle.wait_host(max(0.0, deadline - time.monotonic())):
             raise TimeoutError(f"wait timed out for {spec.task_id}")
         consumer_end_ts = time.perf_counter_ns() // 1000
         expected = sum(item + 1 for item in ranks_for_job(job, world_size))
-        correct = bool(torch.all(binding.tensor == expected).item())
-        if not correct:
-            raise AssertionError(f"incorrect result for {spec.task_id}")
-        result["tasks"].append({
+        task_result = {
             "task_id": spec.task_id, "job_id": job.job_id, "ordinal": comm.id,
-            "correct": correct, "decision_seq": handle.decision_seq,
+            "correct": None, "decision_seq": handle.decision_seq,
             "group_id": spec.group_id, "group_seq": spec.group_seq,
             "producer_start_ts": producer_start, "ready_ts": ready_ts,
             "submit_call_ts": submit_call_ts, "submit_return_ts": submit_return_ts,
             "consumer_start_ts": consume_start, "first_wait_ts": first_wait_ts,
             "consumer_end_ts": consumer_end_ts,
-        })
+        }
+        result["tasks"].append(task_result)
+        validation_records.append((task_result, binding.tensor, expected))
     result["job_end_ts"] = time.perf_counter_ns() // 1000
     return result
 
@@ -240,7 +250,8 @@ def _run_linear_job(job: Job, *, args, runtime, groups, rank: int, world_size: i
 def _run_dag_job(job: DagJob, *, dag: DagInput, args, runtime, groups, rank: int,
                  device: str, deadline: float, stop_event: threading.Event,
                  dag_events: EventLog, group_ranks: dict[str, tuple[int, ...]],
-                 missing_id: str, tails: dict[str, float]) -> dict[str, Any]:
+                 missing_id: str, tails: dict[str, float],
+                 validation_records: list[tuple[dict[str, Any], torch.Tensor, int]]) -> dict[str, Any]:
     result: dict[str, Any] = {"job_id": job.job_id, "status": "ok", "tasks": [],
                               "job_start_ts": time.perf_counter_ns() // 1000}
     comm_nodes = [node for node in job.nodes if isinstance(node, CommNode)]
@@ -285,14 +296,13 @@ def _run_dag_job(job: DagJob, *, dag: DagInput, args, runtime, groups, rank: int
         if not isinstance(node, CommNode):
             continue
         binding = runner.bindings[node.node_id]
-        correct = bool(torch.all(binding.tensor == expected).item())
-        if not correct:
-            raise AssertionError(f"incorrect all_reduce result for {job.job_id}/{node.node_id}")
         spec = dag_task_spec(job, node, epoch=args.epoch)
-        result["tasks"].append({"task_id": spec.task_id, "node_id": node.node_id,
-                                "job_id": job.job_id, "group_id": spec.group_id,
-                                "group_seq": spec.group_seq, "decision_seq": runner.handles[node.node_id].decision_seq,
-                                "correct": correct})
+        task_result = {"task_id": spec.task_id, "node_id": node.node_id,
+                       "job_id": job.job_id, "group_id": spec.group_id,
+                       "group_seq": spec.group_seq, "decision_seq": runner.handles[node.node_id].decision_seq,
+                       "correct": None}
+        result["tasks"].append(task_result)
+        validation_records.append((task_result, binding.tensor, expected))
     result["completed_node_ids"] = [f"{job.job_id}/{node_id}" for node_id in runner.completed_node_ids]
     result["job_end_ts"] = time.perf_counter_ns() // 1000
     return result
@@ -305,10 +315,25 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("setup/replay timeouts and poll intervals must be positive")
     if not 0 <= args.compute_jitter < 1:
         raise ValueError("compute_jitter must be in [0, 1)")
+    comm_profile = getattr(args, "comm_profile", None)
+    profile_strict = getattr(args, "profile_strict", True)
+    wait_budget_s = getattr(args, "wait_budget_s", 0.02)
+    if wait_budget_s < 0:
+        raise ValueError("wait_budget_s must be non-negative")
     setup_deadline = time.monotonic() + args.setup_timeout
     dag = load_dag(args.dag, epoch=args.epoch, world_size=world_size) if args.dag else None
     dag_tails = compute_tails(dag.graph) if dag is not None else None
     workload = None if dag else load_workload(args.workload or "balanced")
+    profile = None
+    if workload is not None and comm_profile:
+        profile = load_profile(comm_profile)
+        workload = apply_profile(
+            workload,
+            profile,
+            {"backend": args.backend, "device_type": "cuda" if args.backend == "nccl" else "cpu",
+             "world_size": world_size},
+            strict=profile_strict,
+        )
     if args.static_order and (dag is None or args.policy not in {"static_fifo", "static_ltf"}):
         raise ValueError("--static-order is only valid with a DAG and static policy")
     if dag is not None:
@@ -339,6 +364,7 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             # The coordinator starts its watchdog at the first group event, before local setup ends.
             coordinator = CoordinatorState(tuple(range(world_size)), epoch=args.epoch, policy=runtime_policy,
                                           static_order=order,
+                                          wait_budget_s=wait_budget_s,
                                           epoch_timeout_s=args.setup_timeout + args.timeout)
             server = CoordinatorServer(coordinator, "127.0.0.1", args.control_port)
             server.start()
@@ -361,12 +387,18 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 if rank in ranks_for_job(job, world_size):
                     runtime.register_group(group_spec(job, world_size, epoch=args.epoch), groups[job.job_id])
         runtime.start(_remaining(setup_deadline))
-        if server is not None:
-            server.wait_ready(_remaining(setup_deadline))
 
         dag_events = EventLog("dag", rank)
         stop_event = threading.Event()
+        # This barrier is the common application release boundary.  It is the
+        # default process group, never a job collective controlled by the
+        # coordinator.
+        if server is not None:
+            server.wait_ready(_remaining(setup_deadline))
+        dist.barrier()
+        application_release_ts = time.perf_counter_ns() // 1000
         deadline = time.monotonic() + args.timeout
+        validation_records: list[tuple[dict[str, Any], torch.Tensor, int]] = []
         if dag is not None:
             local_jobs = _local_dag_jobs(dag, rank)
             group_ranks = dag.group_ranks
@@ -377,19 +409,26 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 job, dag=dag, args=args, runtime=runtime, groups=groups, rank=rank,
                 device=device, deadline=deadline, stop_event=stop_event,
                 dag_events=dag_events, group_ranks=group_ranks, missing_id=missing_id,
-                tails=dag_tails,
+                tails=dag_tails, validation_records=validation_records,
             )
             jobs = _run_jobs(local_jobs, run_one, runtime=runtime, deadline=deadline,
                              stop_event=stop_event, thread_name_prefix="dag")
         else:
             local_jobs = [job for job in workload.jobs if rank in ranks_for_job(job, world_size)]
             run_one = lambda job: _run_linear_job(
-                job, args=args, runtime=runtime, groups=groups, rank=rank, world_size=world_size,
+                job, seed=workload.seed, args=args, runtime=runtime, groups=groups, rank=rank, world_size=world_size,
                 device=device, deadline=deadline, stop_event=stop_event,
+                validation_records=validation_records,
             )
             jobs = _run_jobs(local_jobs, run_one, runtime=runtime, deadline=deadline,
                              stop_event=stop_event, thread_name_prefix="job")
         runtime.finish_epoch(_remaining(deadline))
+        communication_drain_end_ts = time.perf_counter_ns() // 1000
+        validation_start_ts, validation_end_ts = _validate_deferred(validation_records)
+        application_end_ts = max(
+            (job["job_end_ts"] for job in jobs), default=application_release_ts
+        )
+        harness_start_ts = time.perf_counter_ns() // 1000
         output = {
             "rank": rank, "status": "ok", "mode": "runtime",
             "input_mode": "dag" if dag is not None else "linear",
@@ -398,6 +437,25 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             "completion_poll_interval_s": args.poll_interval,
             "dag_poll_interval_s": args.dag_poll_interval,
             "compute_jitter": args.compute_jitter,
+            "estimate_source": "offline_profile" if profile else "manifest",
+            "communication_profile": {
+                "path": str(comm_profile) if comm_profile else None,
+                "digest": profile.digest() if profile else None,
+                "schema_version": profile.schema_version if profile else None,
+                "strict": profile_strict if profile else None,
+                "environment": dict(profile.environment) if profile else None,
+            },
+            "wait_budget_s": wait_budget_s,
+            "application_release_ts": application_release_ts,
+            "application_end_ts": application_end_ts,
+            "communication_drain_end_ts": communication_drain_end_ts,
+            "validation_start_ts": validation_start_ts,
+            "validation_end_ts": validation_end_ts,
+            "harness_start_ts": harness_start_ts,
+            "harness_end_ts": None,
+            "application_makespan_us": application_end_ts - application_release_ts,
+            "communication_drain_makespan_us": communication_drain_end_ts - application_release_ts,
+            "validation_total_us": validation_end_ts - validation_start_ts,
             "task_sequence": [task["task_id"] for job in jobs for task in job["tasks"]],
             "grant_sequence": runtime.grant_order, "launch_sequence": runtime.launch_order,
             "runtime_events": runtime.event_log.as_dict()["events"],
@@ -421,6 +479,8 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             })
         if server is not None:
             output["decision_records"] = list(server.coordinator.records)
+        output["harness_end_ts"] = time.perf_counter_ns() // 1000
+        output["harness_total_us"] = output["harness_end_ts"] - harness_start_ts
         return output
     finally:
         try:
@@ -454,12 +514,15 @@ def main() -> int:
     parser.add_argument("--poll-interval", type=float, default=0.001)
     parser.add_argument("--dag-poll-interval", type=float, default=0.001)
     parser.add_argument("--compute-jitter", type=float, default=0.0)
+    parser.add_argument("--wait-budget-s", type=float, default=0.02)
+    parser.add_argument("--comm-profile", type=Path)
+    parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--control-port", type=int, required=True)
     parser.add_argument("--fault", choices=("none", "missing_task", "metadata_mismatch", "launch_failure",
                                                "completion_probe_failure", "compute_failure", "binding_failure"), default="none")
     args = parser.parse_args()
-    if args.timeout <= 0 or args.setup_timeout <= 0:
-        parser.error("setup-timeout and timeout must be positive")
+    if args.timeout <= 0 or args.setup_timeout <= 0 or args.wait_budget_s < 0:
+        parser.error("setup-timeout and timeout must be positive; wait-budget-s must be non-negative")
     try:
         output = run_rank(args)
     except BaseException as exc:  # noqa: BLE001

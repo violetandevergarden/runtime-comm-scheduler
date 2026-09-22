@@ -12,20 +12,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-try:  # Support ``python examples/jobpacer/run_replay.py``.
-    from .comm_profile import apply_profile, load_profile
-    from .measurement import occupancy_metrics
-    from .plan_builder import build_plan, key_labels, policy_names
-    from .workloads import load_workload, ranks_for_job
-except ImportError:  # pragma: no cover - direct script execution
-    from comm_profile import apply_profile, load_profile
-    from measurement import occupancy_metrics
-    from plan_builder import build_plan, key_labels, policy_names
-    from workloads import load_workload, ranks_for_job
+from examples.jobpacer.analysis.measurement import occupancy_metrics
+from examples.jobpacer.runtime.plan_builder import build_plan, key_labels, policy_names
+from examples.jobpacer.workloads import load_workload, ranks_for_job
+from examples.jobpacer.comm_profile import apply_profile, load_profile
 
 
 HERE = Path(__file__).resolve().parent
-WORKER = HERE / "replay_worker.py"
+ROOT = HERE.parents[2]
 
 
 def _free_port() -> int:
@@ -44,13 +38,14 @@ def _run_rank(rank: int, args: argparse.Namespace, port: int) -> subprocess.Pope
         # CUDA_VISIBLE_DEVICES remaps the exposed physical GPU to cuda:0.
         LOCAL_RANK="0",
     )
-    source_root = str(HERE.parents[1] / "src")
-    env["PYTHONPATH"] = source_root + os.pathsep + env.get("PYTHONPATH", "")
+    source_root = str(ROOT / "src")
+    env["PYTHONPATH"] = os.pathsep.join((source_root, str(ROOT), env.get("PYTHONPATH", "")))
     if args.backend == "nccl":
         env["CUDA_VISIBLE_DEVICES"] = str(rank)
     command = [
         sys.executable,
-        str(WORKER),
+        "-m",
+        "examples.jobpacer.runtime.replay_worker",
         "--mode",
         args.mode,
         "--policy",
@@ -71,6 +66,10 @@ def _run_rank(rank: int, args: argparse.Namespace, port: int) -> subprocess.Pope
         str(args.timeout),
         "--completion-poll-interval-s",
         str(args.completion_poll_interval_s),
+        "--compute-jitter",
+        str(args.compute_jitter),
+        "--epoch",
+        str(args.epoch),
         "--fault",
         args.fault,
     ]
@@ -80,7 +79,7 @@ def _run_rank(rank: int, args: argparse.Namespace, port: int) -> subprocess.Pope
     return subprocess.Popen(
         command,
         env=env,
-        cwd=str(HERE.parents[1]),
+        cwd=str(ROOT),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -362,6 +361,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-outstanding", type=int, default=1)
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--completion-poll-interval-s", type=float, default=0.001)
+    parser.add_argument("--compute-jitter", type=float, default=0.0)
+    parser.add_argument("--epoch", type=int, default=0)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--comm-profile", type=Path)
     parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
@@ -375,6 +376,8 @@ def main(argv: list[str] | None = None) -> int:
         args.comm_profile = args.comm_profile.resolve()
     if args.world_size < 2:
         parser.error("--world-size must be at least 2")
+    if not 0 <= args.compute_jitter < 1:
+        parser.error("--compute-jitter must be in [0, 1)")
     workload = load_workload(args.workload)
     profile = None
     if args.comm_profile:
@@ -421,6 +424,8 @@ def main(argv: list[str] | None = None) -> int:
             "world_size": args.world_size,
             "max_outstanding": args.max_outstanding,
             "completion_poll_interval_s": args.completion_poll_interval_s,
+            "compute_jitter": args.compute_jitter,
+            "epoch": args.epoch,
             "timeout_s": args.timeout,
             "torch": __import__("torch").__version__,
             "estimate_source": "offline_profile" if profile else "manifest",

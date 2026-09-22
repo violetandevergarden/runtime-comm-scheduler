@@ -10,10 +10,7 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping
 
-try:
-    from .workloads import Job, Workload, ranks_for_job
-except ImportError:  # pragma: no cover - direct script execution
-    from workloads import Job, Workload, ranks_for_job
+from examples.jobpacer.workloads import Job, Workload, ranks_for_job
 
 
 def _stable_json(value: Any) -> str:

@@ -9,7 +9,7 @@
 从仓库根目录运行示例：
 
 ```bash
-PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
   --policy fifo --dag benchmark/phase3/multi-group.json \
   --backend gloo --world-size 2 --timeout 20 \
   --output /tmp/jobpacer-phase3-fifo.json
@@ -17,8 +17,9 @@ PYTHONPATH=src python examples/jobpacer/run_runtime_replay.py \
 
 DAG 模型、校验、tail、静态序列与通用依赖 runner 位于
 `src/runtime_comm_scheduler/dag/`；JSON schema、canonical digest、CPU compute sampling 和
-rank-local collective binding 位于 `examples/jobpacer/runtime_adapter.py`。结果校验/指标在
-`runtime_results.py`，启动与生命周期在 `runtime_worker.py` 和 `run_runtime_replay.py`。
+rank-local collective binding 位于 `examples/jobpacer/runtime/runtime_adapter.py`。结果校验/指标在
+`examples/jobpacer/analysis/runtime_results.py`，启动与生命周期在
+`examples/jobpacer/runtime/runtime_worker.py` 和 `examples/jobpacer/scripts/run_phase3.py`。
 
 依赖方向是 `examples → dag → runtime`；正式 `src/` 不依赖 examples，runtime 不依赖 DAG。
 benchmark 输入 schema 和策略估计不变。重构后的 CPU/Gloo 回归记录见

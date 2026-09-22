@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from examples.jobpacer.runtime_adapter import load_dag
-from examples.jobpacer.runtime_results import expected_dag_results, metrics, validate_results
+from examples.jobpacer.runtime.runtime_adapter import load_dag
+from examples.jobpacer.analysis.runtime_results import expected_dag_results, metrics, performance, validate_results
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -116,3 +116,28 @@ def test_metrics_label_coordinator_epoch_duration_and_prediction_time_anchor():
     assert result["coordinator_task_timings"][task_id]["grant_to_all_submitted_s"] == pytest.approx(0.2)
     assert result["coordinator_epoch_duration_s"] == pytest.approx(2.0)
     assert metrics([]) == {}
+
+
+def test_performance_uses_rank_local_release_durations():
+    results = [
+        {
+            "rank": 0,
+            "application_release_ts": 100,
+            "application_makespan_us": 30,
+            "communication_drain_makespan_us": 40,
+            "jobs": [{"job_id": "job", "job_end_ts": 125}],
+        },
+        {
+            "rank": 1,
+            "application_release_ts": 1000,
+            "application_makespan_us": 35,
+            "communication_drain_makespan_us": 45,
+            "jobs": [{"job_id": "job", "job_end_ts": 1040}],
+        },
+    ]
+    result = performance(results)
+    assert result["workload_makespan_us"] == 35
+    assert result["communication_drain_makespan_us"] == 45
+    assert result["job_makespans"] == [{"job_id": "job", "makespan_us": 40}]
+    assert "never subtract rank timestamps" in result["clock_semantics"]
+    assert performance([]) == {}

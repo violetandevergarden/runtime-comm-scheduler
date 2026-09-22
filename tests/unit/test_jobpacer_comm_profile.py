@@ -16,8 +16,8 @@ from examples.jobpacer.comm_profile import (
     apply_profile,
     load_profile,
 )
-from examples.jobpacer.plan_builder import build_plan, key_labels
-from examples.jobpacer.workloads import CollectiveComm, Job, Workload
+from examples.jobpacer.runtime.plan_builder import build_plan, key_labels
+from examples.jobpacer.workloads import CollectiveComm, Job, Workload, sample_linear_duration
 
 
 ENVIRONMENT = {
@@ -89,3 +89,10 @@ def test_profile_estimate_changes_ltf_order_without_reordering_a_job():
     after = key_labels(build_plan(applied, "ltf"))
     assert before != after
     assert [key.ordinal for key in build_plan(applied, "ltf").group_sequence("a")] == [0, 1]
+
+
+def test_linear_compute_sample_is_keyed_by_rank_and_segment():
+    first = sample_linear_duration(11, 3, "job-0", 0, 0, "producer", 0.1, 0.3)
+    assert first == sample_linear_duration(11, 3, "job-0", 0, 0, "producer", 0.1, 0.3)
+    assert first != sample_linear_duration(11, 3, "job-0", 0, 0, "consumer", 0.1, 0.3)
+    assert first != sample_linear_duration(11, 3, "job-0", 0, 1, "producer", 0.1, 0.3)

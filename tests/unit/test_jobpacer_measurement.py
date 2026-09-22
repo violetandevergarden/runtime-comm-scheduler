@@ -14,10 +14,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parents[2]))
 sys.path.insert(0, str(Path(__file__).parents[2] / "benchmark/phase1.2"))
 
-from examples.jobpacer import replay_worker
-from examples.jobpacer.measurement import occupancy_metrics
-from examples.jobpacer.plan_builder import ltf_score, planned_tasks, policy_diagnostics
-from examples.jobpacer.visualize import (
+from examples.jobpacer.runtime import replay_worker
+from examples.jobpacer.analysis.measurement import occupancy_metrics
+from examples.jobpacer.runtime.plan_builder import ltf_score, planned_tasks, policy_diagnostics
+from examples.jobpacer.analysis.visualize import (
     scheduler_state_intervals,
     scheduler_state_summary,
     timeline_data,

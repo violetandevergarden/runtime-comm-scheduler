@@ -6,11 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from runtime_comm_scheduler import Plan, TaskKey
-
-try:  # Support both package imports and direct worker script execution.
-    from .workloads import CollectiveComm, Job, Workload
-except ImportError:  # pragma: no cover - direct script execution
-    from workloads import CollectiveComm, Job, Workload
+from examples.jobpacer.workloads import CollectiveComm, Job, Workload
 
 
 @dataclass(frozen=True)

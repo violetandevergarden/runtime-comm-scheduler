@@ -8,10 +8,7 @@ from __future__ import annotations
 
 import sys
 
-try:
-    from .run_replay import main as replay_main
-except ImportError:  # pragma: no cover - direct script execution
-    from run_replay import main as replay_main
+from examples.jobpacer.scripts.run_phase2 import main as replay_main
 
 
 def main(argv: list[str] | None = None) -> int:

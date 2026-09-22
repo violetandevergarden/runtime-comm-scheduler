@@ -30,7 +30,7 @@ def _run_dag_replay(root, policy, dag_name, output, *, compute_jitter=0.0, stati
     env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
     command = [
         sys.executable,
-        str(root / "examples/jobpacer/run_runtime_replay.py"),
+        "-m", "examples.jobpacer.scripts.run_phase3",
         "--policy", policy,
         "--backend", "gloo",
         "--world-size", "2",
@@ -71,7 +71,7 @@ def test_two_rank_runtime_replay(policy, workload, dag_name, compute_jitter, tmp
     else:
         env = dict(os.environ)
         env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
-        command = [sys.executable, str(root / "examples/jobpacer/run_runtime_replay.py"),
+        command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
                    "--policy", policy, "--workload", workload, "--backend", "gloo",
                    "--world-size", "2", "--timeout", "20", "--epoch", "7",
                    "--compute-jitter", str(compute_jitter), "--output", str(output)]
@@ -146,7 +146,7 @@ def test_linear_metadata_mismatch_fails_before_launch(tmp_path):
     output = tmp_path / "linear-metadata-mismatch.json"
     env = dict(os.environ)
     env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
-    command = [sys.executable, str(root / "examples/jobpacer/run_runtime_replay.py"),
+    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
                "--policy", "fifo", "--workload", "balanced", "--backend", "gloo",
                "--world-size", "2", "--timeout", "3", "--fault", "metadata_mismatch",
                "--output", str(output)]
@@ -166,7 +166,7 @@ def test_linear_launch_and_probe_failures_are_bounded(fault, tmp_path):
     output = tmp_path / f"linear-{fault}.json"
     env = dict(os.environ)
     env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
-    command = [sys.executable, str(root / "examples/jobpacer/run_runtime_replay.py"),
+    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
                "--policy", "fifo", "--workload", "balanced", "--backend", "gloo",
                "--world-size", "2", "--setup-timeout", "5", "--timeout", "3",
                "--fault", fault, "--output", str(output)]
@@ -187,7 +187,7 @@ def test_dag_failures_are_bounded(fault, tmp_path):
     output = tmp_path / f"failure-{fault}.json"
     env = dict(os.environ)
     env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
-    command = [sys.executable, str(root / "examples/jobpacer/run_runtime_replay.py"),
+    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
                "--policy", "fifo", "--dag", str(root / "benchmark/phase3/diamond.json"),
                "--backend", "gloo", "--world-size", "2", "--timeout", "3",
                "--fault", fault, "--output", str(output)]
@@ -204,7 +204,7 @@ def test_invalid_dag_manifest_is_rejected_before_rank_workers(tmp_path):
     data = json.loads((root / "benchmark/phase3/linear.json").read_text())
     data["schema_version"] = 99
     invalid.write_text(json.dumps(data))
-    command = [sys.executable, str(root / "examples/jobpacer/run_runtime_replay.py"),
+    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
                "--dag", str(invalid), "--world-size", "2"]
     completed = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=5)
     assert completed.returncode == 2
@@ -221,7 +221,7 @@ def test_unsupported_reduction_is_rejected_before_rank_workers(tmp_path):
     output = tmp_path / "should-not-start.json"
     env = dict(os.environ)
     env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
-    command = [sys.executable, str(root / "examples/jobpacer/run_runtime_replay.py"),
+    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
                "--dag", str(invalid), "--world-size", "2", "--output", str(output)]
     completed = subprocess.run(command, cwd=root, env=env, capture_output=True,
                                text=True, timeout=5)
