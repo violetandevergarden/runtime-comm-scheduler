@@ -1,4 +1,26 @@
-"""Small TCP NDJSON transport for the coordinator and rank runtimes."""
+"""
+Small TCP NDJSON transport for the coordinator and rank runtimes.
+
+  各 Rank 的 ControlClient
+          │ TCP 上报
+          ▼
+  _connection_loop（每个连接一个读取线程）
+          │
+          ▼
+  _inbound 公共队列
+          │
+          ▼
+  _event_loop（唯一状态机线程）
+          │ 调用 CoordinatorState.apply()/tick()
+          ▼
+  Outbound
+          │
+          ▼
+  各 Rank 的 _writer_loop
+          │ TCP 下发
+          ▼
+  READY / GRANT / FINISHED / FAILED
+"""
 
 from __future__ import annotations
 

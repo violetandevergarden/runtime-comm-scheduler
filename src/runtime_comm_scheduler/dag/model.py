@@ -178,7 +178,11 @@ def _predecessors_for_jobs(jobs: tuple[DagJob, ...]) -> dict[str, set[str]]:
 
 
 def compute_tails(graph: DagGraph) -> dict[str, float]:
-    """Compute per-node remaining critical paths, excluding the node itself."""
+    """
+    Compute per-node remaining critical paths, excluding the node itself.
+    这里的 tail 定义是：从当前节点执行完成之后，到该 job 结束的最长后继路径估计时长。
+    tail(v) = max(duration(u) + tail(u) for u in successors(v))
+    """
     tails: dict[str, float] = {}
     for job in graph.jobs:
         predecessors = _predecessors_for_jobs((job,))
