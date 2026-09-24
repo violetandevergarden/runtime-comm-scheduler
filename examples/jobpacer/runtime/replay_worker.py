@@ -635,11 +635,20 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     ]
     # Keep one-time tensor allocation and ProcessGroup connection setup outside
     # the measured replay window. Every rank warms groups in manifest order.
-    tensors = {
-        (job.job_id, spec.id): _make_tensor(spec, rank, device)
-        for job in local_jobs
-        for spec in job.communications
-    }
+    preparation_start_ts = _now_us()
+    tensors = {}
+    tensor_preparation_events = {}
+    for job in local_jobs:
+        for spec in job.communications:
+            create_start_ts = _now_us()
+            tensors[(job.job_id, spec.id)] = _make_tensor(spec, rank, device)
+            create_end_ts = _now_us()
+            tensor_preparation_events[(job.job_id, spec.id)] = {
+                "tensor_create_start_ts": create_start_ts,
+                "tensor_create_end_ts": create_end_ts,
+                "tensor_create_duration_us": create_end_ts - create_start_ts,
+            }
+    preparation_end_ts = _now_us()
     for job in local_jobs:
         dist.barrier(group=groups[job.job_id])
     scheduler = None
@@ -728,6 +737,11 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 f"job thread did not finish within {args.thread_timeout}s"
             )
         jobs_result = [result_by_job[job.job_id] for job in local_jobs]
+        for job_result in jobs_result:
+            for task_result in job_result["tasks"]:
+                task_result.update(tensor_preparation_events[
+                    (job_result["job_id"], int(task_result["ordinal"]))
+                ])
         if errors:
             raise errors[0]
         if args.mode == "bare":
@@ -883,6 +897,18 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 args.max_outstanding if args.mode == "scheduler" else None
             ),
             "application_release_ts": application_release_ts,
+            "binding_preparation": "legacy_precreated_tensor_launch_on_ready",
+            "preparation_start_ts": preparation_start_ts,
+            "preparation_end_ts": preparation_end_ts,
+            "preparation_total_us": preparation_end_ts - preparation_start_ts,
+            "preparation_scope": "legacy formal tensor allocation only; ProcessGroup setup and warmup excluded",
+            "binding_creation_total_us": sum(
+                item["tensor_create_duration_us"] for item in tensor_preparation_events.values()
+            ),
+            "binding_creation_events": [
+                {"job_id": job_id, "ordinal": ordinal, **event}
+                for (job_id, ordinal), event in sorted(tensor_preparation_events.items())
+            ],
             "warmup_iterations": getattr(args, "warmup_iterations", 0),
             "warmup_collective_count": warmup_collective_count,
             "application_end_ts": application_end_ts,

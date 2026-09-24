@@ -33,6 +33,7 @@ class _LocalTask:
     handle: RuntimeHandle
     declared: bool = False
     offered: bool = False
+    completion_probe_count: int = 0
 
 
 class RankRuntime:
@@ -384,9 +385,17 @@ class RankRuntime:
                     self._launch_order.append(task_id)
                     decision_seq = task.handle.decision_seq
                 self.event_log.record("launch_start", task_id=task_id, decision_seq=decision_seq)
+                self.event_log.record("collective_call_start", task_id=task_id,
+                                      decision_seq=decision_seq)
                 work = self.executor.launch(binding)
                 task.handle.bind(work)
+                self.event_log.record("collective_call_return", task_id=task_id,
+                                      decision_seq=decision_seq)
+                self.event_log.record("submitted_send_start", task_id=task_id,
+                                      decision_seq=decision_seq)
                 self.transport.send("SUBMITTED", {"task_id": task_id, "decision_seq": decision_seq})
+                self.event_log.record("submitted_send_end", task_id=task_id,
+                                      decision_seq=decision_seq)
                 self.event_log.record("submitted_sent", task_id=task_id, decision_seq=decision_seq)
                 with self._condition:
                     self._active_task_ids.add(task_id)
@@ -412,10 +421,20 @@ class RankRuntime:
                     work = task.handle._work
                     decision_seq = task.handle.decision_seq
                 try:
-                    if work is not None and self.completion_probe.is_completed(work):
+                    completed = False
+                    if work is not None:
+                        with self._condition:
+                            task.completion_probe_count += 1
+                            probe_count = task.completion_probe_count
+                        completed = self.completion_probe.is_completed(work)
+                    else:
+                        probe_count = task.completion_probe_count
+                    if completed:
                         with self._condition:
                             self._active_task_ids.discard(task_id)
-                        self.event_log.record("completion_observed", task_id=task_id, decision_seq=decision_seq)
+                        self.event_log.record("completion_observed", task_id=task_id,
+                                              decision_seq=decision_seq,
+                                              completion_probe_count=probe_count)
                         if not task.handle.mark_completed():
                             continue
                         self.transport.send("COMPLETED", {"task_id": task_id, "decision_seq": decision_seq})

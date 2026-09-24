@@ -14,6 +14,7 @@
 | `bridge/` | 线性/DAG 执行器桥接 | G0 输入、显式映射、共同采样键及冻结交错顺序 |
 | `isolated/` | 单 job 分母 | 输入须与 shared job 的 profile、计算样本和环境一致 |
 | `noise/` | 固定 workload 的 A/B 系统噪声 | 通过配置引用 L0，不复制输入；不把噪声重复当成扰动样本 |
+| `runtime-overhead/` | 准备、完成轮询与剩余控制路径开销 | 阶段 A/B 的固定参数和命令见子目录 README；阶段 C 为门控项 |
 | `suites/` | 跨类别编排 | `compact.json` 是当前 compact runner 支持的格式；其他清单保留原用途并不自动视为可执行 |
 
 `estimated_comm_s` 是输入占位估计；正式实验需使用严格匹配的 `--comm-profile`。运行成功不等于机制成立，

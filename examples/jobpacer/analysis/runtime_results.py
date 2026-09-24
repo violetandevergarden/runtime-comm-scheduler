@@ -151,15 +151,36 @@ def metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
             continue
         task = progress.setdefault(item["task_id"], {"submitted": [], "completed": []})
         task[item["kind"]].append(item["now"])
+    dispatch_records = [item for item in coordinator_records
+                        if item.get("kind") == "decision" and item.get("decision") == "dispatch"]
+    snapshots = [item for item in coordinator_records if item.get("kind") == "policy_snapshot"]
     coordinator_tasks = {}
-    for task_id, grant_time in dispatch_times.items():
+    for dispatch_index, dispatch in enumerate(dispatch_records):
+        task_id = dispatch["task_id"]
+        grant_time = dispatch["now"]
         submitted = progress.get(task_id, {}).get("submitted", [])
         completed = progress.get(task_id, {}).get("completed", [])
         if submitted and completed:
+            submitted_all = max(submitted)
+            completed_all = max(completed)
+            next_grant = (dispatch_records[dispatch_index + 1]
+                          if dispatch_index + 1 < len(dispatch_records) else None)
+            next_grant_time = next_grant.get("now") if next_grant else None
+            gap_snapshots = [item for item in snapshots
+                             if completed_all <= item.get("now", float("-inf"))
+                             and next_grant_time is not None
+                             and item.get("now", float("inf")) <= next_grant_time]
+            eligible_in_gap = any(item.get("eligible") for item in gap_snapshots)
             coordinator_tasks[task_id] = {
                 "eligible_to_grant_s": grant_time - eligible_times[task_id] if task_id in eligible_times else None,
-                "grant_to_all_submitted_s": max(submitted) - grant_time,
-                "all_submitted_to_all_completed_s": max(completed) - max(submitted),
+                "grant_to_all_submitted_s": submitted_all - grant_time,
+                "all_submitted_to_all_completed_s": completed_all - submitted_all,
+                "all_completed_to_next_grant_s": (next_grant_time - completed_all
+                                                   if next_grant_time is not None else None),
+                "next_task_id": next_grant.get("task_id") if next_grant else None,
+                "legal_candidate_present_during_gap": (eligible_in_gap
+                                                        if next_grant_time is not None else None),
+                "coordinator_clock": "single coordinator monotonic clock",
             }
     job_durations = {}
     for result in results:
@@ -175,23 +196,64 @@ def metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         if item.get("kind") == "idle_interval":
             idle_by_reason[item["reason"]] = idle_by_reason.get(item["reason"], 0.0) + item["duration"]
     local_waits: dict[str, dict[str, dict[str, float]]] = {}
+    rank_process_cpu_time_s: dict[str, float] = {}
+    rank_context_switches: dict[str, dict[str, int]] = {}
     dag_rank_task_timings: dict[str, dict[str, dict[str, float]]] = {}
     predicted_ready_error_s: dict[str, dict[str, float]] = {}
     dag_node_ready_wait_s: dict[str, dict[str, float]] = {}
     for result in results:
+        rank_key = str(result.get("rank"))
+        if isinstance(result.get("process_cpu_time_s"), (int, float)):
+            rank_process_cpu_time_s[rank_key] = float(result["process_cpu_time_s"])
+        if "voluntary_context_switches" in result and "involuntary_context_switches" in result:
+            rank_context_switches[rank_key] = {
+                "voluntary": int(result["voluntary_context_switches"]),
+                "involuntary": int(result["involuntary_context_switches"]),
+            }
         event_times: dict[str, dict[str, int]] = {}
+        event_records: dict[str, dict[str, dict[str, Any]]] = {}
         for event in result.get("runtime_events", []):
             if event.get("task_id"):
                 event_times.setdefault(event["task_id"], {})[event["kind"]] = event["time_us"]
+                event_records.setdefault(event["task_id"], {})[event["kind"]] = event
         for job in result.get("jobs", []):
             for task in job.get("tasks", []):
                 times = event_times.get(task["task_id"], {})
                 if "grant_received" in times and "submit_call_ts" in task:
-                    local_waits.setdefault(str(result.get("rank")), {})[task["task_id"]] = {
+                    values: dict[str, float] = {
                         "submit_call_to_grant_s": (times["grant_received"] - task["submit_call_ts"]) / 1_000_000.0,
-                        "grant_to_launch_s": (times.get("launch_start", times["grant_received"]) - times["grant_received"]) / 1_000_000.0,
-                        "consumer_wait_s": (task["consumer_end_ts"] - task["first_wait_ts"]) / 1_000_000.0,
+                        "grant_to_collective_start_s": (times.get("collective_call_start", times.get("launch_start", times["grant_received"]))
+                                                         - times["grant_received"]) / 1_000_000.0,
                     }
+                    if task.get("ready_ts") is not None:
+                        values["producer_ready_to_submit_call_s"] = (
+                            task["submit_call_ts"] - task["ready_ts"]
+                        ) / 1_000_000.0
+                    if task.get("binding_create_duration_us") is not None:
+                        values["binding_create_s"] = task["binding_create_duration_us"] / 1_000_000.0
+                    if task.get("tensor_create_duration_us") is not None:
+                        values["tensor_create_s"] = task["tensor_create_duration_us"] / 1_000_000.0
+                    call_start = times.get("collective_call_start", task.get("collective_call_start_ts"))
+                    call_return = times.get("collective_call_return", task.get("collective_call_return_ts"))
+                    completion = times.get("completion_observed", task.get("completion_observed_ts"))
+                    if call_start is not None and call_return is not None:
+                        values["collective_call_duration_s"] = (call_return - call_start) / 1_000_000.0
+                    if call_return is not None and completion is not None:
+                        values["call_return_to_completion_observation_s"] = (
+                            completion - call_return
+                        ) / 1_000_000.0
+                    app_wait_start = times.get("application_wait_start", task.get("first_wait_ts"))
+                    app_wait_return = times.get("application_wait_return", task.get("consumer_end_ts"))
+                    if app_wait_start is not None and app_wait_return is not None:
+                        values["application_wait_s"] = (app_wait_return - app_wait_start) / 1_000_000.0
+                    if completion is not None and app_wait_return is not None:
+                        values["completion_observed_to_application_continue_s"] = (
+                            app_wait_return - completion
+                        ) / 1_000_000.0
+                    completion_event = event_records.get(task["task_id"], {}).get("completion_observed", {})
+                    if completion_event.get("completion_probe_count") is not None:
+                        values["completion_probe_count"] = float(completion_event["completion_probe_count"])
+                    local_waits.setdefault(rank_key, {})[task["task_id"]] = values
         if result.get("input_mode") == "dag":
             rank = str(result.get("rank"))
             dag_events = result.get("dag_events", [])
@@ -237,6 +299,8 @@ def metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         "coordinator_epoch_duration_s": max(finished) - min(started) if finished and started else None,
         "job_duration_s": {job: max(values) for job, values in job_durations.items()},
         "rank_task_timings": local_waits,
+        "rank_process_cpu_time_s": rank_process_cpu_time_s,
+        "rank_context_switches": rank_context_switches,
         "dag_rank_task_timings": dag_rank_task_timings,
         "dag_node_ready_wait_s": dag_node_ready_wait_s,
         "predicted_ready_error_s": predicted_ready_error_s,

@@ -690,3 +690,37 @@ Lookahead 准时到达为 0/5，故 L2/G2 的 180 次主批次及 Lookahead 可�
 机制 trace、配对估计、校准数值及解释边界详见
 `docs/JobPacer/result/phase3experiments.md` 的“精简 suite 首次执行”节。此次执行
 没有修改运行时、workload 或 suite 配置。
+
+## 19. Runtime overhead 实验实施（2026-09-24）
+
+按 `docs/JobPacer/process/phase3experiments.md` 前述运行时开销方案实施并完成 A–D；范围保持两 rank
+CPU/Gloo、单全局在途 collective。没有扩至 GPU、多 inflight 或 DAG 性能矩阵。
+
+实现方面，线性 Phase 3 replay 增加 `--binding-preparation precreate|on-ready`，默认对照使用
+precreate：每 rank 在 ProcessGroup 建立后、预热和应用 release 前创建本 rank 独立 tensor/binding，
+producer 完成后才 submit；on-ready 保留旧创建时机。两模式的准备失败都由全 rank 同步并有界退出。
+DAG 路径不变。Phase 2 继续在 release 前创建 tensor，并记录既有准备成本。结果 JSON 记录准备区间、
+每项创建时间、application release/end、通信 drain、validation 边界和准备模式。
+
+新 runtime 补记 collective 调用开始/返回、SUBMITTED 发送起止、完成探测计数和应用 wait 返回；结果汇总
+分别保留 rank-local 间隔与 coordinator 单时钟的 `grant→SUBMITTED 到齐`、
+`SUBMITTED 到齐→COMPLETED 到齐`、`COMPLETED 到齐→下一 grant` 及间隔中合法候选是否存在。
+不以提交回执替代 collective 返回，不将观测时刻称为精确物理完成，不推算未实测的 policy 调用耗时。
+
+离线分析入口 `examples.jobpacer.analysis.visualize_phase3 batch` 为每个批次生成 makespan 图、独立
+代表运行时间线、预先固定首个共同 seed/repeat 的 rank 0/1 配对时间线，以及 rank/coordinator 诊断、
+逐 job 配对 JCT 和 `analysis.md`。分析代码 SHA-256 写入批次报告。运行时实验 raw 和 CSV 在被忽略的
+`benchmark/phase3/results/` 本地产物树中，不会自动加入版本控制。
+
+Stage 0 验证两种准备模式与 FIFO/LTF/static FIFO，覆盖 producer 先于 OFFER、grant/launch 投影、tensor
+独立与数值校验，以及两种模式的 binding failure 有界退出。真实 Gloo 集成定向测试 8 passed、30
+deselected；完整单元测试 209 passed、43 skipped；`git diff --check` 通过。
+
+正式运行分成 A（90）、B（60）、C（90）和 D（180）次，共 420 次 replay，另有 C 阶段 6 次 smoke；
+均串行执行。每个正式 replay 退出成功且 validation 为 ok。A/B 的 source snapshot digest 相同；
+C/D digest 的差异仅为离线可视化/诊断代码变化，参与 collective 执行的源码文件摘要相同。批次均记录
+dirty worktree、共同 profile SHA-256、CPU 型号/affinity、线程变量和原始 trace SHA-256。profile 使用
+`phase3-compact-20260923/profile.json`，digest 为
+`0283de537d286411b5014ca5436b6284c748fecc122360c8d1dfd8ab42573093`。详见
+[`docs/JobPacer/result/phase3experiments.md`](../result/phase3experiments.md) 的 2026-09-24 runtime-overhead
+结果节。

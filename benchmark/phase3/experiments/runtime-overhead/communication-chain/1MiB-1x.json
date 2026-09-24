@@ -1,0 +1,21 @@
+{
+  "name": "communication-chain-1MiB-1x",
+  "seed": 6200,
+  "execution": {
+    "compute_duration_s": {}
+  },
+  "jobs": [
+    {
+      "job_id": "job-0",
+      "communications": [
+        {
+          "id": 0,
+          "num_bytes": 1048576,
+          "producer_compute_s": 0,
+          "consumer_compute_s": 0,
+          "estimated_comm_s": 0.001
+        }
+      ]
+    }
+  ]
+}

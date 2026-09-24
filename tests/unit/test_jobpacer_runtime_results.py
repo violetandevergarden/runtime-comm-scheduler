@@ -109,13 +109,57 @@ def test_metrics_label_coordinator_epoch_duration_and_prediction_time_anchor():
     result = metrics(results)
     assert set(result) == {
         "coordinator_task_timings", "coordinator_idle_s", "coordinator_epoch_duration_s",
-        "job_duration_s", "rank_task_timings", "dag_rank_task_timings",
+        "job_duration_s", "rank_task_timings", "rank_process_cpu_time_s", "rank_context_switches",
+        "dag_rank_task_timings",
         "dag_node_ready_wait_s", "predicted_ready_error_s", "dag_timing_clock",
     }
     assert result["predicted_ready_error_s"] == {"0": {task_id: 10 / 1_000_000}}
     assert result["coordinator_task_timings"][task_id]["grant_to_all_submitted_s"] == pytest.approx(0.2)
     assert result["coordinator_epoch_duration_s"] == pytest.approx(2.0)
     assert metrics([]) == {}
+
+
+def test_linear_metrics_report_completion_feedback_and_probe_events():
+    task_id = "job-0/comm-0"
+    records = [
+        {"kind": "decision", "decision": "dispatch", "task_id": task_id, "now": 1.0},
+        {"kind": "submitted", "task_id": task_id, "now": 1.1},
+        {"kind": "completed", "task_id": task_id, "now": 1.4},
+        {"kind": "policy_snapshot", "now": 1.45, "eligible": [{"task_id": "job-1/comm-0"}]},
+        {"kind": "decision", "decision": "dispatch", "task_id": "job-1/comm-0", "now": 1.5},
+        {"kind": "submitted", "task_id": "job-1/comm-0", "now": 1.6},
+        {"kind": "completed", "task_id": "job-1/comm-0", "now": 1.7},
+    ]
+    result = metrics([{
+        "rank": 0,
+        "process_cpu_time_s": 0.03,
+        "voluntary_context_switches": 7,
+        "involuntary_context_switches": 2,
+        "decision_records": records,
+        "runtime_events": [
+            {"task_id": task_id, "kind": "submit_call", "time_us": 100},
+            {"task_id": task_id, "kind": "grant_received", "time_us": 150},
+            {"task_id": task_id, "kind": "collective_call_start", "time_us": 160},
+            {"task_id": task_id, "kind": "collective_call_return", "time_us": 170},
+            {"task_id": task_id, "kind": "completion_observed", "time_us": 240,
+             "completion_probe_count": 4},
+            {"task_id": task_id, "kind": "application_wait_start", "time_us": 200},
+            {"task_id": task_id, "kind": "application_wait_return", "time_us": 250},
+        ],
+        "jobs": [{"job_id": "job-0", "tasks": [{
+            "task_id": task_id, "ready_ts": 80, "submit_call_ts": 100,
+            "consumer_end_ts": 250, "first_wait_ts": 200,
+        }]}],
+    }])
+    timing = result["coordinator_task_timings"][task_id]
+    assert timing["all_completed_to_next_grant_s"] == pytest.approx(0.1)
+    assert timing["legal_candidate_present_during_gap"] is True
+    local = result["rank_task_timings"]["0"][task_id]
+    assert local["producer_ready_to_submit_call_s"] == pytest.approx(20 / 1_000_000)
+    assert local["completion_probe_count"] == 4
+    assert local["completion_observed_to_application_continue_s"] == pytest.approx(10 / 1_000_000)
+    assert result["rank_process_cpu_time_s"] == {"0": 0.03}
+    assert result["rank_context_switches"]["0"] == {"voluntary": 7, "involuntary": 2}
 
 
 def test_performance_uses_rank_local_release_durations():

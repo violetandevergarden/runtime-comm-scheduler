@@ -205,6 +205,7 @@ Visualizer 只接受完整 batch manifest 列出的 schema-v2 trace，并拒绝�
 | `scripts/run_phase1_2_experiments.py` | Phase 1/2 的批次编排入口（原 benchmark 下的 `run_experiments.py`） |
 | `scripts/batch_runner.py` | Phase 1/2 容量、轮询和优先级矩阵执行与分析 |
 | `analysis/visualize.py` | Phase 1/2 历史 batch 的 trace 读取与绘图 |
+| `analysis/visualize_phase3.py` | Phase 3 两类对比图：suite 总览及各多策略批次的 makespan、时间线 SVG |
 
 ## 测试
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import resource
 import sys
 import threading
 import time
@@ -79,6 +80,55 @@ class _DropOneSubmit:
 
     def abort(self, *args, **kwargs):
         return self._runtime.abort(*args, **kwargs)
+
+
+def _make_linear_binding(spec, group, *, rank: int, device: str, fault: str,
+                         job_id: str, ordinal: int) -> tuple[LocalBinding, dict[str, Any]]:
+    start_ts = time.perf_counter_ns() // 1000
+    if fault == "binding_failure" and rank == 0 and job_id == "job-0" and ordinal == 0:
+        raise RuntimeError("injected linear binding failure")
+    binding = make_collective_binding(spec, group, rank=rank, device=device)
+    end_ts = time.perf_counter_ns() // 1000
+    return binding, {
+        "task_id": spec.task_id, "job_id": job_id, "ordinal": ordinal,
+        "binding_create_start_ts": start_ts, "binding_create_end_ts": end_ts,
+        "binding_create_duration_us": end_ts - start_ts,
+    }
+
+
+def _prepare_linear_bindings(workload: Workload, local_jobs: list[Job], *, groups,
+                             rank: int, world_size: int, device: str, epoch: int, fault: str
+                             ) -> tuple[dict[str, LocalBinding], list[dict[str, Any]], int, int]:
+    """Create every rank-local linear tensor/binding before application release."""
+    start_ts = time.perf_counter_ns() // 1000
+    bindings: dict[str, LocalBinding] = {}
+    events: list[dict[str, Any]] = []
+    local_error: BaseException | None = None
+    try:
+        for job in local_jobs:
+            for comm in job.communications:
+                spec = task_spec(job, comm, epoch=epoch)
+                binding, event = _make_linear_binding(
+                    spec, groups[job.job_id], rank=rank, device=device, fault=fault,
+                    job_id=job.job_id, ordinal=comm.id,
+                )
+                if spec.task_id in bindings:
+                    raise ValueError(f"duplicate precreated binding for {spec.task_id}")
+                bindings[spec.task_id] = binding
+                events.append(event)
+    except BaseException as exc:  # synchronize a local allocation failure across ranks
+        local_error = exc
+
+    errors: list[str | None] = [None] * world_size
+    dist.all_gather_object(errors, None if local_error is None else
+                           f"{type(local_error).__name__}: {local_error}")
+    end_ts = time.perf_counter_ns() // 1000
+    failures = [(endpoint, error) for endpoint, error in enumerate(errors) if error]
+    if failures:
+        if local_error is not None:
+            raise local_error
+        raise RuntimeError(f"linear binding preparation failed on another rank: {failures}")
+    return bindings, events, start_ts, end_ts
 
 
 def _free_device(backend: str) -> str:
@@ -221,7 +271,10 @@ def _run_jobs(jobs, run_one, *, runtime, deadline: float, stop_event: threading.
 
 def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank: int, world_size: int,
                     device: str, deadline: float, stop_event: threading.Event,
-                    validation_records: list[tuple[dict[str, Any], torch.Tensor, int]]) -> dict[str, Any]:
+                    validation_records: list[tuple[dict[str, Any], torch.Tensor, int]],
+                    precreated_bindings: dict[str, LocalBinding] | None,
+                    binding_creation_events: list[dict[str, Any]], binding_events_lock: threading.Lock
+                    ) -> dict[str, Any]:
     result: dict[str, Any] = {"job_id": job.job_id, "status": "ok", "tasks": [],
                               "compute_samples_s": {},
                               "job_start_ts": time.perf_counter_ns() // 1000}
@@ -247,7 +300,21 @@ def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank
         stop_event.wait(producer_s)
         ready_ts = time.perf_counter_ns() // 1000
         group = groups[job.job_id]
-        binding = make_collective_binding(spec, group, rank=rank, device=device)
+        if precreated_bindings is None:
+            binding, binding_event = _make_linear_binding(
+                spec, group, rank=rank, device=device, fault=args.fault,
+                job_id=job.job_id, ordinal=comm.id,
+            )
+            with binding_events_lock:
+                binding_creation_events.append(binding_event)
+        else:
+            try:
+                binding = precreated_bindings.pop(spec.task_id)
+            except KeyError as exc:
+                raise RuntimeError(f"missing precreated binding for {spec.task_id}") from exc
+            binding_event = next(
+                item for item in binding_creation_events if item["task_id"] == spec.task_id
+            )
         if args.fault == "metadata_mismatch" and rank == 1 and job.job_id == "job-1" and index == 0:
             spec = replace(spec, collective=CollectiveSpec("all_reduce", spec.collective.numel + 1,
                                                            spec.collective.num_bytes + 4, "float32",
@@ -257,20 +324,25 @@ def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank
                 raise RuntimeError("injected launch failure")
             binding = replace(binding, launch=fail_launch)
         submit_call_ts = time.perf_counter_ns() // 1000
+        runtime.event_log.record("submit_call", task_id=spec.task_id)
         handle = runtime.submit(spec, binding, hint)
         submit_return_ts = time.perf_counter_ns() // 1000
+        runtime.event_log.record("submit_return", task_id=spec.task_id)
         consume_start = time.perf_counter_ns() // 1000
         stop_event.wait(consumer_s)
         first_wait_ts = time.perf_counter_ns() // 1000
+        runtime.event_log.record("application_wait_start", task_id=spec.task_id)
         if not handle.wait_host(max(0.0, deadline - time.monotonic())):
             raise TimeoutError(f"wait timed out for {spec.task_id}")
         consumer_end_ts = time.perf_counter_ns() // 1000
+        runtime.event_log.record("application_wait_return", task_id=spec.task_id)
         expected = sum(item + 1 for item in ranks_for_job(job, world_size))
         task_result = {
             "task_id": spec.task_id, "job_id": job.job_id, "ordinal": comm.id,
             "correct": None, "decision_seq": handle.decision_seq,
             "group_id": spec.group_id, "group_seq": spec.group_seq,
             "producer_start_ts": producer_start, "ready_ts": ready_ts,
+            **binding_event,
             "submit_call_ts": submit_call_ts, "submit_return_ts": submit_return_ts,
             "consumer_start_ts": consume_start, "first_wait_ts": first_wait_ts,
             "consumer_end_ts": consumer_end_ts,
@@ -397,6 +469,18 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                                 rank=rank, world_size=world_size,
                                 timeout=timedelta(seconds=_remaining(setup_deadline)))
         groups = _new_groups(inputs, world_size, setup_deadline)
+        local_jobs = ([job for job in workload.jobs if rank in ranks_for_job(job, world_size)]
+                      if dag is None else [])
+        precreated_bindings: dict[str, LocalBinding] | None = None
+        binding_creation_events: list[dict[str, Any]] = []
+        preparation_start_ts = preparation_end_ts = None
+        binding_preparation = getattr(args, "binding_preparation", "on-ready")
+        if dag is None and binding_preparation == "precreate":
+            (precreated_bindings, binding_creation_events,
+             preparation_start_ts, preparation_end_ts) = _prepare_linear_bindings(
+                workload, local_jobs, groups=groups, rank=rank, device=device,
+                world_size=world_size, epoch=args.epoch, fault=args.fault,
+            )
         dist.barrier()
         warmup_collective_count = _warmup_collectives(
             inputs, groups, rank=rank, world_size=world_size, device=device,
@@ -442,6 +526,8 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
         if server is not None:
             server.wait_ready(_remaining(setup_deadline))
         dist.barrier()
+        cpu_start_s = time.process_time()
+        usage_start = resource.getrusage(resource.RUSAGE_SELF)
         application_release_ts = time.perf_counter_ns() // 1000
         deadline = time.monotonic() + args.timeout
         validation_records: list[tuple[dict[str, Any], torch.Tensor, int]] = []
@@ -460,16 +546,20 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             jobs = _run_jobs(local_jobs, run_one, runtime=runtime, deadline=deadline,
                              stop_event=stop_event, thread_name_prefix="dag")
         else:
-            local_jobs = [job for job in workload.jobs if rank in ranks_for_job(job, world_size)]
+            binding_events_lock = threading.Lock()
             run_one = lambda job: _run_linear_job(
                 job, workload=workload, args=args, runtime=runtime, groups=groups, rank=rank, world_size=world_size,
                 device=device, deadline=deadline, stop_event=stop_event,
-                validation_records=validation_records,
+                validation_records=validation_records, precreated_bindings=precreated_bindings,
+                binding_creation_events=binding_creation_events,
+                binding_events_lock=binding_events_lock,
             )
             jobs = _run_jobs(local_jobs, run_one, runtime=runtime, deadline=deadline,
                              stop_event=stop_event, thread_name_prefix="job")
         runtime.finish_epoch(_remaining(deadline))
         communication_drain_end_ts = time.perf_counter_ns() // 1000
+        cpu_drain_end_s = time.process_time()
+        usage_end = resource.getrusage(resource.RUSAGE_SELF)
         validation_start_ts, validation_end_ts = _validate_deferred(validation_records)
         application_end_ts = max(
             (job["job_end_ts"] for job in jobs), default=application_release_ts
@@ -494,6 +584,21 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 "environment": dict(profile.environment) if profile else None,
             },
             "wait_budget_s": wait_budget_s,
+            "binding_preparation": ("unchanged_dag" if dag is not None else
+                                    binding_preparation),
+            "preparation_start_ts": preparation_start_ts,
+            "preparation_end_ts": preparation_end_ts,
+            "preparation_total_us": (preparation_end_ts - preparation_start_ts
+                                     if preparation_start_ts is not None else None),
+            "preparation_scope": (
+                "binding construction and cross-rank preparation status agreement"
+                if preparation_start_ts is not None else
+                "no separate pre-release linear binding stage; per-task creation is recorded"
+                if dag is None else "DAG preparation path unchanged"
+            ),
+            "binding_creation_total_us": sum(item["binding_create_duration_us"]
+                                              for item in binding_creation_events),
+            "binding_creation_events": binding_creation_events,
             "application_release_ts": application_release_ts,
             "application_end_ts": application_end_ts,
             "communication_drain_end_ts": communication_drain_end_ts,
@@ -503,6 +608,9 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             "harness_end_ts": None,
             "application_makespan_us": application_end_ts - application_release_ts,
             "communication_drain_makespan_us": communication_drain_end_ts - application_release_ts,
+            "process_cpu_time_s": cpu_drain_end_s - cpu_start_s,
+            "voluntary_context_switches": usage_end.ru_nvcsw - usage_start.ru_nvcsw,
+            "involuntary_context_switches": usage_end.ru_nivcsw - usage_start.ru_nivcsw,
             "validation_total_us": validation_end_ts - validation_start_ts,
             "task_sequence": [task["task_id"] for job in jobs for task in job["tasks"]],
             "grant_sequence": runtime.grant_order, "launch_sequence": runtime.launch_order,
@@ -564,6 +672,7 @@ def main() -> int:
     parser.add_argument("--compute-jitter", type=float, default=0.0)
     parser.add_argument("--wait-budget-s", type=float, default=0.02)
     parser.add_argument("--warmup-iterations", type=int, default=1)
+    parser.add_argument("--binding-preparation", choices=("precreate", "on-ready"), default="precreate")
     parser.add_argument("--comm-profile", type=Path)
     parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--control-port", type=int, required=True)

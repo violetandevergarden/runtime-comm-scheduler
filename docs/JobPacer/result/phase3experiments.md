@@ -319,3 +319,20 @@ interleaved isolated 的 5-repeat slowdown 中位数（shared job JCT / 对应 i
 job JCT）为：FIFO 的 job-0 `1.366`、job-1 `1.095`；LTF 的 job-0 `1.300`、job-1
 `1.151`。该诊断只有一个 seed，不解释为稳定资源竞争效应。原始 JSON、manifest、
 逐 job/机制记录、配对 CSV 和噪声 pilot 分批摘要均留在上述结果目录。
+
+## Phase 3 对比图（2026-09-24）
+
+本次只保留两类图：整体 makespan 对比，以及仿照 Phase 1.2 绘制的时间线对比。图由已保存的 Phase 3 CSV 和 raw JSON
+生成，没有重跑实验或改写统计结果。输出位于
+[`benchmark/phase3/results/suites/20260923-compact/figures/`](../../../benchmark/phase3/results/suites/20260923-compact/figures/)；
+`.gitignore` 忽略整个 Phase 3 results 树，因此图表保存在本地结果目录，可由 README 中的命令重新生成。
+
+整体 makespan 图按 L0/L1/L5 主批次分面，绘制成功运行的单次 makespan、样本中位数和描述性 P10–P90。时间线图对批次中每个
+策略分别选择 makespan 最接近该策略样本中位数的成功 trace，rank 0 单独成图 panel；所有时间戳只减去各自 rank 的
+`application_release_ts`，不对齐不同 rank。图中阶段根据旧路径和新 runtime 各自 trace 的真实字段构造；该时间线用于解释
+单次代表运行，不是重复样本的性能统计。每个有明确多臂对照的批次（包括 L1 main）也在自身 `figures/` 保存这两类图；G0
+bridge 在批次根目录对比 linear/DAG，noise 在批次根目录对比 A/B。suite 目录内的图是主批次总览与默认 L1 时间线，不替代
+各批次图；calibration profile 和没有明确对照的单臂批次不绘制策略对比图。
+
+2026-09-24 runtime-overhead A–D 的实施数据、配对指标及范围限制见
+[`phase3-runtime-overhead-20260924.md`](phase3-runtime-overhead-20260924.md)。

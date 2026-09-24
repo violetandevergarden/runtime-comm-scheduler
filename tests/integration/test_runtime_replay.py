@@ -178,6 +178,70 @@ def test_linear_launch_and_probe_failures_are_bounded(fault, tmp_path):
     assert payload["validation"]["errors"]
 
 
+@pytest.mark.parametrize("policy", ("fifo", "ltf", "static_fifo"))
+@pytest.mark.parametrize("binding_preparation", ("precreate", "on-ready"))
+def test_linear_binding_preparation_preserves_readiness_and_collective_semantics(
+    policy, binding_preparation, tmp_path
+):
+    if os.environ.get("RUN_JOBPACER_RUNTIME_REPLAY") != "1":
+        pytest.skip("set RUN_JOBPACER_RUNTIME_REPLAY=1 to run the local TCP replay")
+    pytest.importorskip("torch")
+    root = Path(__file__).resolve().parents[2]
+    output = tmp_path / f"linear-{policy}-{binding_preparation}.json"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root), env.get("PYTHONPATH", "")))
+    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+               "--policy", policy, "--workload", "balanced", "--backend", "gloo",
+               "--world-size", "2", "--epoch", "83", "--compute-jitter", "0.3",
+               "--binding-preparation", binding_preparation, "--timeout", "20",
+               "--output", str(output)]
+    completed = subprocess.run(command, cwd=root, env=env, capture_output=True,
+                               text=True, timeout=35)
+    assert completed.returncode == 0, completed.stderr + completed.stdout[-4000:]
+    payload = json.loads(output.read_text())
+    assert payload["validation"]["status"] == "ok"
+    assert payload["validation"]["all_collectives_correct"] is True
+    for rank in payload["ranks"]:
+        assert rank["binding_preparation"] == binding_preparation
+        assert rank["grant_sequence"] == rank["launch_sequence"]
+        events = {event["task_id"]: event["time_us"] for event in rank["runtime_events"]
+                  if event["kind"] == "offered"}
+        tasks = [task for job in rank["jobs"] for task in job["tasks"]]
+        assert set(events) == {task["task_id"] for task in tasks}
+        assert all(task["ready_ts"] <= events[task["task_id"]] for task in tasks)
+        if binding_preparation == "precreate":
+            assert rank["preparation_end_ts"] < rank["application_release_ts"]
+            assert all(event["binding_create_end_ts"] <= rank["preparation_end_ts"]
+                       for event in rank["binding_creation_events"])
+        else:
+            assert rank["preparation_total_us"] is None
+            assert all(task["ready_ts"] <= task["binding_create_start_ts"]
+                       <= task["binding_create_end_ts"] <= task["submit_call_ts"]
+                       for task in tasks)
+
+
+@pytest.mark.parametrize("binding_preparation", ("precreate", "on-ready"))
+def test_linear_binding_preparation_failures_exit_bounded(binding_preparation, tmp_path):
+    if os.environ.get("RUN_JOBPACER_RUNTIME_REPLAY") != "1":
+        pytest.skip("set RUN_JOBPACER_RUNTIME_REPLAY=1 to run the local TCP replay")
+    pytest.importorskip("torch")
+    root = Path(__file__).resolve().parents[2]
+    output = tmp_path / f"binding-failure-{binding_preparation}.json"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root), env.get("PYTHONPATH", "")))
+    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+               "--policy", "ltf", "--workload", "balanced", "--backend", "gloo",
+               "--world-size", "2", "--binding-preparation", binding_preparation,
+               "--setup-timeout", "5", "--timeout", "3", "--fault", "binding_failure",
+               "--output", str(output)]
+    completed = subprocess.run(command, cwd=root, env=env, capture_output=True,
+                               text=True, timeout=15)
+    assert completed.returncode != 0
+    payload = json.loads(output.read_text())
+    assert payload["validation"]["status"] == "failed"
+    assert any("binding failure" in error for error in payload["validation"]["errors"])
+
+
 @pytest.mark.parametrize("fault", ("compute_failure", "binding_failure", "missing_task"))
 def test_dag_failures_are_bounded(fault, tmp_path):
     if os.environ.get("RUN_JOBPACER_RUNTIME_REPLAY") != "1":

@@ -48,6 +48,7 @@ def _start(rank: int, args: argparse.Namespace, rendezvous_port: int, control_po
                "--poll-interval", str(args.poll_interval), "--dag-poll-interval", str(args.dag_poll_interval),
                "--compute-jitter", str(args.compute_jitter), "--wait-budget-s", str(args.wait_budget_s),
                "--warmup-iterations", str(args.warmup_iterations),
+               "--binding-preparation", args.binding_preparation,
                "--control-port", str(control_port),
                "--fault", args.fault]
     if args.dag:
@@ -97,6 +98,8 @@ def main() -> int:
     parser.add_argument("--compute-jitter", type=float, default=0.0)
     parser.add_argument("--wait-budget-s", type=float, default=0.02)
     parser.add_argument("--warmup-iterations", type=int, default=1)
+    parser.add_argument("--binding-preparation", choices=("precreate", "on-ready"), default="precreate",
+                        help="linear replay only; DAG preparation remains unchanged")
     parser.add_argument("--comm-profile", type=Path)
     parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--output", type=Path)
@@ -194,14 +197,17 @@ def main() -> int:
             elif result is not None:
                 results.append(result)
     results.sort(key=lambda item: item.get("rank", -1))
-    validation = validate_results(
-        results, args.world_size, expected=expected, expected_nodes=expected_nodes, digests=digests,
-        expected_config={
+    expected_config = {
             "epoch": args.epoch, "world_size": args.world_size, "max_inflight": 1,
             "backend": args.backend, "completion_poll_interval_s": args.poll_interval,
             "dag_poll_interval_s": args.dag_poll_interval, "compute_jitter": args.compute_jitter,
             "warmup_iterations": args.warmup_iterations,
-        },
+        }
+    if not args.dag:
+        expected_config["binding_preparation"] = args.binding_preparation
+    validation = validate_results(
+        results, args.world_size, expected=expected, expected_nodes=expected_nodes, digests=digests,
+        expected_config=expected_config,
     )
     validation["errors"] = errors + validation["errors"]
     if errors:
@@ -213,6 +219,7 @@ def main() -> int:
     config["comm_profile"] = str(args.comm_profile) if args.comm_profile else None
     config["profile_strict"] = args.profile_strict if args.comm_profile else None
     config["wait_budget_s"] = args.wait_budget_s
+    config["binding_preparation"] = args.binding_preparation if not args.dag else "unchanged_dag"
     if args.comm_profile:
         config["profile_digest"] = load_profile(args.comm_profile).digest()
     git_head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,

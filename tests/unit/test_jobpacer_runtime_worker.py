@@ -252,3 +252,72 @@ def test_run_rank_keeps_one_replay_deadline_through_finish_and_skips_finish_afte
         # The runner consumed 0.75s; finish gets only the remainder of the same deadline.
         assert now[0] == pytest.approx(101.0)
         assert captured["runtime"].finish_timeouts == pytest.approx([1.25])
+
+
+def test_precreated_linear_bindings_are_unique_and_recorded_before_release(monkeypatch):
+    monkeypatch.setattr(runtime_worker.dist, "all_gather_object",
+                        lambda observed, local: observed.__setitem__(slice(None), [local, local]))
+    workload = built_workload("balanced")
+    local_jobs = list(workload.jobs)
+    groups = {job.job_id: object() for job in local_jobs}
+    bindings, events, start_ts, end_ts = runtime_worker._prepare_linear_bindings(
+        workload, local_jobs, groups=groups, rank=0, world_size=2, device="cpu",
+        epoch=3, fault="none",
+    )
+
+    release_ts = time.perf_counter_ns() // 1000
+    expected_ids = {f"{job.job_id}/comm-{comm.id}"
+                    for job in local_jobs for comm in job.communications}
+    assert set(bindings) == expected_ids
+    assert {item["task_id"] for item in events} == expected_ids
+    assert start_ts <= end_ts < release_ts
+    assert len({binding.tensor.data_ptr() for binding in bindings.values()}) == len(bindings)
+    assert all(binding.tensor.tolist() == [1.0] * binding.tensor.numel()
+               for binding in bindings.values())
+
+
+def test_on_ready_linear_binding_creation_follows_producer_and_matches_precreate(monkeypatch):
+    from runtime_comm_scheduler.runtime import EventLog
+
+    workload = built_workload("balanced")
+    job = workload.jobs[0]
+    group = object()
+    monkeypatch.setattr(runtime_worker, "linear_execution_duration", lambda *args: 0.0)
+
+    class Handle:
+        decision_seq = 1
+
+        def wait_host(self, _timeout):
+            return True
+
+    class RecordingRuntime:
+        event_log = EventLog("runtime", 0)
+
+        def __init__(self):
+            self.bindings = {}
+
+        def declare(self, *_args):
+            pass
+
+        def submit(self, spec, binding, _hint):
+            self.bindings[spec.task_id] = binding
+            return Handle()
+
+    runtime = RecordingRuntime()
+    args = argparse.Namespace(epoch=4, compute_jitter=0.0, fault="none",
+                              binding_preparation="on-ready")
+    events = []
+    result = runtime_worker._run_linear_job(
+        job, workload=workload, args=args, runtime=runtime, groups={job.job_id: group},
+        rank=0, world_size=2, device="cpu", deadline=time.monotonic() + 2,
+        stop_event=threading.Event(), validation_records=[], precreated_bindings=None,
+        binding_creation_events=events, binding_events_lock=threading.Lock(),
+    )
+
+    assert [task["task_id"] for task in result["tasks"]] == [
+        task_id for task_id in runtime.bindings
+    ]
+    assert all(task["ready_ts"] <= task["binding_create_start_ts"]
+               <= task["binding_create_end_ts"] <= task["submit_call_ts"]
+               for task in result["tasks"])
+    assert len({binding.tensor.data_ptr() for binding in runtime.bindings.values()}) == len(runtime.bindings)

@@ -35,7 +35,18 @@ ARM_SPECS = {
     "old-ltf": ("old", "ltf", True, False),
     **{f"new-{policy}": ("new", policy, False, False)
        for policy in ("static_fifo", "static_ltf", "fifo", "ltf", "lookahead")},
+    "new-ltf-on-ready": ("new", "ltf", False, False),
+    "new-ltf-precreate": ("new", "ltf", False, False),
+    "new-ltf-poll-1ms": ("new", "ltf", False, False),
+    "new-ltf-poll-0.2ms": ("new", "ltf", False, False),
 }
+ARM_BINDING_PREPARATION = {
+    "new-ltf-on-ready": "on-ready",
+    "new-ltf-precreate": "precreate",
+    "new-ltf-poll-1ms": "precreate",
+    "new-ltf-poll-0.2ms": "precreate",
+}
+ARM_POLL_INTERVAL = {"new-ltf-poll-1ms": 0.001, "new-ltf-poll-0.2ms": 0.0002}
 SOURCE_SNAPSHOT_ROOTS = (
     ROOT / "src/runtime_comm_scheduler/dag",
     ROOT / "src/runtime_comm_scheduler/runtime",
@@ -49,6 +60,7 @@ SOURCE_SNAPSHOT_ROOTS = (
     ROOT / "examples/jobpacer/scripts/run_phase1.py",
     ROOT / "examples/jobpacer/runtime/runtime_worker.py",
     ROOT / "examples/jobpacer/analysis/runtime_results.py",
+    ROOT / "examples/jobpacer/analysis/visualize_phase3.py",
     ROOT / "examples/jobpacer/runtime/runtime_adapter.py",
     ROOT / "examples/jobpacer/workloads.py",
     ROOT / "examples/jobpacer/comm_profile.py",
@@ -88,8 +100,10 @@ def _source_snapshot() -> dict[str, Any]:
 
 
 def _command(args: argparse.Namespace, policy: str, epoch: int, output: Path, *, old: bool = False,
-             old_bare: bool = False) -> list[str]:
+             old_bare: bool = False, binding_preparation: str | None = None,
+             poll_interval: float | None = None) -> list[str]:
     source = ("--dag", str(args.dag)) if args.dag else ("--workload", args.workload)
+    poll_interval = getattr(args, "poll_interval", 0.001) if poll_interval is None else poll_interval
     if old:
         command = [sys.executable, str(PHASE1_REPLAY if old_bare else OLD_REPLAY)]
         if not old_bare:
@@ -99,7 +113,7 @@ def _command(args: argparse.Namespace, policy: str, epoch: int, output: Path, *,
             "--selection", "runtime_arrival", *source,
             "--backend", args.backend, "--world-size", str(args.world_size),
             "--max-outstanding", "1", "--timeout", str(args.timeout),
-            "--completion-poll-interval-s", str(args.poll_interval),
+            "--completion-poll-interval-s", str(poll_interval),
             "--compute-jitter", str(args.compute_jitter), "--epoch", str(epoch),
             "--warmup-iterations", str(args.warmup_iterations),
             "--output", str(output),
@@ -110,8 +124,10 @@ def _command(args: argparse.Namespace, policy: str, epoch: int, output: Path, *,
             *source, "--backend", args.backend,
             "--world-size", str(args.world_size), "--epoch", str(epoch),
             "--compute-jitter", str(args.compute_jitter), "--wait-budget-s", str(args.wait_budget_s),
-            "--poll-interval", str(args.poll_interval), "--timeout", str(args.timeout),
+            "--poll-interval", str(poll_interval), "--timeout", str(args.timeout),
             "--warmup-iterations", str(args.warmup_iterations),
+            "--binding-preparation", binding_preparation or
+            getattr(args, "binding_preparation", "precreate"),
             "--output", str(output),
         ]
     if args.comm_profile:
@@ -138,14 +154,21 @@ def _measure_row(record: dict[str, Any], result: dict[str, Any] | None, result_p
         jcts, makespan = [], None
     return {
         "run_id": record["run_id"],
+        "arm": record.get("arm", f"{record['group']}-{config['policy']}"),
         "group": record["group"],
         "policy": config["policy"],
         "workload": config["workload"],
         "epoch": config["epoch"],
         "repeat": config["repeat"],
         "compute_jitter": config["compute_jitter"],
+        "binding_preparation": config.get("binding_preparation"),
+        "poll_interval_s": config.get("poll_interval_s", config.get("poll_interval")),
         "status": status,
         "makespan_s": makespan,
+        "preparation_total_s": (_rank_max(result, "preparation_total_us") / 1_000_000
+                                if result and _rank_max(result, "preparation_total_us") is not None else None),
+        "binding_creation_total_s": (_rank_max(result, "binding_creation_total_us") / 1_000_000
+                                     if result and _rank_max(result, "binding_creation_total_us") is not None else None),
         "mean_job_jct_s": sum(jcts) / len(jcts) if jcts else None,
         "slowest_job_jct_s": max(jcts, default=None),
         "wall_time_s": record["wall_time_s"],
@@ -160,12 +183,67 @@ def _job_rows(record: dict[str, Any], result: dict[str, Any] | None) -> list[dic
     status = result.get("validation", {}).get("status")
     performance = result.get("performance", {})
     return [{
-        "run_id": record["run_id"], "group": record["group"],
+        "run_id": record["run_id"], "arm": record.get("arm"), "group": record["group"],
         "policy": record["config"]["policy"], "workload": record["config"]["workload"],
         "epoch": record["config"]["epoch"], "repeat": record["config"]["repeat"],
+        "binding_preparation": record["config"].get("binding_preparation"),
+        "poll_interval_s": record["config"].get("poll_interval_s"),
         "job_id": item["job_id"], "jct_s": item["makespan_us"] / 1_000_000,
         "status": status, "isolated_jct_s": None, "slowdown": None,
     } for item in performance.get("job_makespans", [])]
+
+
+def _task_timing_rows(record: dict[str, Any], result: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not result or record.get("returncode") != 0:
+        return []
+    config = record["config"]
+    output = []
+    for rank in result.get("ranks", []):
+        events = {}
+        for event in rank.get("runtime_events", []):
+            if event.get("task_id"):
+                events.setdefault(event["task_id"], {})[event["kind"]] = event
+        for job in rank.get("jobs", []):
+            for task in job.get("tasks", []):
+                task_id = task.get("task_id") or f"{job['job_id']}/comm-{task.get('ordinal', '?')}"
+                task_events = events.get(task_id, {})
+                def timestamp(event_name: str, *fields: str):
+                    event = task_events.get(event_name)
+                    if event is not None:
+                        return event.get("time_us")
+                    return next((task[field] for field in fields if task.get(field) is not None), None)
+                ready = timestamp("", "ready_ts", "ready_record_ts")
+                submit_call = timestamp("submit_call", "submit_call_ts", "submit_api_start_ts")
+                submit_return = timestamp("submit_return", "submit_return_ts", "submit_api_return_ts")
+                grant = timestamp("grant_received", "admit_ts")
+                call_start = timestamp("collective_call_start", "collective_call_start_ts")
+                call_return = timestamp("collective_call_return", "collective_call_return_ts")
+                complete = timestamp("completion_observed", "completion_observed_ts")
+                wait_start = timestamp("application_wait_start", "first_wait_ts", "application_wait_start_ts")
+                wait_return = timestamp("application_wait_return", "consumer_end_ts", "wait_return_ts")
+                def elapsed(start, end):
+                    return (end - start) if start is not None and end is not None else None
+                output.append({
+                    "run_id": record["run_id"], "arm": record.get("arm"),
+                    "rank": rank.get("rank"), "epoch": config.get("epoch"),
+                    "repeat": config.get("repeat"), "job_id": job["job_id"],
+                    "task_id": task_id,
+                    "binding_preparation": config.get("binding_preparation"),
+                    "poll_interval_s": config.get("poll_interval_s"),
+                    "producer_ready_to_submit_call_us": elapsed(ready, submit_call),
+                    "submit_api_us": elapsed(submit_call, submit_return),
+                    "submit_call_to_grant_us": elapsed(submit_call, grant),
+                    "grant_to_collective_start_us": elapsed(grant, call_start),
+                    "collective_call_us": elapsed(call_start, call_return),
+                    "call_return_to_completion_observation_us": elapsed(call_return, complete),
+                    "application_wait_us": elapsed(wait_start, wait_return),
+                    "binding_create_us": task.get("binding_create_duration_us"),
+                    "tensor_create_us": task.get("tensor_create_duration_us"),
+                    "completion_probe_count": task_events.get("completion_observed", {}).get(
+                        "completion_probe_count"),
+                    "correct": task.get("correct"),
+                })
+    return output
 
 
 def _load_batch_manifest(jobs_path: Path) -> dict[str, Any]:
@@ -262,7 +340,7 @@ def _paired_rows(rows: list[dict[str, Any]], *, baseline: str, tie_threshold: fl
     successful = [row for row in rows if row["status"] == "ok" and row["makespan_s"] is not None]
     by_arm_block: dict[tuple[str, int, int], float] = {}
     for row in successful:
-        arm = f"{row['group']}-{row['policy']}"
+        arm = row.get("arm") or f"{row['group']}-{row['policy']}"
         key = (arm, int(row["epoch"]), int(row["repeat"]))
         if key in by_arm_block:
             raise ValueError(f"duplicate performance block {key}")
@@ -442,6 +520,12 @@ def _cpu_model() -> str | None:
     return None
 
 
+def _rank_max(result: dict[str, Any], field: str) -> float | None:
+    values = [rank[field] for rank in result.get("ranks", [])
+              if isinstance(rank.get(field), (int, float))]
+    return max(values) if values else None
+
+
 def _selected_arms(args: argparse.Namespace, parser: argparse.ArgumentParser) -> tuple[str, ...]:
     if args.arms:
         if args.include_old:
@@ -459,7 +543,8 @@ def _selected_arms(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
     return names
 
 
-def _plan(epochs: tuple[int, ...], repeats: int, arms: tuple[str, ...], order_seed: int) -> list[dict[str, Any]]:
+def _plan(epochs: tuple[int, ...], repeats: int, arms: tuple[str, ...], order_seed: int,
+          binding_preparation: str = "precreate", poll_interval: float = 0.001) -> list[dict[str, Any]]:
     plan: list[dict[str, Any]] = []
     for epoch in epochs:
         for repeat in range(repeats):
@@ -467,9 +552,14 @@ def _plan(epochs: tuple[int, ...], repeats: int, arms: tuple[str, ...], order_se
             random.Random(order_seed + epoch * 1_000_003 + repeat).shuffle(ordered)
             for arm in ordered:
                 group, policy, old, old_bare = ARM_SPECS[arm]
+                effective_binding = ("legacy_tensor_precreated" if old else
+                                     ARM_BINDING_PREPARATION.get(arm, binding_preparation))
+                effective_poll = ARM_POLL_INTERVAL.get(arm, poll_interval)
                 plan.append({"run_id": f"{len(plan) + 1:04d}-{arm}-e{epoch}-r{repeat}",
                              "arm": arm, "group": group, "policy": policy,
                              "old": old, "old_bare": old_bare,
+                             "binding_preparation": effective_binding,
+                             "poll_interval": effective_poll,
                              "epoch": epoch, "repeat": repeat, "block_order": ordered})
     return plan
 
@@ -482,10 +572,14 @@ def _historical_walls(paths: list[Path], scenario: str, arms: tuple[str, ...]) -
         for csv_path in csv_paths:
             with csv_path.open(newline="") as input_file:
                 for row in csv.DictReader(input_file):
-                    arm = f"{row.get('group')}-{row.get('policy')}"
-                    if (arm in samples and Path(row.get("workload", "")).stem == scenario
+                    arm = row.get("arm") or f"{row.get('group')}-{row.get('policy')}"
+                    targets = ([arm] if arm in samples else
+                               [candidate for candidate in samples
+                                if arm == "new-ltf" and candidate.startswith("new-ltf-")])
+                    if (targets and Path(row.get("workload", "")).stem == scenario
                             and row.get("wall_time_s")):
-                        samples[arm].append(float(row["wall_time_s"]))
+                        for target in targets:
+                            samples[target].append(float(row["wall_time_s"]))
     return {arm: statistics.median(values) for arm, values in samples.items() if values}
 
 
@@ -507,9 +601,15 @@ def _successful_record(record: dict[str, Any] | None, planned: dict[str, Any]) -
     if not record or record.get("returncode") != 0:
         return False
     config = record.get("config", {})
-    if (record.get("run_id") != planned["run_id"] or record.get("group") != planned["group"]
+    if (record.get("run_id") != planned["run_id"]
+            or (planned.get("arm") is not None and record.get("arm") != planned["arm"])
+            or record.get("group") != planned["group"]
             or config.get("policy") != planned["policy"] or config.get("epoch") != planned["epoch"]
-            or config.get("repeat") != planned["repeat"]):
+            or config.get("repeat") != planned["repeat"]
+            or (planned.get("binding_preparation") is not None
+                and config.get("binding_preparation") != planned["binding_preparation"])
+            or (planned.get("poll_interval") is not None
+                and config.get("poll_interval_s") != planned["poll_interval"])):
         return False
     result_path = _record_result_path(record)
     if (not result_path.is_file() or not record.get("result_sha256")
@@ -524,6 +624,9 @@ def _successful_record(record: dict[str, Any] | None, planned: dict[str, Any]) -
     return bool(result and result.get("validation", {}).get("status") == "ok"
                 and result_config.get("policy") == planned["policy"]
                 and result_config.get("epoch") == planned["epoch"]
+                and (planned.get("old", False)
+                     or planned.get("binding_preparation") is None
+                     or result_config.get("binding_preparation") == planned["binding_preparation"])
                 and jitter_matches)
 
 
@@ -578,6 +681,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compute-jitter", type=float, default=0.0)
     parser.add_argument("--wait-budget-s", type=float, default=0.02)
     parser.add_argument("--poll-interval", type=float, default=0.001)
+    parser.add_argument("--binding-preparation", choices=("precreate", "on-ready"), default="precreate")
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--warmup-iterations", type=int, default=1)
     parser.add_argument("--comm-profile", type=Path)
@@ -642,18 +746,30 @@ def main(argv: list[str] | None = None) -> int:
     if len(set(epochs)) != len(epochs):
         parser.error("--seeds must not contain duplicates")
     arms = _selected_arms(args, parser)
-    plan = _plan(epochs, args.repeats, arms, args.order_seed)
+    plan = _plan(epochs, args.repeats, arms, args.order_seed,
+                 args.binding_preparation, args.poll_interval)
 
     output_dir = args.output_dir.resolve()
     raw_dir = output_dir / "raw"
+    tables_dir = output_dir / "tables"
+    figures_dir = output_dir / "figures"
     config_snapshot = {
         "workload": str(source_path.resolve()) if not args.dag and source_path.is_file() else args.workload,
         "dag": str(args.dag.resolve()) if args.dag else None,
         "backend": args.backend, "world_size": args.world_size,
         "epochs": epochs, "repeats": args.repeats, "compute_jitter": args.compute_jitter,
         "wait_budget_s": args.wait_budget_s, "poll_interval": args.poll_interval,
+        "binding_preparation": args.binding_preparation,
         "order_seed": args.order_seed,
         "arms": arms,
+        "arm_configuration": {item["arm"]: {
+            "binding_preparation": item["binding_preparation"],
+            "poll_interval_s": item["poll_interval"],
+        } for item in plan[:len(arms)]},
+        "arm_configuration": {item["arm"]: {
+            "binding_preparation": item["binding_preparation"],
+            "poll_interval_s": item["poll_interval"],
+        } for item in plan[:len(arms)]},
         "baseline": args.baseline, "secondary_baselines": args.secondary_baseline,
         "timeout": args.timeout, "comm_profile": str(args.comm_profile) if args.comm_profile else None,
         "warmup_iterations": args.warmup_iterations,
@@ -661,7 +777,7 @@ def main(argv: list[str] | None = None) -> int:
         "isolated_jobs": [str(path) for path in args.isolated_jobs],
     }
     manifest = {
-        "schema_version": 4,
+        "schema_version": 5,
         "batch_id": output_dir.name,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "command": " ".join(sys.argv),
@@ -691,8 +807,8 @@ def main(argv: list[str] | None = None) -> int:
     if output_dir.exists() and not args.resume and not args.preview:
         parser.error(f"output directory already exists; use --resume or a fresh path: {output_dir}")
     if args.resume and output_dir.exists():
-        if not existing_manifest or existing_manifest.get("schema_version") != 4:
-            parser.error("resume requires a schema-4 batch manifest")
+        if not existing_manifest or existing_manifest.get("schema_version") != 5:
+            parser.error("resume requires a schema-5 batch manifest")
         for key in ("config", "profile_digest", "workload_digest", "static_order_digest",
                     "environment", "git_head", "source_snapshot"):
             if json.dumps(existing_manifest.get(key), sort_keys=True) != json.dumps(manifest.get(key), sort_keys=True):
@@ -743,6 +859,8 @@ def main(argv: list[str] | None = None) -> int:
         output_dir.mkdir(exist_ok=False)
         raw_dir.mkdir()
         (output_dir / "inputs").mkdir()
+        tables_dir.mkdir()
+        figures_dir.mkdir()
         (output_dir / "inputs" / "batch-config.json").write_text(json.dumps(config_snapshot, indent=2) + "\n")
         if args.comm_profile:
             (output_dir / "inputs" / "comm-profile.json").write_bytes(args.comm_profile.read_bytes())
@@ -769,7 +887,9 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             attempt, result_path, stdout_path, stderr_path = _attempt_paths(raw_dir, run_id)
             command = _command(args, item["policy"], item["epoch"], result_path,
-                               old=item["old"], old_bare=item["old_bare"])
+                               old=item["old"], old_bare=item["old_bare"],
+                               binding_preparation=item["binding_preparation"],
+                               poll_interval=item["poll_interval"])
             started = time.time()
             started_at = datetime.fromtimestamp(started, timezone.utc).isoformat()
             try:
@@ -790,7 +910,10 @@ def main(argv: list[str] | None = None) -> int:
             record = {
                 "run_id": run_id, "group": item["group"], "arm": item["arm"],
                 "attempt": attempt, "retry_of": latest.get(run_id, {}).get("result_path"),
-                "config": {"policy": item["policy"], "workload": args.workload or str(args.dag),
+                "config": {"policy": item["policy"], "arm": item["arm"],
+                           "binding_preparation": item["binding_preparation"],
+                           "poll_interval_s": item["poll_interval"],
+                           "workload": args.workload or str(args.dag),
                            "epoch": item["epoch"], "repeat": item["repeat"],
                            "compute_jitter": args.compute_jitter, "order_seed": args.order_seed,
                            "block_order": item["block_order"]},
@@ -813,14 +936,20 @@ def main(argv: list[str] | None = None) -> int:
                                  _record_result_path(record)) for record in records]
     job_rows = [row for record in records
                 for row in _job_rows(record, _load(_record_result_path(record)))]
+    task_rows = [row for record in records
+                 for row in _task_timing_rows(record, _load(_record_result_path(record)))]
     mechanism_rows = [_mechanism_row(record, _load(_record_result_path(record))) for record in records]
     mechanism_summary = _mechanism_summary(mechanism_rows, records)
 
     _write_csv(output_dir / "summary.csv", summary_rows)
-    for filename, table in (("jobs.csv", job_rows), ("mechanisms.csv", mechanism_rows)):
+    for filename, table in (("jobs.csv", job_rows), ("task-timings.csv", task_rows),
+                            ("mechanisms.csv", mechanism_rows)):
         if filename == "jobs.csv" and args.isolated_jobs:
             _attach_isolated(job_rows, args.isolated_jobs, manifest)
         _write_csv(output_dir / filename, table)
+        _write_csv(tables_dir / filename, table)
+    _write_csv(tables_dir / "summary.csv", summary_rows)
+    _write_csv(tables_dir / "mechanism-summary.csv", mechanism_summary)
     _write_csv(output_dir / "mechanism-summary.csv", mechanism_summary)
     paired = []
     for baseline in dict.fromkeys((args.baseline, *args.secondary_baseline)):
@@ -838,6 +967,8 @@ def main(argv: list[str] | None = None) -> int:
         "mechanism_summary": mechanism_summary,
         "failed_runs": sum(row["status"] != "ok" for row in summary_rows),
     }, indent=2, sort_keys=True) + "\n")
+    (tables_dir / "paired-summary.csv").write_bytes((output_dir / "paired-summary.csv").read_bytes())
+    (tables_dir / "analysis.json").write_bytes((output_dir / "analysis.json").read_bytes())
     failed = sum(row["status"] != "ok" for row in summary_rows)
     print(json.dumps({"output_dir": str(output_dir), "runs": len(records), "failed": failed}, sort_keys=True))
     return 0 if not failed else 1

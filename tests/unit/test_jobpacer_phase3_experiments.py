@@ -135,6 +135,58 @@ def test_seed_pairing_never_combines_different_successful_repeats():
     assert paired[0]["missing_seed_blocks"] == 1
 
 
+def test_binding_and_poll_arms_are_paired_inside_randomized_blocks():
+    arms = ("old-ltf", "new-ltf-on-ready", "new-ltf-precreate")
+    plan = experiment_batch._plan((5,), 2, arms, 17)
+    by_repeat = {repeat: [item for item in plan if item["repeat"] == repeat]
+                 for repeat in (0, 1)}
+    for items in by_repeat.values():
+        assert {item["arm"] for item in items} == set(arms)
+        assert len({tuple(item["block_order"]) for item in items}) == 1
+        assert len(set(items[0]["block_order"])) == len(arms)
+    assert {item["binding_preparation"] for item in by_repeat[0]} == {
+        "legacy_tensor_precreated", "on-ready", "precreate",
+    }
+
+    polling = experiment_batch._plan((5,), 1,
+                                     ("new-ltf-poll-1ms", "new-ltf-poll-0.2ms"), 3)
+    assert {item["poll_interval"] for item in polling} == {0.001, 0.0002}
+    assert all(item["binding_preparation"] == "precreate" for item in polling)
+
+
+def test_task_timing_rows_export_common_admission_and_completion_boundaries():
+    record = {
+        "run_id": "run", "arm": "new-ltf-precreate", "group": "new",
+        "config": {"epoch": 1, "repeat": 2, "binding_preparation": "precreate",
+                   "poll_interval_s": 0.001}, "returncode": 0,
+    }
+    trace = {"ranks": [{
+        "rank": 0,
+        "runtime_events": [
+            {"task_id": "job-0/comm-0", "kind": "grant_received", "time_us": 150},
+            {"task_id": "job-0/comm-0", "kind": "collective_call_start", "time_us": 160},
+            {"task_id": "job-0/comm-0", "kind": "collective_call_return", "time_us": 170},
+            {"task_id": "job-0/comm-0", "kind": "completion_observed", "time_us": 240,
+             "completion_probe_count": 4},
+        ],
+        "jobs": [{"job_id": "job-0", "tasks": [{
+            "task_id": "job-0/comm-0", "ordinal": 0, "ready_ts": 80,
+            "submit_call_ts": 100, "submit_return_ts": 110,
+            "binding_create_duration_us": 5, "correct": True,
+        }]}],
+    }]}
+
+    rows = experiment_batch._task_timing_rows(record, trace)
+
+    assert rows[0]["producer_ready_to_submit_call_us"] == 20
+    assert rows[0]["submit_call_to_grant_us"] == 50
+    assert rows[0]["grant_to_collective_start_us"] == 10
+    assert rows[0]["collective_call_us"] == 10
+    assert rows[0]["call_return_to_completion_observation_us"] == 70
+    assert rows[0]["binding_create_us"] == 5
+    assert rows[0]["completion_probe_count"] == 4
+
+
 def test_isolated_denominator_is_joined_by_mode_policy_seed_repeat_and_job(tmp_path):
     path = tmp_path / "jobs.csv"
     fields = ("group", "policy", "epoch", "repeat", "job_id", "jct_s", "status")
@@ -300,7 +352,8 @@ def test_batch_resume_skips_verified_results_and_preserves_failed_attempt(tmp_pa
         output = Path(command[command.index("--output") + 1])
         payload = {"config": {"policy": command[command.index("--policy") + 1],
                               "epoch": int(command[command.index("--epoch") + 1]),
-                              "compute_jitter": float(command[command.index("--compute-jitter") + 1])},
+                              "compute_jitter": float(command[command.index("--compute-jitter") + 1]),
+                              "binding_preparation": command[command.index("--binding-preparation") + 1]},
                    "validation": {"status": "ok"},
                    "performance": {"workload_makespan_us": 1000, "job_makespans": []},
                    "ranks": []}
