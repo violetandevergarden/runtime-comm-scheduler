@@ -20,11 +20,14 @@ import torch
 import torch.distributed as dist
 
 from examples.jobpacer.comm_profile import CommSignature, CommunicationProfile, ProfileRecord
+from examples.jobpacer.analysis.benchmark_paths import repository_path, resolve_migrated_path
 from examples.jobpacer.workloads import load_workload, ranks_for_job
 
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
+PHASE3_MIGRATION_MAP = ROOT / "benchmark/phase3/results/migration-map.json"
+PHASE12_MIGRATION_MAP = ROOT / "benchmark/phase1.2/results/migration-map.json"
 
 
 def _free_port() -> int:
@@ -169,6 +172,10 @@ def _profile_rank(args: argparse.Namespace) -> dict[str, Any]:
             "nccl_version": torch.cuda.nccl.version() if device_type == "cuda" else None,
             "device_names": device_names,
             "generated_at": datetime.now(timezone.utc).isoformat(),
+            "cpu_affinity": sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None,
+            "thread_environment": {key: os.environ.get(key) for key in
+                                   ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                                    "NUMEXPR_NUM_THREADS", "GLOO_SOCKET_IFNAME")},
         }
         profile = CommunicationProfile(
             schema_version=1,
@@ -222,9 +229,13 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--rank", type=int, help=argparse.SUPPRESS)
     args = parser.parse_args()
-    if Path(args.workload).exists():
-        args.workload = str(Path(args.workload).resolve())
-    args.output = args.output.resolve()
+    workload_path = Path(args.workload)
+    if workload_path.exists() or workload_path.suffix.lower() == ".json":
+        resolved_workload = resolve_migrated_path(repository_path(workload_path), PHASE12_MIGRATION_MAP)
+        if not resolved_workload.is_file():
+            resolved_workload = resolve_migrated_path(resolved_workload, PHASE3_MIGRATION_MAP)
+        args.workload = str(resolved_workload)
+    args.output = repository_path(args.output).resolve()
     if args.world_size < 2 or args.warmup < 0 or args.iterations <= 0:
         parser.error("world-size >= 2, warmup >= 0, and iterations > 0 are required")
     if args.rank is not None:

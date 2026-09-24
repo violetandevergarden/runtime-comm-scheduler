@@ -38,7 +38,7 @@ def _run_dag_replay(root, policy, dag_name, output, *, compute_jitter=0.0, stati
         "--epoch", "7",
         "--compute-jitter", str(compute_jitter),
         "--output", str(output),
-        "--dag", str(root / "benchmark/phase3" / f"{dag_name}.json"),
+        "--dag", str(root / "benchmark/phase3/experiments/dag-semantics/smoke" / f"{dag_name}.json"),
     ]
     if static_order is not None:
         command.extend(("--static-order", str(static_order)))
@@ -188,7 +188,7 @@ def test_dag_failures_are_bounded(fault, tmp_path):
     env = dict(os.environ)
     env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
     command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
-               "--policy", "fifo", "--dag", str(root / "benchmark/phase3/diamond.json"),
+               "--policy", "fifo", "--dag", str(root / "benchmark/phase3/experiments/dag-semantics/smoke/diamond.json"),
                "--backend", "gloo", "--world-size", "2", "--timeout", "3",
                "--fault", fault, "--output", str(output)]
     completed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, timeout=15)
@@ -201,7 +201,7 @@ def test_dag_failures_are_bounded(fault, tmp_path):
 def test_invalid_dag_manifest_is_rejected_before_rank_workers(tmp_path):
     root = Path(__file__).resolve().parents[2]
     invalid = tmp_path / "invalid.json"
-    data = json.loads((root / "benchmark/phase3/linear.json").read_text())
+    data = json.loads((root / "benchmark/phase3/experiments/dag-semantics/smoke/linear.json").read_text())
     data["schema_version"] = 99
     invalid.write_text(json.dumps(data))
     command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
@@ -214,7 +214,7 @@ def test_invalid_dag_manifest_is_rejected_before_rank_workers(tmp_path):
 def test_unsupported_reduction_is_rejected_before_rank_workers(tmp_path):
     root = Path(__file__).resolve().parents[2]
     invalid = tmp_path / "unsupported-reduction.json"
-    data = json.loads((root / "benchmark/phase3/linear.json").read_text())
+    data = json.loads((root / "benchmark/phase3/experiments/dag-semantics/smoke/linear.json").read_text())
     comm = next(node for job in data["jobs"] for node in job["nodes"] if node["kind"] == "comm")
     comm["collective"]["reduction"] = "max"
     invalid.write_text(json.dumps(data))

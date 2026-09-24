@@ -22,6 +22,7 @@ from runtime_comm_scheduler.runtime import CollectiveSpec, DirectExecutor, Event
 from runtime_comm_scheduler.runtime.transport import ControlClient
 from examples.jobpacer.runtime.runtime_adapter import (
     DagInput,
+    apply_dag_profile,
     group_spec,
     linear_static_order,
     load_dag,
@@ -31,7 +32,7 @@ from examples.jobpacer.runtime.runtime_adapter import (
     task_hint,
     task_spec,
 )
-from examples.jobpacer.workloads import Job, Workload, load_workload, ranks_for_job, sample_linear_duration
+from examples.jobpacer.workloads import Job, Workload, linear_execution_duration, load_workload, ranks_for_job
 from examples.jobpacer.comm_profile import apply_profile, load_profile
 
 
@@ -116,6 +117,39 @@ def _remaining(deadline: float) -> float:
     return max(0.0, deadline - time.monotonic())
 
 
+def _warmup_collectives(inputs: Workload | DagInput, groups: dict[str, Any], *, rank: int,
+                        world_size: int, device: str, iterations: int) -> int:
+    """Warm each measured group/signature before runtime registration and timing."""
+    if iterations < 0:
+        raise ValueError("warmup_iterations must be non-negative")
+    if iterations == 0:
+        return 0
+    signatures: list[tuple[str, tuple[int, ...], int]] = []
+    if isinstance(inputs, DagInput):
+        group_ranks = inputs.group_ranks
+        for group in inputs.graph.groups:
+            sizes = sorted({node.collective.num_bytes for job in inputs.graph.jobs for node in job.nodes
+                            if isinstance(node, CommNode) and node.group_id == group.group_id})
+            signatures.extend((group.group_id, group_ranks[group.group_id], size) for size in sizes)
+    else:
+        for job in inputs.jobs:
+            ranks = ranks_for_job(job, world_size)
+            signatures.extend((job.job_id, ranks, size)
+                              for size in sorted({comm.num_bytes for comm in job.communications}))
+    count = 0
+    for group_id, ranks, num_bytes in signatures:
+        if rank not in ranks:
+            continue
+        tensor = torch.full((num_bytes // 4,), float(rank + 1), dtype=torch.float32, device=device)
+        for _ in range(iterations):
+            dist.all_reduce(tensor, op=dist.ReduceOp.SUM, group=groups[group_id])
+            tensor.fill_(float(rank + 1))
+            count += 1
+        dist.barrier(group=groups[group_id])
+    dist.barrier()
+    return count
+
+
 def _local_dag_jobs(dag: DagInput, rank: int) -> list[DagJob]:
     group_ranks = dag.group_ranks
     return [job for job in dag.graph.jobs
@@ -185,7 +219,7 @@ def _run_jobs(jobs, run_one, *, runtime, deadline: float, stop_event: threading.
     return [result for result in results if result is not None]
 
 
-def _run_linear_job(job: Job, *, seed: int, args, runtime, groups, rank: int, world_size: int,
+def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank: int, world_size: int,
                     device: str, deadline: float, stop_event: threading.Event,
                     validation_records: list[tuple[dict[str, Any], torch.Tensor, int]]) -> dict[str, Any]:
     result: dict[str, Any] = {"job_id": job.job_id, "status": "ok", "tasks": [],
@@ -200,12 +234,12 @@ def _run_linear_job(job: Job, *, seed: int, args, runtime, groups, rank: int, wo
         hint = task_hint(job, index)
         runtime.declare(spec, hint)
         producer_start = time.perf_counter_ns() // 1000
-        producer_s = sample_linear_duration(
-            seed, args.epoch, job.job_id, comm.id, rank, "producer",
+        producer_s = linear_execution_duration(
+            workload, args.epoch, job.job_id, comm.id, rank, "producer",
             comm.producer_compute_s, args.compute_jitter,
         )
-        consumer_s = sample_linear_duration(
-            seed, args.epoch, job.job_id, comm.id, rank, "consumer",
+        consumer_s = linear_execution_duration(
+            workload, args.epoch, job.job_id, comm.id, rank, "consumer",
             comm.consumer_compute_s, args.compute_jitter,
         )
         result["compute_samples_s"][f"comm-{comm.id}/producer"] = producer_s
@@ -322,11 +356,11 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("wait_budget_s must be non-negative")
     setup_deadline = time.monotonic() + args.setup_timeout
     dag = load_dag(args.dag, epoch=args.epoch, world_size=world_size) if args.dag else None
-    dag_tails = compute_tails(dag.graph) if dag is not None else None
     workload = None if dag else load_workload(args.workload or "balanced")
     profile = None
-    if workload is not None and comm_profile:
+    if comm_profile:
         profile = load_profile(comm_profile)
+    if workload is not None and profile is not None:
         workload = apply_profile(
             workload,
             profile,
@@ -334,6 +368,14 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
              "world_size": world_size},
             strict=profile_strict,
         )
+    if dag is not None and profile is not None:
+        dag = apply_dag_profile(
+            dag, profile,
+            {"backend": args.backend, "device_type": "cuda" if args.backend == "nccl" else "cpu",
+             "world_size": world_size},
+            strict=profile_strict,
+        )
+    dag_tails = compute_tails(dag.graph) if dag is not None else None
     if args.static_order and (dag is None or args.policy not in {"static_fifo", "static_ltf"}):
         raise ValueError("--static-order is only valid with a DAG and static policy")
     if dag is not None:
@@ -356,6 +398,10 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                                 timeout=timedelta(seconds=_remaining(setup_deadline)))
         groups = _new_groups(inputs, world_size, setup_deadline)
         dist.barrier()
+        warmup_collective_count = _warmup_collectives(
+            inputs, groups, rank=rank, world_size=world_size, device=device,
+            iterations=getattr(args, "warmup_iterations", 0),
+        )
 
         runtime_policy = "static" if args.policy in {"static_fifo", "static_ltf"} else args.policy
         if dag is None and runtime_policy == "static":
@@ -416,7 +462,7 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
         else:
             local_jobs = [job for job in workload.jobs if rank in ranks_for_job(job, world_size)]
             run_one = lambda job: _run_linear_job(
-                job, seed=workload.seed, args=args, runtime=runtime, groups=groups, rank=rank, world_size=world_size,
+                job, workload=workload, args=args, runtime=runtime, groups=groups, rank=rank, world_size=world_size,
                 device=device, deadline=deadline, stop_event=stop_event,
                 validation_records=validation_records,
             )
@@ -437,6 +483,8 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             "completion_poll_interval_s": args.poll_interval,
             "dag_poll_interval_s": args.dag_poll_interval,
             "compute_jitter": args.compute_jitter,
+            "warmup_iterations": getattr(args, "warmup_iterations", 0),
+            "warmup_collective_count": warmup_collective_count,
             "estimate_source": "offline_profile" if profile else "manifest",
             "communication_profile": {
                 "path": str(comm_profile) if comm_profile else None,
@@ -515,13 +563,14 @@ def main() -> int:
     parser.add_argument("--dag-poll-interval", type=float, default=0.001)
     parser.add_argument("--compute-jitter", type=float, default=0.0)
     parser.add_argument("--wait-budget-s", type=float, default=0.02)
+    parser.add_argument("--warmup-iterations", type=int, default=1)
     parser.add_argument("--comm-profile", type=Path)
     parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--control-port", type=int, required=True)
     parser.add_argument("--fault", choices=("none", "missing_task", "metadata_mismatch", "launch_failure",
                                                "completion_probe_failure", "compute_failure", "binding_failure"), default="none")
     args = parser.parse_args()
-    if args.timeout <= 0 or args.setup_timeout <= 0 or args.wait_budget_s < 0:
+    if args.timeout <= 0 or args.setup_timeout <= 0 or args.wait_budget_s < 0 or args.warmup_iterations < 0:
         parser.error("setup-timeout and timeout must be positive; wait-budget-s must be non-negative")
     try:
         output = run_rank(args)

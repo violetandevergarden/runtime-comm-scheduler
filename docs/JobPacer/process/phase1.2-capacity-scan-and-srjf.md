@@ -2,6 +2,11 @@
 
 日期：2026-09-19。
 
+> 目录迁移说明（2026-09-24）：本文历史命令和旧路径保留不变；当前批次入口为
+> `examples/jobpacer/scripts/run_phase1_2_experiments.py`，输入/结果索引见
+> [`benchmark/phase1.2/README.md`](../../../benchmark/phase1.2/README.md) 和
+> [`benchmark/phase1.2/results/migration-map.json`](../../../benchmark/phase1.2/results/migration-map.json)。
+
 状态：已完成（2026-09-20）。下方清单和执行记录对应代码、测试、实验、作图及验收结果；
 实验结论仅适用于本文注明的 CPU/Gloo、两 rank 和线性 sleep workload 范围。
 

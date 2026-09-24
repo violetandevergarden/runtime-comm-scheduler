@@ -12,6 +12,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from examples.jobpacer.analysis.benchmark_paths import (
+    is_formal_experiment_input, repository_path, resolve_migrated_path,
+)
 from examples.jobpacer.analysis.measurement import occupancy_metrics
 from examples.jobpacer.runtime.plan_builder import build_plan, key_labels, policy_names
 from examples.jobpacer.workloads import load_workload, ranks_for_job
@@ -20,6 +23,9 @@ from examples.jobpacer.comm_profile import apply_profile, load_profile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
+FORMAL_INPUT_ROOT = (ROOT / "benchmark/phase3/experiments").resolve()
+PHASE12_MIGRATION_MAP = ROOT / "benchmark/phase1.2/results/migration-map.json"
+PHASE3_MIGRATION_MAP = ROOT / "benchmark/phase3/results/migration-map.json"
 
 
 def _free_port() -> int:
@@ -70,6 +76,8 @@ def _run_rank(rank: int, args: argparse.Namespace, port: int) -> subprocess.Pope
         str(args.compute_jitter),
         "--epoch",
         str(args.epoch),
+        "--warmup-iterations",
+        str(args.warmup_iterations),
         "--fault",
         args.fault,
     ]
@@ -363,6 +371,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--completion-poll-interval-s", type=float, default=0.001)
     parser.add_argument("--compute-jitter", type=float, default=0.0)
     parser.add_argument("--epoch", type=int, default=0)
+    parser.add_argument("--warmup-iterations", type=int, default=1)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--comm-profile", type=Path)
     parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
@@ -370,14 +379,30 @@ def main(argv: list[str] | None = None) -> int:
         "--fault", choices=("none", "missing_key", "metadata_mismatch"), default="none"
     )
     args = parser.parse_args(argv)
-    if Path(args.workload).exists():
-        args.workload = str(Path(args.workload).resolve())
+    workload_path = Path(args.workload)
+    if workload_path.exists() or workload_path.suffix.lower() == ".json":
+        resolved_workload = resolve_migrated_path(workload_path, PHASE12_MIGRATION_MAP)
+        if not resolved_workload.is_file():
+            resolved_workload = resolve_migrated_path(resolved_workload, PHASE3_MIGRATION_MAP)
+        args.workload = str(resolved_workload)
+    if args.output:
+        args.output = repository_path(args.output)
+    if args.comm_profile:
+        args.comm_profile = resolve_migrated_path(repository_path(args.comm_profile), PHASE12_MIGRATION_MAP)
+        if not args.comm_profile.is_file():
+            args.comm_profile = resolve_migrated_path(args.comm_profile, PHASE3_MIGRATION_MAP)
     if args.comm_profile:
         args.comm_profile = args.comm_profile.resolve()
     if args.world_size < 2:
         parser.error("--world-size must be at least 2")
     if not 0 <= args.compute_jitter < 1:
         parser.error("--compute-jitter must be in [0, 1)")
+    if args.warmup_iterations < 0:
+        parser.error("--warmup-iterations must be non-negative")
+    if (Path(args.workload).exists()
+            and is_formal_experiment_input(args.workload, FORMAL_INPUT_ROOT)
+            and not args.comm_profile):
+        parser.error("formal Phase 3 experiment inputs require --comm-profile")
     workload = load_workload(args.workload)
     profile = None
     if args.comm_profile:

@@ -13,14 +13,19 @@ from pathlib import Path
 from typing import Any
 
 from runtime_comm_scheduler.dag import build_static_order
+from examples.jobpacer.analysis.benchmark_paths import (
+    is_formal_experiment_input, repository_path, resolve_migrated_path,
+)
 from examples.jobpacer.analysis.runtime_results import expected_dag_results, metrics, performance, validate_results
-from examples.jobpacer.runtime.runtime_adapter import all_specs, load_dag, load_static_order
+from examples.jobpacer.runtime.runtime_adapter import all_specs, apply_dag_profile, load_dag, load_static_order
 from examples.jobpacer.workloads import load_workload, ranks_for_job
 from examples.jobpacer.comm_profile import apply_profile, load_profile
 
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
+FORMAL_INPUT_ROOT = (ROOT / "benchmark/phase3/experiments").resolve()
+PHASE3_MIGRATION_MAP = ROOT / "benchmark/phase3/results/migration-map.json"
 
 
 def _free_port() -> int:
@@ -42,6 +47,7 @@ def _start(rank: int, args: argparse.Namespace, rendezvous_port: int, control_po
                "--setup-timeout", str(args.setup_timeout),
                "--poll-interval", str(args.poll_interval), "--dag-poll-interval", str(args.dag_poll_interval),
                "--compute-jitter", str(args.compute_jitter), "--wait-budget-s", str(args.wait_budget_s),
+               "--warmup-iterations", str(args.warmup_iterations),
                "--control-port", str(control_port),
                "--fault", args.fault]
     if args.dag:
@@ -90,6 +96,7 @@ def main() -> int:
     parser.add_argument("--dag-poll-interval", type=float, default=0.001)
     parser.add_argument("--compute-jitter", type=float, default=0.0)
     parser.add_argument("--wait-budget-s", type=float, default=0.02)
+    parser.add_argument("--warmup-iterations", type=int, default=1)
     parser.add_argument("--comm-profile", type=Path)
     parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--output", type=Path)
@@ -99,15 +106,28 @@ def main() -> int:
     args = parser.parse_args()
     if args.timeout <= 0 or args.setup_timeout <= 0 or args.poll_interval <= 0 or args.dag_poll_interval <= 0:
         parser.error("setup/replay timeouts and poll intervals must be positive")
-    if args.wait_budget_s < 0:
+    if args.wait_budget_s < 0 or args.warmup_iterations < 0:
         parser.error("wait-budget-s must be non-negative")
     if not 0 <= args.compute_jitter < 1:
         parser.error("compute-jitter must be in [0, 1)")
     if args.epoch < 0 or args.world_size <= 0:
         parser.error("epoch must be non-negative and world-size positive")
-    if args.comm_profile and args.dag:
-        parser.error("--comm-profile currently applies to linear workloads only")
-
+    if args.dag:
+        args.dag = resolve_migrated_path(repository_path(args.dag), PHASE3_MIGRATION_MAP)
+    elif args.workload:
+        workload_path = Path(args.workload)
+        if workload_path.exists() or workload_path.suffix.lower() == ".json":
+            args.workload = str(resolve_migrated_path(repository_path(workload_path), PHASE3_MIGRATION_MAP))
+    if args.static_order:
+        args.static_order = resolve_migrated_path(repository_path(args.static_order), PHASE3_MIGRATION_MAP)
+    if args.comm_profile:
+        args.comm_profile = resolve_migrated_path(repository_path(args.comm_profile), PHASE3_MIGRATION_MAP)
+    if args.output:
+        args.output = repository_path(args.output)
+    source_path = args.dag or (Path(args.workload) if args.workload else None)
+    if (source_path is not None and source_path.exists()
+            and is_formal_experiment_input(source_path, FORMAL_INPUT_ROOT) and not args.comm_profile):
+        parser.error("formal Phase 3 experiment inputs require --comm-profile")
     expected: dict[str, dict[str, Any]] = {str(rank): {} for rank in range(args.world_size)}
     expected["__all__"] = {}
     expected["__groups__"] = {}
@@ -116,6 +136,14 @@ def main() -> int:
     if args.dag:
         try:
             dag = load_dag(args.dag, epoch=args.epoch, world_size=args.world_size)
+            if args.comm_profile:
+                dag = apply_dag_profile(
+                    dag, load_profile(args.comm_profile),
+                    {"backend": args.backend,
+                     "device_type": "cuda" if args.backend == "nccl" else "cpu",
+                     "world_size": args.world_size},
+                    strict=args.profile_strict,
+                )
         except (OSError, ValueError) as exc:
             parser.error(str(exc))
         if args.static_order and args.policy not in {"static_fifo", "static_ltf"}:
@@ -172,6 +200,7 @@ def main() -> int:
             "epoch": args.epoch, "world_size": args.world_size, "max_inflight": 1,
             "backend": args.backend, "completion_poll_interval_s": args.poll_interval,
             "dag_poll_interval_s": args.dag_poll_interval, "compute_jitter": args.compute_jitter,
+            "warmup_iterations": args.warmup_iterations,
         },
     )
     validation["errors"] = errors + validation["errors"]

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1, "name": "G2-multi-frontier", "seed": 3302,
+  "groups": [{"group_id": "group-a", "ranks": [0, 1]}, {"group_id": "group-b", "ranks": [0, 1]}, {"group_id": "group-gate", "ranks": [0, 1]}],
+  "execution": {"compute_duration_s": {"job-0/root": 0.004, "job-0/long-tail": 0.020, "job-0/short-tail": 0.005, "job-gate/setup": 0.0}},
+  "jobs": [{"job_id": "job-gate", "nodes": [
+    {"node_id": "setup", "kind": "compute", "deps": [], "estimated_duration_s": 0.0},
+    {"node_id": "occupy", "kind": "comm", "deps": ["setup"], "group_id": "group-gate", "group_seq": 0, "estimated_comm_s": 0.001, "collective": {"op": "all_reduce", "numel": 4194304, "num_bytes": 16777216, "dtype": "float32", "shape": [4194304], "reduction": "sum"}}]},
+    {"job_id": "job-0", "nodes": [
+    {"node_id": "root", "kind": "compute", "deps": [], "estimated_duration_s": 0.004},
+    {"node_id": "comm-a", "kind": "comm", "deps": ["root"], "group_id": "group-a", "group_seq": 0, "estimated_comm_s": 0.001, "collective": {"op": "all_reduce", "numel": 262144, "num_bytes": 1048576, "dtype": "float32", "shape": [262144], "reduction": "sum"}},
+    {"node_id": "comm-b", "kind": "comm", "deps": ["root"], "group_id": "group-b", "group_seq": 0, "estimated_comm_s": 0.001, "collective": {"op": "all_reduce", "numel": 262144, "num_bytes": 1048576, "dtype": "float32", "shape": [262144], "reduction": "sum"}},
+    {"node_id": "long-tail", "kind": "compute", "deps": ["comm-a"], "estimated_duration_s": 0.020},
+    {"node_id": "short-tail", "kind": "compute", "deps": ["comm-b"], "estimated_duration_s": 0.005}
+  ]}]
+}

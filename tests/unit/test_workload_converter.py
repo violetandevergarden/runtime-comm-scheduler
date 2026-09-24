@@ -50,7 +50,7 @@ def test_adjacent_communications_are_not_merged():
 
 
 def test_checked_in_benchmarks_match_converter_output():
-    root = Path(__file__).parents[2] / "benchmark" / "phase1.2"
+    root = Path(__file__).parents[2] / "benchmark" / "phase1.2" / "experiments" / "shared"
     for source_path in sorted((root / "dag").glob("*.json")):
         converted = convert_document(json.loads(source_path.read_text()))
         expected = json.loads((root / "workloads" / source_path.name).read_text())

@@ -1,5 +1,9 @@
 # JobPacer Phase 1/2 测量语义与实验对照修正计划
 
+> 目录迁移说明（2026-09-24）：本文命令保留为历史记录。当前 Phase 1/2 runner 位于
+> `examples/jobpacer/scripts/`，输入/结果迁移映射见
+> [`benchmark/phase1.2/results/migration-map.json`](../../../benchmark/phase1.2/results/migration-map.json)。
+
 ## 1. 背景
 
 Phase 1/2 当前已经具备以下能力：

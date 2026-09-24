@@ -10,5 +10,6 @@ logs/
 artifacts/
 *.tmp
 tmp/
-benchmark/*
+benchmark/phase1.2/results/
+benchmark/phase3/results/
 

@@ -1,5 +1,9 @@
 # JobPacer Phase 1/2 修正与可视化实施计划
 
+> 目录迁移说明（2026-09-24）：本文中的 Phase 1/2 输入、结果及旧命令均为历史记录。当前路径和旧新映射见
+> [`benchmark/phase1.2/README.md`](../../../benchmark/phase1.2/README.md) 与
+> [`benchmark/phase1.2/results/migration-map.json`](../../../benchmark/phase1.2/results/migration-map.json)。
+
 ## 1. 背景与目标
 
 Phase 1/2 已能使用同一 workload 分别运行无调度裸发和静态 Plan 调度，并输出每个 job

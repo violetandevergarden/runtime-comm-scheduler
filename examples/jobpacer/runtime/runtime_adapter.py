@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping, MutableMapping
 
@@ -24,6 +24,8 @@ from examples.jobpacer.workloads import CollectiveComm, Job, Workload
 @dataclass(frozen=True)
 class ReplayExecutionConfig:
     compute_duration_s: Mapping[str, float]
+    # Optional bridge to the linear producer sampling key.
+    linear_sample_keys: Mapping[str, tuple[int, str]] | None = None
 
 
 @dataclass(frozen=True)
@@ -81,7 +83,19 @@ def parse_dag(raw: Any, *, epoch: int = 0, world_size: int | None = None) -> Dag
         groups.append(GroupSpec(epoch, group_id, tuple(ranks_raw)))
     groups.sort(key=lambda group: group.group_id)
 
-    execution_raw = _object(root["execution"], "execution", {"compute_duration_s"})
+    execution_raw = _object(root["execution"], "execution", {"compute_duration_s", "linear_sample_keys"},
+                            required={"compute_duration_s"})
+    sample_keys_raw = _object(execution_raw.get("linear_sample_keys", {}),
+                              "execution.linear_sample_keys", None)
+    sample_keys: dict[str, tuple[int, str]] = {}
+    for key, value in sample_keys_raw.items():
+        if (not isinstance(value, str) or not value.startswith("comm-")
+                or ":" not in value):
+            raise ValueError(f"invalid linear sample key for {key!r}: {value!r}")
+        ordinal_text, segment = value.split(":", 1)
+        if not ordinal_text[5:].isdigit() or segment not in {"producer", "consumer"}:
+            raise ValueError(f"invalid linear sample key for {key!r}: {value!r}")
+        sample_keys[key] = (int(ordinal_text[5:]), segment)
     execution_raw = _object(execution_raw["compute_duration_s"], "execution.compute_duration_s", None)
     execution: dict[str, float] = {}
     for key, value in execution_raw.items():
@@ -137,11 +151,70 @@ def parse_dag(raw: Any, *, epoch: int = 0, world_size: int | None = None) -> Dag
             "execution.compute_duration_s keys must exactly cover compute nodes; "
             f"missing={sorted(expected_compute - set(execution))}, extra={sorted(set(execution) - expected_compute)}"
         )
+    if set(sample_keys) - expected_compute:
+        raise ValueError("linear_sample_keys contains unknown compute nodes")
 
-    canonical = _canonical_document(name, seed, graph, execution)
+    canonical = _canonical_document(name, seed, graph, execution, sample_keys)
     canonical_json = json.dumps(canonical, sort_keys=True, separators=(",", ":"), allow_nan=False)
     digest = hashlib.sha256(canonical_json.encode()).hexdigest()
-    return DagInput(graph, name, seed, ReplayExecutionConfig(execution), digest, canonical_json)
+    return DagInput(graph, name, seed, ReplayExecutionConfig(execution, sample_keys), digest, canonical_json)
+
+
+def apply_dag_profile(dag: DagInput, profile, environment: Mapping[str, Any], *, strict: bool = True) -> DagInput:
+    """Apply a communication profile to every DAG comm node by strict signature."""
+    import warnings
+    from examples.jobpacer.comm_profile import CommSignature
+
+    mismatches = [
+        f"{key}: profile={profile.environment.get(key)!r}, replay={environment.get(key)!r}"
+        for key in ("backend", "world_size", "device_type")
+        if profile.environment.get(key) != environment.get(key)
+    ]
+    if mismatches:
+        raise ValueError("profile environment mismatch: " + "; ".join(mismatches))
+    expected_groups: list[list[int]] = []
+    for group in dag.graph.groups:
+        ranks = list(group.ranks)
+        if ranks not in expected_groups:
+            expected_groups.append(ranks)
+    if profile.environment.get("group_ranks") != expected_groups:
+        raise ValueError(
+            "profile environment mismatch: group_ranks: "
+            f"profile={profile.environment.get('group_ranks')!r}, replay={expected_groups!r}"
+        )
+    records = {record.signature: record for record in profile.records}
+    groups = {group.group_id: group for group in dag.graph.groups}
+    missing: list[str] = []
+    jobs = []
+    for job in dag.graph.jobs:
+        nodes = []
+        for node in job.nodes:
+            if not isinstance(node, CommNode):
+                nodes.append(node)
+                continue
+            signature = CommSignature(
+                node.collective.op, node.collective.num_bytes, node.collective.dtype,
+                len(groups[node.group_id].ranks), str(environment["backend"]),
+                str(environment["device_type"]), node.collective.reduction,
+            )
+            record = records.get(signature)
+            if record is None:
+                missing.append(f"{job.job_id}/{node.node_id} {signature}")
+                nodes.append(node)
+            else:
+                nodes.append(replace(node, estimated_comm_s=record.p50_s))
+        jobs.append(replace(job, nodes=tuple(nodes)))
+    if missing and strict:
+        raise ValueError("profile is missing DAG communication signatures: " + ", ".join(missing))
+    if missing:
+        warnings.warn("profile fallback to DAG manifest for: " + ", ".join(missing), stacklevel=2)
+    graph = DagGraph(dag.graph.groups, tuple(jobs))
+    execution = dict(dag.execution.compute_duration_s)
+    canonical = _canonical_document(dag.name, dag.seed, graph, execution,
+                                    dag.execution.linear_sample_keys or {})
+    canonical_json = json.dumps(canonical, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    digest = hashlib.sha256(canonical_json.encode()).hexdigest()
+    return DagInput(graph, dag.name, dag.seed, dag.execution, digest, canonical_json)
 
 
 def load_static_order(path: str | Path, graph: DagGraph) -> tuple[str, ...]:
@@ -167,8 +240,15 @@ def make_replay_compute(job: DagJob, execution: ReplayExecutionConfig, *, seed: 
                         rank: int, jitter: float, samples: MutableMapping[str, float], event_log):
     """Bind deterministic CPU sleep sampling to a DAG job, outside the runner."""
     def compute(node: ComputeNode, stop_event) -> None:
-        base_s = execution.compute_duration_s[f"{job.job_id}/{node.node_id}"]
-        duration = sample_compute_duration(seed, epoch, job.job_id, node.node_id, rank, base_s, jitter)
+        node_key = f"{job.job_id}/{node.node_id}"
+        base_s = execution.compute_duration_s[node_key]
+        linear_key = (execution.linear_sample_keys or {}).get(node_key)
+        if linear_key is None:
+            duration = sample_compute_duration(seed, epoch, job.job_id, node.node_id, rank, base_s, jitter)
+        else:
+            from examples.jobpacer.workloads import sample_linear_duration
+            duration = sample_linear_duration(seed, epoch, job.job_id, linear_key[0], rank,
+                                              linear_key[1], base_s, jitter)
         samples[node.node_id] = duration
         event_log.record("compute_sampled", job_id=job.job_id, node_id=node.node_id,
                          base_duration_s=base_s, jitter=jitter, sampled_duration_s=duration)
@@ -249,7 +329,8 @@ def all_specs(workload: Workload, *, epoch: int = 0) -> tuple[tuple[Job, int, Ta
 
 
 def _canonical_document(name: str, seed: int, graph: DagGraph,
-                        execution: Mapping[str, float]) -> dict[str, Any]:
+                        execution: Mapping[str, float],
+                        sample_keys: Mapping[str, tuple[int, str]]) -> dict[str, Any]:
     canonical_jobs = []
     for job in graph.jobs:
         nodes = []
@@ -262,9 +343,15 @@ def _canonical_document(name: str, seed: int, graph: DagGraph,
                               "group_seq": node.group_seq, "estimated_comm_s": node.estimated_comm_s,
                               "collective": node.collective.to_dict()})
         canonical_jobs.append({"job_id": job.job_id, "nodes": nodes})
+    execution_document: dict[str, Any] = {"compute_duration_s": dict(sorted(execution.items()))}
+    if sample_keys:
+        execution_document["linear_sample_keys"] = {
+            key: f"comm-{ordinal}:{segment}"
+            for key, (ordinal, segment) in sorted(sample_keys.items())
+        }
     return {"schema_version": 1, "name": name, "seed": seed,
             "groups": [{"group_id": group.group_id, "ranks": list(group.ranks)} for group in graph.groups],
-            "execution": {"compute_duration_s": dict(sorted(execution.items()))}, "jobs": canonical_jobs}
+            "execution": execution_document, "jobs": canonical_jobs}
 
 
 def _collective(value: Any, where: str) -> CollectiveSpec:

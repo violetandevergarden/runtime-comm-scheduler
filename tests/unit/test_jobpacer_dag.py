@@ -30,7 +30,7 @@ from examples.jobpacer.runtime.runtime_adapter import load_dag, parse_dag, sampl
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DAGS = ROOT / "benchmark/phase3"
+DAGS = ROOT / "benchmark/phase3/experiments/dag-semantics/smoke"
 
 
 def _collective():

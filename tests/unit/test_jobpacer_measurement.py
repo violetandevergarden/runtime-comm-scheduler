@@ -12,7 +12,6 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
-sys.path.insert(0, str(Path(__file__).parents[2] / "benchmark/phase1.2"))
 
 from examples.jobpacer.runtime import replay_worker
 from examples.jobpacer.analysis.measurement import occupancy_metrics

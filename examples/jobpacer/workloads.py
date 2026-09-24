@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -82,6 +83,10 @@ class Workload:
     name: str
     jobs: tuple[Job, ...]
     seed: int = 0  # 预留可能的随机数
+    # Execution-only durations.  Keys are
+    # ``job/comm-N/rank-N/{producer,consumer}`` (or ``rank-*``).  They never
+    # participate in policy estimates.
+    execution_compute_duration_s: Mapping[str, float] | None = None
 
     def __post_init__(self) -> None:
         if not self.jobs:
@@ -89,11 +94,33 @@ class Workload:
         ids = tuple(job.job_id for job in self.jobs)
         if len(set(ids)) != len(ids):
             raise ValueError(f"duplicate job_id in workload: {ids}")
+        overrides = dict(self.execution_compute_duration_s or {})
+        known = {(job.job_id, comm.id) for job in self.jobs for comm in job.communications}
+        for key, duration in overrides.items():
+            parts = key.split("/")
+            if len(parts) != 4 or not parts[1].startswith("comm-") or not parts[2].startswith("rank-"):
+                raise ValueError(f"invalid execution duration key {key!r}")
+            try:
+                comm_id = int(parts[1][5:])
+                rank = parts[2][5:]
+                if rank != "*" and int(rank) < 0:
+                    raise ValueError
+            except ValueError as exc:
+                raise ValueError(f"invalid execution duration key {key!r}") from exc
+            if (parts[0], comm_id) not in known or parts[3] not in {"producer", "consumer"}:
+                raise ValueError(f"execution duration key does not name a workload segment: {key!r}")
+            if (isinstance(duration, bool) or not isinstance(duration, (int, float))
+                    or not math.isfinite(duration) or duration < 0):
+                raise ValueError(f"execution duration for {key!r} must be non-negative")
+        object.__setattr__(self, "execution_compute_duration_s", overrides)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "seed": self.seed,
+            "execution": {"compute_duration_s": dict(sorted(
+                (self.execution_compute_duration_s or {}).items()
+            ))},
             "jobs": [
                 {
                     "job_id": job.job_id,
@@ -127,6 +154,9 @@ class Workload:
             name=str(document.get("name", "manifest")),
             seed=int(document.get("seed", 0)),
             jobs=tuple(jobs),
+            execution_compute_duration_s=dict(
+                document.get("execution", {}).get("compute_duration_s", {})
+            ),
         )
 
 
@@ -240,6 +270,26 @@ def sample_linear_duration(
     key = f"{seed}:{epoch}:{job_id}:comm-{communication_id}:{rank}:{segment}".encode()
     fraction = int.from_bytes(hashlib.sha256(key).digest()[:8], "big") / 2**64
     return base_s * (1 + jitter * (2 * fraction - 1))
+
+
+def linear_execution_duration(
+    workload: Workload,
+    epoch: int,
+    job_id: str,
+    communication_id: int,
+    rank: int,
+    segment: str,
+    nominal_s: float,
+    jitter: float,
+) -> float:
+    """Resolve an execution-only override, then apply deterministic jitter."""
+    overrides = workload.execution_compute_duration_s or {}
+    exact = f"{job_id}/comm-{communication_id}/rank-{rank}/{segment}"
+    shared = f"{job_id}/comm-{communication_id}/rank-*/{segment}"
+    base_s = float(overrides.get(exact, overrides.get(shared, nominal_s)))
+    return sample_linear_duration(
+        workload.seed, epoch, job_id, communication_id, rank, segment, base_s, jitter
+    )
 
 
 def ranks_for_job(job: Job, world_size: int) -> tuple[int, ...]:

@@ -1,0 +1,12 @@
+{
+  "name": "L0-balanced", "seed": 3100,
+  "execution": {"compute_duration_s": {}},
+  "jobs": [
+    {"job_id": "job-0", "communications": [
+      {"id": 0, "num_bytes": 1048576, "producer_compute_s": 0.004, "consumer_compute_s": 0.001, "estimated_comm_s": 0.001},
+      {"id": 1, "num_bytes": 1048576, "producer_compute_s": 0.004, "consumer_compute_s": 0.001, "estimated_comm_s": 0.001}]},
+    {"job_id": "job-1", "communications": [
+      {"id": 0, "num_bytes": 1048576, "producer_compute_s": 0.004, "consumer_compute_s": 0.001, "estimated_comm_s": 0.001},
+      {"id": 1, "num_bytes": 1048576, "producer_compute_s": 0.004, "consumer_compute_s": 0.001, "estimated_comm_s": 0.001}]}
+  ]
+}

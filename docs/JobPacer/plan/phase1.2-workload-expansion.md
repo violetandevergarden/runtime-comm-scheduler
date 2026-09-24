@@ -2,6 +2,11 @@
 
 日期：2026-09-19。计划已于同日实施完成。
 
+> 目录迁移说明（2026-09-24）：本文中的旧路径保留为历史记录。当前 workload 位于
+> [`benchmark/phase1.2/experiments/shared/workloads/`](../../../benchmark/phase1.2/experiments/shared/workloads/)，
+> 当前结果和旧新路径映射见 [`benchmark/phase1.2/results/README.md`](../../../benchmark/phase1.2/results/README.md)
+> 与 [`migration-map.json`](../../../benchmark/phase1.2/results/migration-map.json)。
+
 实施记录：
 
 - 归因修正与确定性回归检查已完成；历史批次的重算说明保存在 `benchmark/phase1.2/result/batches/20260919T034952Z-9caa6a/attribution-v2.md`，未覆盖旧报告。
@@ -17,10 +22,11 @@
 依据：
 
 - [测量语义修正计划](../process/phase1.2-measurement-fix.md)。
-- [最新完整六场景批次](../../../benchmark/phase1.2/result/batches/20260919T034952Z-9caa6a/analysis.md)。
-- [轮询敏感性批次](../../../benchmark/phase1.2/result/batches/20260919T044046Z-17c1d7-poll-sensitivity/analysis.md)。
+- [最新完整六场景批次](../../../benchmark/phase1.2/results/baseline/historical/20260919T034952Z-9caa6a/analysis.md)。
+- [轮询敏感性批次](../../../benchmark/phase1.2/results/polling/20260919T044046Z-17c1d7-poll-sensitivity/analysis.md)。
 
-以上两个 benchmark 链接应从仓库根目录的 `benchmark/phase1.2/result/batches/` 查阅；结果可能不随源码分发。
+上述历史 batch 按完整目录迁移，映射和迁移前摘要见
+[`benchmark/phase1.2/results/migration-map.json`](../../../benchmark/phase1.2/results/migration-map.json)；结果可能不随源码分发。
 
 已有数据提示：修正后的 FIFO/LTF 整体差异较小；delayed 场景的静态队首阻塞明显损害短 job；ready-first 实现的协调开销不可忽略。新增实验用于检验这些现象的适用条件，不以得到动态策略或 LTF 获胜的结果为目标。
 

@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable
 
+from examples.jobpacer.analysis.benchmark_paths import resolve_migrated_path
+
 
 SCENARIOS = (
     "phase1_bare",
@@ -25,6 +27,9 @@ SCENARIOS = (
     "ltf_serial",
 )
 TRACE_SCHEMA_VERSION = 2
+PHASE12_MIGRATION_MAP = (
+    Path(__file__).resolve().parents[3] / "benchmark/phase1.2/results/migration-map.json"
+)
 SCENARIO_LABELS = {
     "phase1_bare": "Phase 1 bare",
     "ready_first_unbounded": "Ready-first unbounded",
@@ -52,7 +57,8 @@ def load_trace(path: str | Path) -> dict[str, Any]:
 
 
 def load_manifest(result_dir: str | Path) -> dict[str, Any]:
-    path = Path(result_dir) / "manifest.json"
+    root = resolve_migrated_path(result_dir, PHASE12_MIGRATION_MAP)
+    path = root / "manifest.json"
     manifest = json.loads(path.read_text(encoding="utf-8"))
     if not manifest.get("complete", False) and not manifest.get("finalizing", False):
         raise ValueError(f"batch manifest is incomplete: {path}")
@@ -79,6 +85,7 @@ def scenario_label(name: str) -> str:
 
 def _manifest_paths(result_dir: str | Path, workload: str, scenario: str) -> list[Path] | None:
     manifest = load_manifest(result_dir)
+    root = resolve_migrated_path(result_dir, PHASE12_MIGRATION_MAP)
     paths = []
     for run in manifest.get("runs", []):
         if run.get("workload") != workload or run.get("scenario") != scenario:
@@ -86,8 +93,8 @@ def _manifest_paths(result_dir: str | Path, workload: str, scenario: str) -> lis
         relative = run.get("path")
         if not relative:
             raise ValueError("manifest run has no path")
-        path = Path(result_dir) / relative
-        if not path.resolve().is_relative_to(Path(result_dir).resolve()):
+        path = root / relative
+        if not path.resolve().is_relative_to(root.resolve()):
             raise ValueError(f"manifest path escapes batch directory: {relative}")
         if not path.is_file():
             raise FileNotFoundError(f"manifest-listed trace is missing: {path}")
@@ -573,7 +580,7 @@ def summary_data(
     result_dir: str | Path, workloads: Iterable[str] | None = None
 ) -> dict[str, Any]:
     manifest = load_manifest(result_dir)
-    root = Path(result_dir)
+    root = resolve_migrated_path(result_dir, PHASE12_MIGRATION_MAP)
     names = list(workloads) if workloads is not None else list(manifest["workloads"])
     scenarios_in_order = scenario_order(result_dir)
     pairs = _pair_definitions(manifest)
@@ -702,7 +709,7 @@ def paired_differences(
     result_dir: str | Path, workload: str, baseline: str, scenario: str
 ) -> dict[str, Any]:
     """Match runs by manifest repetition (or run index for legacy results)."""
-    root = Path(result_dir)
+    root = resolve_migrated_path(result_dir, PHASE12_MIGRATION_MAP)
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     if not manifest.get("complete", False):
         raise ValueError(f"batch manifest is incomplete: {root / 'manifest.json'}")
@@ -1138,7 +1145,7 @@ def _draw_distribution(axis, x: float, values: list[float], color: str, *, scale
 
 def render_capacity_makespan(result_dir: str | Path, output: str | Path) -> None:
     plt, Line2D, _Patch = _matplotlib()
-    root = Path(result_dir)
+    root = resolve_migrated_path(result_dir, PHASE12_MIGRATION_MAP)
     manifest = load_manifest(root)
     workloads = manifest["workloads"]
     figure, axes = _workload_panels(plt, len(workloads), height=3.0)
@@ -1183,7 +1190,7 @@ def render_capacity_makespan(result_dir: str | Path, output: str | Path) -> None
 
 def render_capacity_job_completion(result_dir: str | Path, output: str | Path) -> None:
     plt, Line2D, _Patch = _matplotlib()
-    root = Path(result_dir)
+    root = resolve_migrated_path(result_dir, PHASE12_MIGRATION_MAP)
     manifest = load_manifest(root)
     scenarios = scenario_order(root)
     all_jobs = sorted({
@@ -1227,7 +1234,7 @@ def render_capacity_job_completion(result_dir: str | Path, output: str | Path) -
 
 def render_capacity_observed_concurrency(result_dir: str | Path, output: str | Path) -> None:
     plt, Line2D, _Patch = _matplotlib()
-    root = Path(result_dir)
+    root = resolve_migrated_path(result_dir, PHASE12_MIGRATION_MAP)
     manifest = load_manifest(root)
     scenarios = scenario_order(root)
     figure, axes = _workload_panels(plt, len(manifest["workloads"]), height=3.4)
@@ -1275,7 +1282,7 @@ def render_capacity_observed_concurrency(result_dir: str | Path, output: str | P
 
 def render_capacity_occupancy_time(result_dir: str | Path, output: str | Path) -> None:
     plt, _Line2D, Patch = _matplotlib()
-    root = Path(result_dir)
+    root = resolve_migrated_path(result_dir, PHASE12_MIGRATION_MAP)
     manifest = load_manifest(root)
     scenarios = scenario_order(root)
     figure, axes = _workload_panels(plt, len(manifest["workloads"]), height=4.0)
@@ -1329,7 +1336,7 @@ def render_capacity_occupancy_time(result_dir: str | Path, output: str | Path) -
 
 def _render_policy_capacity_metric(result_dir: str | Path, output: str | Path, metric: str) -> None:
     plt, Line2D, _Patch = _matplotlib()
-    root = Path(result_dir)
+    root = resolve_migrated_path(result_dir, PHASE12_MIGRATION_MAP)
     manifest = load_manifest(root)
     capacities = list(dict.fromkeys(
         scene["capacity_label"]
@@ -1379,7 +1386,7 @@ def render_policy_mean_job_completion(result_dir: str | Path, output: str | Path
 
 def render_policy_per_job_completion(result_dir: str | Path, output: str | Path) -> None:
     plt, Line2D, _Patch = _matplotlib()
-    root = Path(result_dir)
+    root = resolve_migrated_path(result_dir, PHASE12_MIGRATION_MAP)
     manifest = load_manifest(root)
     scenarios = scenario_order(root)
     figure, axes = _workload_panels(plt, len(manifest["workloads"]), height=4.2, width=19)
@@ -1419,7 +1426,7 @@ def render_policy_per_job_completion(result_dir: str | Path, output: str | Path)
 
 def render_policy_paired_differences(result_dir: str | Path, output: str | Path) -> None:
     plt, Line2D, _Patch = _matplotlib()
-    root = Path(result_dir)
+    root = resolve_migrated_path(result_dir, PHASE12_MIGRATION_MAP)
     manifest = load_manifest(root)
     data = summary_data(root)
     figure, axes = _workload_panels(plt, len(manifest["workloads"]), height=4.5)
@@ -1454,7 +1461,7 @@ def render_policy_paired_differences(result_dir: str | Path, output: str | Path)
 
 def render_policy_ready_wait(result_dir: str | Path, output: str | Path) -> None:
     plt, _Line2D, _Patch = _matplotlib()
-    root = Path(result_dir)
+    root = resolve_migrated_path(result_dir, PHASE12_MIGRATION_MAP)
     manifest = load_manifest(root)
     scenarios = scenario_order(root)
     figure, axes = _workload_panels(plt, len(manifest["workloads"]), height=3.5)
@@ -1488,7 +1495,7 @@ def render_policy_ready_wait(result_dir: str | Path, output: str | Path) -> None
 
 def render_policy_scheduler_state(result_dir: str | Path, output: str | Path) -> None:
     plt, _Line2D, Patch = _matplotlib()
-    root = Path(result_dir)
+    root = resolve_migrated_path(result_dir, PHASE12_MIGRATION_MAP)
     manifest = load_manifest(root)
     scenarios = scenario_order(root)
     states = (

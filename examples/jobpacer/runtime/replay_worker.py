@@ -25,7 +25,7 @@ from runtime_comm_scheduler import (
 
 from examples.jobpacer.comm_profile import apply_profile, load_profile, workload_digest
 from examples.jobpacer.runtime.plan_builder import build_plan, planned_tasks, policy_diagnostics, policy_names
-from examples.jobpacer.workloads import Workload, load_workload, ranks_for_job, sample_linear_duration
+from examples.jobpacer.workloads import Workload, linear_execution_duration, load_workload, ranks_for_job
 
 
 def _now_us() -> int:
@@ -35,6 +35,28 @@ def _now_us() -> int:
 def _sleep(seconds: float) -> None:
     if seconds:
         time.sleep(seconds)
+
+
+def _warmup_collectives(workload: Workload, groups: dict[str, Any], *, rank: int,
+                        world_size: int, device: str, iterations: int) -> int:
+    if iterations < 0:
+        raise ValueError("warmup_iterations must be non-negative")
+    if iterations == 0:
+        return 0
+    count = 0
+    for job in workload.jobs:
+        ranks = ranks_for_job(job, world_size)
+        if rank not in ranks:
+            continue
+        for num_bytes in sorted({comm.num_bytes for comm in job.communications}):
+            tensor = torch.full((num_bytes // 4,), float(rank + 1), dtype=torch.float32, device=device)
+            for _ in range(iterations):
+                dist.all_reduce(tensor, group=groups[job.job_id])
+                tensor.fill_(float(rank + 1))
+                count += 1
+            dist.barrier(group=groups[job.job_id])
+    dist.barrier()
+    return count
 
 
 def _serialize_key(key) -> list[Any]:
@@ -296,7 +318,7 @@ class _GlobalReadyController:
 def _run_job(
     job,
     *,
-    workload_seed: int,
+    workload: Workload,
     epoch: int,
     compute_jitter: float,
     rank: int,
@@ -347,12 +369,12 @@ def _run_job(
             )
             tensor = tensors[(job.job_id, spec.id)]
             compute_start = _now_us()
-            producer_s = sample_linear_duration(
-                workload_seed, epoch, job.job_id, spec.id, rank, "producer",
+            producer_s = linear_execution_duration(
+                workload, epoch, job.job_id, spec.id, rank, "producer",
                 spec.producer_compute_s, compute_jitter,
             )
-            consumer_s = sample_linear_duration(
-                workload_seed, epoch, job.job_id, spec.id, rank, "consumer",
+            consumer_s = linear_execution_duration(
+                workload, epoch, job.job_id, spec.id, rank, "consumer",
                 spec.consumer_compute_s, compute_jitter,
             )
             _sleep(producer_s)
@@ -591,6 +613,10 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     groups = _new_groups(workload, world_size)
     control_group = dist.new_group(ranks=list(range(world_size)))
     dist.barrier()
+    warmup_collective_count = _warmup_collectives(
+        workload, groups, rank=rank, world_size=world_size, device=device,
+        iterations=getattr(args, "warmup_iterations", 0),
+    )
     applied_workload_digest = _check_workload_digest(workload)
     plan = build_plan(
         workload, args.policy, version=args.plan_version, window_id=args.window_id
@@ -662,7 +688,7 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
         def run_one(job):
             result_by_job[job.job_id] = _run_job(
                 job,
-                workload_seed=workload.seed,
+                workload=workload,
                 epoch=args.epoch,
                 compute_jitter=args.compute_jitter,
                 rank=rank,
@@ -857,6 +883,8 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 args.max_outstanding if args.mode == "scheduler" else None
             ),
             "application_release_ts": application_release_ts,
+            "warmup_iterations": getattr(args, "warmup_iterations", 0),
+            "warmup_collective_count": warmup_collective_count,
             "application_end_ts": application_end_ts,
             "communication_drain_end_ts": communication_drain_end_ts,
             "validation_start_ts": validation_start_ts,
@@ -1000,6 +1028,7 @@ def main() -> int:
     parser.add_argument("--completion-poll-interval-s", type=float, default=0.001)
     parser.add_argument("--compute-jitter", type=float, default=0.0)
     parser.add_argument("--epoch", type=int, default=0)
+    parser.add_argument("--warmup-iterations", type=int, default=1)
     parser.add_argument("--comm-profile", type=Path)
     parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(

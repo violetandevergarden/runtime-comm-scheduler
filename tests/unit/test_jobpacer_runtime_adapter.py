@@ -24,6 +24,7 @@ from runtime_comm_scheduler.runtime import CollectiveSpec, EventLog, TaskSpec
 
 
 ROOT = Path(__file__).resolve().parents[2]
+DAG_SMOKE = ROOT / "benchmark/phase3/experiments/dag-semantics/smoke"
 
 
 @pytest.mark.parametrize(("name", "digest"), [
@@ -32,13 +33,13 @@ ROOT = Path(__file__).resolve().parents[2]
     ("multi-group", "e3fa6b60b22a1e9bda8e1277968c12d01d3e8206646691e0f95afe2a5db9431a"),
 ])
 def test_existing_dag_canonical_digests_are_unchanged(name, digest):
-    parsed = load_dag(ROOT / "benchmark/phase3" / f"{name}.json", world_size=2)
+    parsed = load_dag(DAG_SMOKE / f"{name}.json", world_size=2)
     assert parsed.manifest_digest == digest
     assert parse_dag(json.loads(parsed.canonical_json)).manifest_digest == digest
 
 
 def test_parse_rejects_unsupported_reduction_before_runtime_start():
-    raw = json.loads((ROOT / "benchmark/phase3/linear.json").read_text())
+    raw = json.loads((DAG_SMOKE / "linear.json").read_text())
     collective = next(node["collective"] for job in raw["jobs"] for node in job["nodes"]
                       if node["kind"] == "comm")
     collective["reduction"] = "max"
@@ -60,7 +61,7 @@ def test_compute_sampling_and_historical_linear_order_remain_stable():
 
 
 def test_replay_compute_owns_sampled_duration_and_sampling_event():
-    dag = load_dag(ROOT / "benchmark/phase3/linear.json", world_size=2)
+    dag = load_dag(DAG_SMOKE / "linear.json", world_size=2)
     job = dag.graph.jobs[0]
     node = next(node for node in job.nodes if isinstance(node, ComputeNode))
     samples = {}

@@ -2,6 +2,10 @@
 
 日期：2026-09-21。状态：完成（CPU/Gloo 结构回归）；NCCL/GPU 未验收。
 
+> 目录迁移说明（2026-09-24）：以下旧 DAG 输入路径和验证命令保留为历史记录。对应输入现位于
+> `benchmark/phase3/experiments/dag-semantics/smoke/`，逐项映射见
+> [`benchmark/phase3/results/migration-map.json`](../../../benchmark/phase3/results/migration-map.json)。
+
 本结果对应[实施计划](../process/phase3.12fix.md)。这是职责迁移和回归，不是重写 runtime，也不表示性能收益。
 
 ## 实施结果

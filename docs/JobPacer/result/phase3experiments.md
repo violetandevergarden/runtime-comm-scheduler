@@ -2,6 +2,10 @@
 
 日期：2026-09-22。本文只记录本次实际执行的 CPU/Gloo pilot，不把单次运行写成稳定性能结论。
 
+> 目录迁移说明（2026-09-24）：本报告中的旧路径、命令和实验事实保留不变。compact 结果现按语义类别保存，suite
+> 索引见 [`benchmark/phase3/results/suites/20260923-compact/`](../../../benchmark/phase3/results/suites/20260923-compact/)，
+> 旧新路径及迁移前摘要见 [`migration-map.json`](../../../benchmark/phase3/results/migration-map.json)。
+
 ## 执行环境与输入
 
 - CPU：Intel Core i7-14650HX，12 physical cores / 24 logical CPUs，1 NUMA node。
@@ -145,3 +149,173 @@ env PYTHONPATH=src RUN_JOBPACER_RUNTIME_REPLAY=1 \
 
 该小批只验证修正后的反馈、计时和 block 产物链路，不足以证明策略排序、统计显著性或新 runtime
 相对旧路径的收益；正式矩阵、isolated 分母、多尺度 profile 和 DAG 参数化实验仍未完成。
+
+## 多尺度校准与正式输入 pilot（2026-09-22）
+
+本节追加本轮真实 CPU/Gloo 执行结果。所有数字均为 pilot 观测，不构成动态策略收益结论。
+
+环境仍为 Intel Core i7-14650HX、WSL2 Linux 6.18.33.2、Python 3.13.15、PyTorch
+2.13.0+cu129、world size 2、Gloo、float32 sum；CPU affinity 为 0–23，线程环境变量未固定。
+
+### Profile 与校准
+
+命令使用 `run_comm_profile` 对
+`benchmark/phase3/experiments/calibration/multi-scale.json` 执行 warmup 5、测量 30。
+profile 产物为 `/tmp/jobpacer-phase3-calibration-profile-20260922.json`，SHA-256 为
+`9fe7de4d1c710befcef2ddadd33ad1ef910b18beec9721f98f4d0e0c647aba3f`。
+
+| 消息大小 | p10 | p50 | p90 |
+| ---: | ---: | ---: | ---: |
+| 4 KiB | 0.512 ms | 0.577 ms | 0.696 ms |
+| 1 MiB | 2.419 ms | 3.268 ms | 7.302 ms |
+| 16 MiB | 19.185 ms | 22.180 ms | 24.764 ms |
+
+每个签名 30 个样本。`two-groups.json` 校准中，bare workload makespan 为 26.567 ms，
+旧 scheduler 串行 workload makespan 为 43.936 ms，二者 validation 均为 `ok`；新 runtime
+五策略校准也为 5/5 成功。由于每项只有一次配置观测，这里只记录口径和量级。
+
+### 机制 pilot
+
+使用 seed 0、每策略 5 repeats、严格 profile 和 replay warmup。L0–L5 与 G0–G4 的结果目录
+为 `/tmp/jobpacer-phase3-mechanism-pilot-20260922/`；每个场景为 25 次新 runtime replay，
+L3 另有一次重跑目录 `L3-lookahead-rerun/`。
+
+| 场景 | 成功 | 关键证据 |
+| --- | ---: | --- |
+| L0 | 25/25 | 正确性通过；不是机制收益样本 |
+| L1 | 25/25 | static FIFO/LTF 均 5/5 观察到静态队首阻塞 |
+| L2 | 25/25 | 25/25 存在至少两个 simultaneously eligible 候选；gate-first 依策略为 0–5/5 |
+| L3 | 25/25（重跑） | Lookahead wait 1/5，触发不稳定 |
+| L4 | 25/25 | Lookahead wait + deadline fallback 1/5，触发不稳定 |
+| L5 | 25/25 | 各策略 OFFER spread ≥5 ms 的次数为 4–5/5 |
+| G0/G1/G3 | 各 25/25 | DAG 节点集、join/顺序和 tensor 校验通过 |
+| G2 | 25/25 | 25/25 存在至少两个 simultaneously eligible 候选；gate-first 依策略为 0–5/5 |
+| G4 | 25/25 | Lookahead wait 且无提前 unsafe 预测 1/5 |
+
+L3 初始批次另有 1 次环境失败：rank 0 报 `Address already in use`，rank 1 控制连接关闭；
+原始记录保留，重跑成功。没有发现 collective、协议或数值错误。
+
+G4 的机制摘要在本轮修正：只有 `unsafe` 预测早于同一 coordinator rank 观测到
+`job-1/current` 完成才记作违规。此前的简单字符串检查会把完成后的安全 frontier 误报为
+违规；对应回归测试已加入，代码修改不改变 runtime 调度语义。
+
+### Isolated pilot
+
+`job-0`、`job-1` isolated 各 25/25 成功，L0 shared batch 25/25 成功；产物位于
+`/tmp/jobpacer-phase3-isolated-pilot-20260922/`，`jobs.csv` 已填充逐 job denominator 和
+slowdown。两 job、5 repeat 合并后的 slowdown median 为：static FIFO `0.557`、static LTF
+`0.536`、FIFO `0.510`、LTF `0.571`、Lookahead `0.530`。该结果只有一个 seed，且仍是
+小消息/单机 pilot，不解释为整体收益。
+
+### 当前状态
+
+本轮已完成：多尺度 profile、bare/旧 scheduler/新 runtime 校准、L0–L5/G0–G4 机制 pilot、
+L0 isolated 分母和逐 job slowdown。L1/L2/L5、G0/G1/G2/G3 可进入下一轮 screening；
+L3/L4/G4 的等待/预测触发率不足，需先调整场景窗口或作为负对照处理。正式多 seed/repeat
+矩阵、跨阶段共同对照、持久化原始 trace 归档和性能收益结论仍未完成。
+
+## Screening（2026-09-22）
+
+按照 `benchmark/phase3/experiments/suites/screening.json`，对 L0/L1/L2/G0/G1/G2 执行
+`seeds=100..109`、每 seed 一次、五个新 runtime 策略的配对 screening。总计 300 次真实
+CPU/Gloo replay，六个场景均为 50/50 `validation=ok`。原始产物和汇总位于
+`/tmp/jobpacer-phase3-screening-20260922/`。
+
+以下为相对 `new-static_fifo` 的 makespan median speedup；括号为 2000 次 seed-block
+bootstrap 95% 区间，>1 表示候选较快：
+
+| 场景 | static LTF | FIFO | LTF | Lookahead |
+| --- | ---: | ---: | ---: | ---: |
+| L0 | 1.033 (0.980–1.184) | 1.067 (0.960–1.170) | 1.074 (0.944–1.234) | 1.104 (1.005–1.229) |
+| L1 | 1.011 (0.910–1.055) | 1.082 (0.998–1.183) | 1.192 (1.100–1.265) | 1.086 (0.963–1.202) |
+| L2 | 0.977 (0.863–1.034) | 1.051 (0.914–1.144) | 1.150 (1.059–1.257) | 1.071 (1.009–1.188) |
+| G0 | 1.689 (1.624–1.818) | 1.723 (1.551–1.891) | 1.703 (1.616–1.779) | 1.360 (1.258–1.713) |
+| G1 | 1.008 (0.925–1.104) | 1.010 (0.800–1.274) | 0.981 (0.873–1.127) | 0.932 (0.751–1.081) |
+| G2 | 1.368 (1.296–1.498) | 0.983 (0.938–1.285) | 1.037 (0.948–1.337) | 0.951 (0.937–0.988) |
+
+这是新 runtime 内部 screening，不包含 Phase 1/2；不同场景方向不一致，不能据此声称动态
+策略普遍优于静态。G1 区间跨 1，G2 中 Lookahead 的 screening 结果低于 1，而 G0 的
+相对差异较大，均需在统一旧新口径、更大 repeat 和持久化原始 trace 后再解释。
+
+L3/L4/G4 未进入本轮 screening，因为 5-repeat pilot 中 Lookahead wait/fallback 仅 1/5
+次，尚未稳定触发预期机制；L5/G3 也尚未做配对 screening。正式 `30 seed × 3 repeat`
+主结果和完整旧新共同对照仍未完成。
+
+### 2026-09-23 解释勘误（无新运行）
+
+上述六场景 screening 的 `compute_jitter=0`，seed block 没有产生不同的计算时长
+样本。配对 bootstrap 区间描述固定输入下的重复运行差异，不能解释为对计算扰动
+的鲁棒收益。
+
+L2/G2 的 gate-first 不是各策略共同前提：screening 中 Static LTF 为 0/10，
+FIFO 分别为 6/10、7/10，LTF 分别为 5/10、6/10（L2、G2 顺序）。
+旧的 `max_simultaneous_eligible >= 2` 没核对两个指定研究候选是否在 gate 完成前
+eligible。因此这些 makespan 差异包含 gate 调度和后续候选选择；旧批次保留
+全部运行，不从中事后筛 gate-first 子集估计收益。
+
+G0 原输入缺少与 L0 相同的 consumer overlap 和 jitter 采样映射；其 Static FIFO
+实际按 job 顺序执行，约 1.7× 的相对差异包含冻结顺序质量。G1 仅一 job、join
+之后才有第二项通信，作为负对照解读。此前 isolated 分母与 shared 分批执行，
+shared JCT 约 24–27 ms、isolated 约 40–51 ms 的反向差异尚未查明；
+既有约 0.5 的 slowdown 不作为资源竞争效应或正式结论。L3/L4/G4 原等待仅 1/5
+也归因于待验证的预测窗口设计，而非单纯重复不足。相应输入和检查已修改，
+新结果需重新运行才能评价。
+
+## 精简 suite 首次执行（2026-09-23）
+
+按 `benchmark/phase3/experiments/suites/compact.json` 运行。持久化产物位于
+`benchmark/phase3/results/phase3-compact-runs-20260923/`；校准 profile 位于
+`benchmark/phase3/results/phase3-compact-20260923/calibration/profile.json`，SHA-256
+为 `0283de537d286411b5014ca5436b6284c748fecc122360c8d1dfd8ab42573093`。
+
+环境：Intel Core i7-14650HX、WSL2 Linux 6.18.33.2、Python 3.13.15、PyTorch
+2.13.0+cu129、CPU/Gloo、world size 2；CPU affinity `0-23`，OMP/MKL/OpenBLAS/NumExpr
+线程均为 1。profile warmup 5、每个签名采样 30 次：4 KiB、1 MiB、16 MiB 的
+p10/p50/p90 分别为 `0.705/0.902/1.236 ms`、`1.868/2.552/3.654 ms`、
+`18.097/19.566/21.658 ms`。suite source snapshot digest 为
+`2a206ce4bfda9f7665e62a938b7279a986edf0b0db07ca48e1083ec3c0c5e884`。
+
+共检查 660 次真实 replay，所有结果 JSON 的 SHA-256 与运行记录一致，且
+validation 均为 `ok`：机制验收 90 次、主矩阵 480 次、isolated 诊断 30 次、
+独立噪声 pilot 60 次。compact 基础计划的 780 次中，L2/G2 主矩阵共 180 次未扩批：
+L2 和 G2 的 FIFO/LTF 各自严格 gate-first 竞争均为 `0/5`；指定研究候选虽在
+gate 完成前 OFFER 到齐，但首次研究候选决策时没有形成共同 eligible 竞争。L3
+准时 Lookahead 为 `0/5`，因此可选 120 次性能批次未运行；L4 与 G4 的 deadline
+fallback 各为 `5/5`。L5 成员 OFFER spread 机制判定为 `10/10`；G0 线性与 DAG
+桥接各 `5/5` 成功，计算样本/launch 顺序桥接检查为 `ok`。未达到门槛的结果保留，
+没有从任何性能汇总中筛除运行。
+
+噪声 pilot 使用 L0、零计算扰动、单个 `new-fifo` arm；10 个 seed、每 seed 3 次，
+执行两份 A/B 并按 seed 奇偶交替先后顺序。每份内部先对 repeat 取中位数，再比较
+同 seed 的 A/B，10 个 seed-block 的绝对相对差中位数为 `5.99%`，P95 为 `11.96%`。
+该 P95 作为主矩阵显式 `tie_threshold=0.1196095405`。噪声幅度较大，胜/平/负标签
+应谨慎解读；此阈值不是性能显著性检验。
+
+主矩阵按 `seeds=4000..4009`、每 seed 3 repeats、jitter `0.3`、wait budget
+`20 ms` 执行。L0 与 L1 各 210 次，L5 为 60 次，全部成功。主要配对结果为
+baseline/candidate makespan 比值；大于 1 表示 candidate 较快，区间为 2000 次
+seed-block bootstrap 95% 区间：
+
+| 场景 | baseline → candidate | speedup（95% bootstrap CI） |
+| --- | --- | ---: |
+| L0 | old bare → old FIFO | 0.872 (0.846–0.917) |
+| L0 | old FIFO → new static FIFO | 0.662 (0.613–0.687) |
+| L0 | old LTF → new static LTF | 0.670 (0.641–0.704) |
+| L0 | new static FIFO → new FIFO | 1.045 (0.999–1.100) |
+| L0 | new FIFO → new LTF | 1.003 (0.951–1.046) |
+| L1 | old bare → old FIFO | 0.811 (0.783–0.863) |
+| L1 | old FIFO → new static FIFO | 0.750 (0.725–0.799) |
+| L1 | old LTF → new static LTF | 0.775 (0.746–0.788) |
+| L1 | new static FIFO → new FIFO | 1.224 (1.198–1.283) |
+| L1 | new FIFO → new LTF | 1.000 (0.986–1.028) |
+| L5 | new static FIFO → new FIFO | 1.200 (1.154–1.269) |
+
+这是通过机制筛选后的部分矩阵，不包含 L2/G2 主性能批次或 Lookahead 扩批；结合
+较高的零扰动噪声，不据此概括动态策略的普遍收益。跨 Phase 1/2/3 的 makespan
+均取结果 JSON 的 `performance.workload_makespan_us`，rank-local duration 先在
+本地求差再取 rank 最大值；它比较的是整条执行路径，不单独归因于调度策略。
+
+interleaved isolated 的 5-repeat slowdown 中位数（shared job JCT / 对应 isolated
+job JCT）为：FIFO 的 job-0 `1.366`、job-1 `1.095`；LTF 的 job-0 `1.300`、job-1
+`1.151`。该诊断只有一个 seed，不解释为稳定资源竞争效应。原始 JSON、manifest、
+逐 job/机制记录、配对 CSV 和噪声 pilot 分批摘要均留在上述结果目录。

@@ -39,7 +39,7 @@ def _valid_results(graph, world_size):
 
 
 def test_expected_dag_results_and_validation_cover_tasks_nodes_members_and_launches():
-    dag = load_dag(ROOT / "benchmark/phase3/linear.json", world_size=2)
+    dag = load_dag(ROOT / "benchmark/phase3/experiments/dag-semantics/smoke/linear.json", world_size=2)
     expected_data, results = _valid_results(dag.graph, 2)
     validation = validate_results(results, 2, expected=expected_data["expected"],
                                   expected_nodes=expected_data["expected_nodes"], digests={"known"})

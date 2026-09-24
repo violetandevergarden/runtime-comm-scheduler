@@ -1,0 +1,50 @@
+{
+  "name": "balanced-small",
+  "seed": 11,
+  "jobs": [
+    {
+      "job_id": "job-0",
+      "ranks": null,
+      "communications": [
+        {
+          "id": 0,
+          "num_bytes": 4096,
+          "op": "all_reduce",
+          "producer_compute_s": 0.003,
+          "consumer_compute_s": 0.002,
+          "estimated_comm_s": 0.0005
+        },
+        {
+          "id": 1,
+          "num_bytes": 1048576,
+          "op": "all_reduce",
+          "producer_compute_s": 0.0,
+          "consumer_compute_s": 0.001,
+          "estimated_comm_s": 0.001
+        }
+      ]
+    },
+    {
+      "job_id": "job-1",
+      "ranks": null,
+      "communications": [
+        {
+          "id": 0,
+          "num_bytes": 4096,
+          "op": "all_reduce",
+          "producer_compute_s": 0.002,
+          "consumer_compute_s": 0.003,
+          "estimated_comm_s": 0.0005
+        },
+        {
+          "id": 1,
+          "num_bytes": 1048576,
+          "op": "all_reduce",
+          "producer_compute_s": 0.0,
+          "consumer_compute_s": 0.001,
+          "estimated_comm_s": 0.001
+        }
+      ]
+    }
+  ]
+}

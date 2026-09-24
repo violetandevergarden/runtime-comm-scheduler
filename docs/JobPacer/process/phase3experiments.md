@@ -17,6 +17,13 @@
 > `PYTHONPATH=src:. python -m examples.jobpacer.scripts.<entry>` 启动。文中的历史命令仅用于
 > 说明既有批次，不改写历史产物。
 
+> 目录索引补充（2026-09-24）：旧 smoke 输入现位于
+> `benchmark/phase3/experiments/dag-semantics/smoke/`；结果按场景写入
+> `benchmark/phase3/results/<category>/<scenario>/<batch-id>/`，suite 汇总放在
+> `results/suites/<suite-id>/`。具体映射见
+> [`benchmark/phase3/results/migration-map.json`](../../../benchmark/phase3/results/migration-map.json)，当前命令见
+> [`benchmark/phase3/experiments/suites/README.md`](../../../benchmark/phase3/experiments/suites/README.md)。
+
 ## 1. 研究问题与范围
 
 本轮主要回答：
@@ -92,6 +99,7 @@ Phase 3.2 是输入与推进模型的扩展，不能把另一张线性图的耗�
 | DAG 计算扰动 | `--compute-jitter`，按 seed/epoch/job/node/rank 固定样本 | 可复用；输出实际样本摘要 |
 | 离线通信 profile | 旧、新 replay 均支持严格 `--comm-profile` | 已将同一 profile 注入线性新旧组，记录 digest、环境和来源 |
 | DAG 静态顺序 | 自动 FIFO/LTF，或 `--static-order` 文件 | 保存生成结果，跨 seed 冻结 |
+| DAG profile | 已支持与线性路径相同的严格签名覆盖 | 正式 DAG 输入不解释 manifest 占位估值 |
 | Lookahead 等待预算 | 核心默认 0.02 s，replay 已暴露 `--wait-budget-s` | 首轮固定并记录；预算扫描仍未执行 |
 | 计时口径 | 旧路径有 application/drain/validation 边界；新路径此前尚不等价 | 已补统一应用释放、drain、validation 边界；正式比较前仍需重跑共同矩阵 |
 | 指标与 trace | 有 rank 事件、coordinator records、DAG 事件 | 已补串行批量汇总、原始结果和失败记录 |
@@ -347,6 +355,7 @@ PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
 PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
   --policy ltf --dag benchmark/phase3/multi-group.json \
   --backend gloo --world-size 2 --epoch 0 --compute-jitter 0.3 \
+  --comm-profile /tmp/jobpacer-phase3-profile.json \
   --poll-interval 0.001 --dag-poll-interval 0.001 --timeout 20 \
   --output /tmp/jobpacer-phase3-dag-ltf.json
 
@@ -375,7 +384,10 @@ DAG seed 来自 JSON；CLI 的 `epoch` 也参与现有采样，所有策略必�
 - `runs.jsonl`：每次完整命令、配置、seed/repeat、策略运行顺序、开始结束时间、wall time、退出码和结果路径。
 - `inputs/`：冻结估计、实际样本、group、静态顺序和节点映射；策略可见部分与执行部分分开。
 - `raw/`：原始 JSON、stdout/stderr、验证结论与失败原因。
-- `summary.csv`：逐 run、逐 job 的标准化指标与配对标识。
+- `summary.csv`：逐 run 指标；`jobs.csv`：逐 job JCT、isolated 分母和 slowdown。
+- `paired-summary.csv` / `analysis.json`：seed 内 repeat 中位数后的配对差值、
+  加速比、胜平负和 seed-block bootstrap 区间。
+- `mechanisms.csv`：候选竞争、静态队首阻塞、Lookahead 等待/回退和成员 OFFER 偏斜证据。
 - `figures/`：完成时间对照、扰动响应、阻塞/等待分解和代表性 trace。
 
 最终报告建议至少给出：
@@ -483,3 +495,198 @@ digest 为 `489f2e6c5b33a88ce5d1281cbc3d3d4c010df2a6d3afdc2282a6b46560c345b0`。
 各策略各有 4 个样本；makespan 中位数（秒）为 static FIFO `0.023292`、static LTF
 `0.021082`、FIFO `0.020799`、LTF `0.020838`、Lookahead `0.021206`。这些样本用于确认
 修正后链路和 block 产物完整，不足以证明策略排序或性能收益。
+
+## 14. 正式实验输入与分析闭环实施（2026-09-22）
+
+本轮只实施支撑与输入，未启动正式性能矩阵，也未向 result 文档追加性能结论。
+
+1. 线性 workload 新增 execution-only 时长覆盖，支持按 job/task/rank/segment
+   确定性指定实际 producer/consumer 时长。Phase 1/2/3 共用同一解析和采样函数，
+   policy hint 仍只读名义时长。
+2. 新旧 replay 在应用 release 前按 group 和实际消息签名执行可配置预热，
+   预热 collective 不经调度 runtime，不进入任务集、静态序列和 JCT。
+3. DAG 路径接通严格 communication profile，根据 op/bytes/dtype/group size/backend/
+   device/reduction 覆盖所有 comm node，缺签名或环境不匹配时在启动前拒绝。
+4. `benchmark/phase3/experiments/` 新增多尺度校准、L0–L5、G0–G4、L0 isolated
+   分母和 pilot/screening 清单。输入 README 规定每个场景的 trace 验收条件；
+   manifest 内通信估值是待 profile 覆盖的占位值，不作为校准结论。
+5. 批处理拒绝复用非空输出目录，避免旧 JSON 使失败运行被误判成功；
+   manifest 补充 CPU model、affinity、线程环境和 DAG/旧基线源码摘要。批次产物增加
+   `jobs.csv`、`mechanisms.csv`、`paired-summary.csv` 和 `analysis.json`，并可用
+   `--isolated-jobs` 按模式/策略/seed/repeat/job 严格连接分母计算 slowdown。
+
+这些文件与接口只使正式 pilot/screening 可执行。机制是否真实触发、尺度选择、
+多 seed 不确定性和性能收益仍必须由后续真实 CPU/Gloo 运行验收。
+
+## 15. 校准与机制 pilot 执行记录（2026-09-22）
+
+本节记录本轮实际启动的真实 CPU/Gloo 样本。它们仍是 pilot，不替代正式 screening
+或 `30 seed × 3 repeat` 主矩阵。
+
+### 15.1 多尺度校准
+
+使用 `benchmark/phase3/experiments/calibration/multi-scale.json` 和
+`run_comm_profile`，`warmup=5`、`iterations=30`、world size 2。profile 产物为
+`/tmp/jobpacer-phase3-calibration-profile-20260922.json`，文件 SHA-256 为
+`9fe7de4d1c710befcef2ddadd33ad1ef910b18beec9721f98f4d0e0c647aba3f`。
+
+| bytes | p10 | p50（注入估计） | p90 |
+| ---: | ---: | ---: | ---: |
+| 4 KiB | 0.512 ms | 0.577 ms | 0.696 ms |
+| 1 MiB | 2.419 ms | 3.268 ms | 7.302 ms |
+| 16 MiB | 19.185 ms | 22.180 ms | 24.764 ms |
+
+每个签名均有 30 个样本，环境为 CPU/Gloo、float32、sum、group `[0, 1]`。
+
+`two-groups.json` 的校准也已执行：bare 结果为 `validation=ok`、workload makespan
+26.567 ms、峰值在途 2；旧 scheduler `max_outstanding=1` 结果为
+`validation=ok`、workload makespan 43.936 ms、严格串行 admission 验证通过。新 runtime
+五策略校准批次 5/5 成功，产物为
+`/tmp/jobpacer-phase3-calibration-new-20260922/`。这些是各一条配置观测，不能作为稳定
+的 bare/旧 scheduler/新策略性能排序。
+
+### 15.2 L0–L5 与 G0–G4 机制 pilot
+
+pilot 使用 seed/epoch 0、每场景每策略 5 次 repeat、严格 profile、每次 replay
+`warmup_iterations=1`，每个场景单独输出到
+`/tmp/jobpacer-phase3-mechanism-pilot-20260922/`。除第一次 L3 的一次本地端口占用外，
+重跑批次均 25/25 成功；L3 原批次保留在同名目录，重跑结果位于
+`L3-lookahead-rerun/`。
+
+| 场景 | 正确运行 | trace 机制证据 | 结果 |
+| --- | ---: | --- | --- |
+| L0 | 25/25 | validation-only | 可运行；不以此证明策略收益 |
+| L1 | 25/25 | static FIFO/LTF 队首阻塞各 5/5 | 稳定触发静态队首阻塞 |
+| L2 | 25/25 | `max_simultaneous_eligible >= 2` 为 25/25；gate-first 随策略为 0–5/5 | 候选竞争稳定，gate-first 非策略不变 |
+| L3 | 25/25（重跑） | Lookahead wait 1/5 | 未形成稳定主动等待，不进入 screening |
+| L4 | 25/25 | Lookahead wait + deadline fallback 1/5 | 未形成稳定失准回退，不进入 screening |
+| L5 | 25/25 | OFFER spread ≥5 ms：各策略 4–5/5 | 成员偏斜证据基本稳定 |
+| G0/G1/G3 | 各 25/25 | 节点/依赖/组内顺序校验通过 | 正确性样本成立 |
+| G2 | 25/25 | `max_simultaneous_eligible >= 2` 为 25/25；gate-first 随策略为 0–5/5 | 多前沿竞争成立，gate-first 需按策略解释 |
+| G4 | 25/25 | Lookahead wait + 无提前 unsafe 预测 1/5 | 当前输入未形成稳定等待机制 |
+
+本轮还修正了 `run_experiments.py` 的 G4 机制判定：`unsafe` 只有在其预测时刻早于
+同一 coordinator rank 观测到 `job-1/current` 完成时才算违规。此前只要 trace 中出现
+过 `unsafe` anticipated 就标红，会把 current 已完成后的安全 frontier 声明误判为违规；
+对应回归检查已加入 `tests/unit/test_jobpacer_phase3_experiments.py`。
+
+L3 的初次失败原因为 rank 0 `OSError: [Errno 98] Address already in use`，rank 1 随后
+报告 control connection closed；不是 collective、协议或 validation 错误。该环境故障未从
+原始批次中删除，重跑原因和新目录均已保留。
+
+### 15.3 L0 isolated 与 slowdown
+
+`isolated/job-0.json`、`isolated/job-1.json` 各运行 5 个策略 × 5 repeat，均为 25/25
+成功；随后 L0 shared batch 25/25 成功，并通过两个 `jobs.csv` 生成逐 job slowdown。
+产物位于 `/tmp/jobpacer-phase3-isolated-pilot-20260922/`。
+
+按策略聚合两 job、5 repeat 的 10 条 slowdown，median 为：static FIFO `0.557`、
+static LTF `0.536`、FIFO `0.510`、LTF `0.571`、Lookahead `0.530`。这些分母已经匹配
+runner、backend、profile、seed/repeat 和 warmup，但仍只有一个 seed，且产物当前位于
+`/tmp`；不据此宣布 shared run 优于 isolated。
+
+### 15.4 当前推进结论
+
+多尺度 profile、裸/旧/新校准、L0–L5/G0–G4 pilot 和 L0 isolated 闭环已经实际跑通。
+L1/L2/L5 以及 G0/G1/G2/G3 有足够的 pilot 机制/正确性证据进入下一轮筛选；L3/L4/G4
+的等待/预测触发率不足，继续扩大 seed 前应先调整输入时间窗口或明确把它们作为负对照。
+正式多 seed 性能矩阵、完整旧新共同对照、持久化原始 trace 归档和正式统计结论仍未完成。
+
+## 16. Screening 执行记录（2026-09-22）
+
+按照 `benchmark/phase3/experiments/suites/screening.json`，对 pilot 中机制证据较稳定的
+L0/L1/L2 和 G0/G1/G2 执行了 `seeds=100..109`、每 seed 一次、五个新 runtime 策略的
+配对 screening。共 300 次真实 CPU/Gloo replay，六个场景均为 50/50 `validation=ok`。
+
+输出位于 `/tmp/jobpacer-phase3-screening-20260922/`，每个目录包含 raw JSON、逐 job 表、
+机制表、配对汇总和 bootstrap 分析。`paired-summary.csv` 的 baseline 是 `new-static_fifo`，
+speedup 大于 1 表示候选的 makespan 较小；先在每个 seed 内取 repeat median（本批每 seed
+只有一次），再做 2000 次 seed-block bootstrap。
+
+| 场景 | static LTF | FIFO | LTF | Lookahead |
+| --- | ---: | ---: | ---: | ---: |
+| L0 | 1.033 (0.980–1.184) | 1.067 (0.960–1.170) | 1.074 (0.944–1.234) | 1.104 (1.005–1.229) |
+| L1 | 1.011 (0.910–1.055) | 1.082 (0.998–1.183) | 1.192 (1.100–1.265) | 1.086 (0.963–1.202) |
+| L2 | 0.977 (0.863–1.034) | 1.051 (0.914–1.144) | 1.150 (1.059–1.257) | 1.071 (1.009–1.188) |
+| G0 | 1.689 (1.624–1.818) | 1.723 (1.551–1.891) | 1.703 (1.616–1.779) | 1.360 (1.258–1.713) |
+| G1 | 1.008 (0.925–1.104) | 1.010 (0.800–1.274) | 0.981 (0.873–1.127) | 0.932 (0.751–1.081) |
+| G2 | 1.368 (1.296–1.498) | 0.983 (0.938–1.285) | 1.037 (0.948–1.337) | 0.951 (0.937–0.988) |
+
+这些结果只说明 screening 的场景差异和统计产物链路已经可读：G0 的线性 bridge 与 G2
+的静态 LTF 观测方向不同，G1 的区间跨过 1，不能合并成“动态策略普遍更好”的结论。
+screening 没有包含旧 Phase 1/2 对照，也没有达到正式 `30 seed × 3 repeat` 规模。
+
+本轮未将 L3/L4/G4 放入 screening：它们在 5-repeat pilot 中 Lookahead wait/fallback
+只发生 1/5 次，输入尚未稳定触发预期机制。L5、G3 也尚未进入本轮配对 screening。
+
+## 17. Screening 设计修正（2026-09-23；未运行新实验）
+
+保留第 15–16 节原始 pilot 和 screening 数值，更新解释及后续输入：
+
+1. 原 screening 六个场景的 `compute_jitter=0`；seed 100–109 没有抽取不同
+   计算时长。`suites/screening.json` 标记为无扰动重复对照并显式固定 jitter、
+   等待预算、轮询间隔、baseline 和顺序 seed。`perturbation-screening.json`
+   选定 jitter 0.3，先覆盖 L0/L1/L5、G0/G1；其配对区间才可讨论所采样的
+   计算扰动范围，仍需检查机制触发与运行环境。
+2. L2/G2 原判定只检查 gate-first 和任意两个 eligible。现记录指定组内首项候选的
+   全体成员是否在 gate 全员完成前 OFFER 到齐，以及首个研究候选决策时两者
+   是否同时 eligible。容量占用期间 coordinator 不记录首次 eligible，前一条件
+   由 OFFER 覆盖、节点依赖和组内首项约束重建。
+   `priority-pilot.json` 把共同快照中的 FIFO/LTF 选择与自然到达的整体性能拆开。
+   后者保留全部样本，按策略报告 gate-first 比例，不作事后成功样本筛选。
+   第 15 节“候选竞争稳定”的描述只对应旧宽松指标，不能追认为严格触发率。
+3. G0 新增 `linear/L0-no-overlap-bridge.json`，G0 compute 节点用相同 seed 和
+   `execution.linear_sample_keys` 对应线性 producer 样本；两边 consumer overlap
+   都为零。DAG 的 `G0-interleaved-order.json` 可注入 static LTF 组，同时保留
+   原 static FIFO。比较 DAG/线性 runner 开销时用桥接输入；策略归因还要看
+   FIFO→LTF、LTF→Lookahead 的配对结果，不能把相对逐 job Static FIFO 的
+   约 1.7× 直接称作动态适应收益。
+4. G1 保留单 job diamond 负对照：验 join、overlap 隐藏和无选择空间时的开销。
+   将来研究 diamond 调度选择需另加竞争前沿。
+5. 旧 isolated/shared 分批运行且线程环境未固定，约 0.5 的 slowdown 暂不解释。
+   批处理现在校验两批的 profile、源码、环境、计算样本和预热配置；下一次
+   小规模检查需随机交错 shared 与两个 isolated 输入并固定线程环境，检查
+   tensor 构造、grant/launch/反馈分段和后台负载。配置校验本身不能替代交错。
+6. L3/L4/G4 的名义目标到达差从约 5 ms 缩短到约 2.5 ms，并另列 4 ms
+   等待预算 pilot。依据 1 MiB profile p50 约 3.268 ms，只有实际 trace 的
+   `wait_score < dispatch_score`、目标到达与 deadline 证据满足条件后才扩批。
+
+以上是输入、判定和分析入口调整；本节没有追加性能观测，也没有改变第 16 节的原始结果。
+
+## 18. 精简正式实验实施（2026-09-23；未运行性能 replay）
+
+原 `suites/formal.json` 的 6570 次计划保留作历史方案；后续执行清单为
+`benchmark/phase3/experiments/suites/compact.json`。主实验只在 L0/L1 做
+Phase 1/2/3 七组跨阶段对照；L2 两组、G2 四组、L5 两组。10 seed × 3 repeat、
+jitter 0.3，共 660 次。机制层为固定输入零扰动、每配置 5 repeat，共 90 次；
+isolated 诊断将 L0 shared 和两个单 job 输入随机交错，共 30 次。基础预算 780 次。
+只有 L3 准时到达与 L4 超时回退通过 pilot 后，才分别追加两组 × 10 seed ×
+3 repeat，共可选 120 次。G4 仍在机制层验证 DAG 安全预测，不先加入大矩阵。
+
+`run_experiments.py` 新增 `--arms`、`--preview`、`--resume`、`--history-summary`。
+每个 `(seed, repeat)` block 随机化所选组顺序，结果按同 seed repeat 中位数和
+seed-block bootstrap 分析。成功运行的同配置结果安全跳过；失败重试有独立 attempt
+路径，旧记录留在 `runs.jsonl`。续跑先比对输入、profile、静态顺序、源码、git HEAD、
+环境和批次参数摘要。套件入口 `run_compact_suite.py` 默认预览；只有显式 `--execute`
+才启动串行 replay。其主阶段在 L2/G2 的每策略 pilot 中要求至少 3/5 严格触发；
+Lookahead 可选阶段要求 L3/L4 的 Lookahead pilot 各至少 4/5。门槛写入清单，
+未达标则停止扩批。门槛用于决定是否扩大场景，不用于筛掉主矩阵的自然到达样本。
+
+正式套件要求在固定 CPU affinity、线程变量下生成的新 profile；profile 文件需记录
+两者，套件执行时逐项核对。旧 profile 缺这些字段，若无法证明一致，必须重新校准。
+持平阈值由独立噪声 pilot 与实际意义事先确定，主阶段执行时显式传入，不沿用默认 1%。
+已有完全同条件的结果可经摘要和原始记录核对后抵扣；工具不自动跨不同批次拼接样本。
+历史失败、未触发、负收益照原样保留。命令与参数说明见 `suites/README.md`。
+
+### 18.1 首次执行状态更新（2026-09-23）
+
+精简 suite 已完成多尺度 profile、90 次机制验收、30 次 interleaved isolated、60 次
+独立零扰动噪声 pilot，以及 L0/L1/L5 共 480 次主矩阵 replay。原始数据持久保存在
+`benchmark/phase3/results/phase3-compact-runs-20260923/`。主矩阵采用噪声 pilot
+测得的 11.96% P95 同配置差异作为 tie threshold。
+
+L2/G2 的严格 gate-first 候选竞争均未达到每策略至少 3/5 的扩批门槛；L3 的
+Lookahead 准时到达为 0/5，故 L2/G2 的 180 次主批次及 Lookahead 可选 120 次未启动。
+机制 trace、配对估计、校准数值及解释边界详见
+`docs/JobPacer/result/phase3experiments.md` 的“精简 suite 首次执行”节。此次执行
+没有修改运行时、workload 或 suite 配置。

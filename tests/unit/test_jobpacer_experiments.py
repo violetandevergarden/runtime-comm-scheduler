@@ -1,13 +1,8 @@
 """Checks for the explicit Phase 1.2 experiment matrices."""
 
-import sys
-from pathlib import Path
-
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "benchmark/phase1.2"))
-
-from batch_runner import scenario_matrix
+from examples.jobpacer.scripts.batch_runner import scenario_matrix
 
 
 def test_capacity_scan_matrix_has_bare_and_eight_static_capacity_scenarios():
