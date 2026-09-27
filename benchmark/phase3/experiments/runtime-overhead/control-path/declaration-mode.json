@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "name": "declaration-mode-4KiB-32x",
+  "question": "Does one independent DECLARE per collective add application critical-path time or control-message contention when no future-task prediction is needed?",
+  "workload": "benchmark/phase3/experiments/runtime-overhead/communication-chain/4KiB-32x.json",
+  "communication_profile": "benchmark/phase3/results/runtime-overhead/communication-chain/20260924-phase-C-main/4KiB-32x/inputs/comm-profile.json",
+  "fixed_conditions": {
+    "backend": "gloo",
+    "device": "cpu",
+    "world_size": 2,
+    "max_inflight": 1,
+    "policy": "static_fifo",
+    "binding_preparation": "precreate",
+    "completion_poll_interval_s": 0.001,
+    "warmup_iterations": 1,
+    "compute_jitter": 0.0,
+    "thread_environment": {
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1"
+    }
+  },
+  "modes": {
+    "before-producer": "DECLARE -> producer -> submit/OFFER",
+    "on-submit": "producer -> submit/OFFER; OFFER carries the complete TaskSpec and TaskHint"
+  },
+  "f1": {
+    "observation_mode": "minimal",
+    "repeats": 5,
+    "arms_randomized_within_each_repeat": true,
+    "output_subdirectory": "minimal-4KiB"
+  },
+  "f2": {
+    "observation_mode": "diagnostic",
+    "repeats": 5,
+    "arms_randomized_within_each_repeat": true,
+    "output_subdirectory": "diagnostic-4KiB"
+  },
+  "f3": {
+    "workload": "benchmark/phase3/experiments/runtime-overhead/communication-chain/1MiB-32x.json",
+    "observation_mode": "minimal",
+    "repeats": 5,
+    "arms_randomized_within_each_repeat": true,
+    "output_subdirectory": "minimal-1MiB",
+    "gate": "Run only if F1 and F2 agree on direction and mechanism; if effect is close to noise, add independent paired repeats before changing workload size."
+  },
+  "f4": {
+    "workloads": {
+      "L0-balanced": "benchmark/phase3/experiments/baseline/L0-balanced.json",
+      "L1-head-misalignment": "benchmark/phase3/experiments/readiness/L1-head-misalignment.json"
+    },
+    "communication_profile": "benchmark/phase3/results/calibration/multi-scale/phase3-compact-20260923/profile.json",
+    "policy": "new_fifo",
+    "observation_mode": "minimal",
+    "seeds": [5300, 5301, 5302, 5303, 5304],
+    "repeats_per_seed": 3,
+    "compute_jitter": 0.3,
+    "binding_preparation": "precreate",
+    "completion_poll_interval_s": 0.001,
+    "warmup_iterations": 1,
+    "randomized_order_within_workload_seed_repeat": true,
+    "output_subdirectory": "application-L0-L1",
+    "gate": "Run only after F3 confirms repeatable benefit without correctness or tail regression."
+  },
+  "gates": {
+    "f3_1MiB": "Run only if F1 shows directionally consistent benefit and F2 supports the same mechanism; if near noise, add paired repeats first.",
+    "f4_L0_L1": "Run only after F3 confirms repeatable benefit without correctness or tail regression."
+  },
+  "interpretation": "Five fixed-input repeats characterize system noise only; they are not independent seeds. Compare paired repeat differences and speedups, and do not subtract a fixed diagnostic overhead."
+}

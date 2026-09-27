@@ -49,8 +49,12 @@ def _start(rank: int, args: argparse.Namespace, rendezvous_port: int, control_po
                "--compute-jitter", str(args.compute_jitter), "--wait-budget-s", str(args.wait_budget_s),
                "--warmup-iterations", str(args.warmup_iterations),
                "--binding-preparation", args.binding_preparation,
+               "--declaration-mode", args.declaration_mode,
+               "--observation-mode", args.observation_mode,
                "--control-port", str(control_port),
                "--fault", args.fault]
+    if args.wake_completion_on_submit:
+        command.append("--wake-completion-on-submit")
     if args.dag:
         command.extend(("--dag", str(args.dag)))
     else:
@@ -94,12 +98,19 @@ def main() -> int:
     parser.add_argument("--setup-timeout", type=float, default=20.0)
     parser.add_argument("--epoch", type=int, default=0)
     parser.add_argument("--poll-interval", type=float, default=0.001)
+    parser.add_argument("--wake-completion-on-submit", action="store_true",
+                        help="wake the periodic completion probe when new work becomes probeable")
     parser.add_argument("--dag-poll-interval", type=float, default=0.001)
     parser.add_argument("--compute-jitter", type=float, default=0.0)
     parser.add_argument("--wait-budget-s", type=float, default=0.02)
     parser.add_argument("--warmup-iterations", type=int, default=1)
     parser.add_argument("--binding-preparation", choices=("precreate", "on-ready"), default="precreate",
                         help="linear replay only; DAG preparation remains unchanged")
+    parser.add_argument("--declaration-mode", choices=("before-producer", "on-submit"),
+                        default="before-producer",
+                        help="linear replay only; on-submit is unavailable to DAG/Lookahead")
+    parser.add_argument("--observation-mode", choices=("minimal", "diagnostic", "full"), default="full",
+                        help="minimal; control-path diagnostic without policy snapshots; or full legacy trace")
     parser.add_argument("--comm-profile", type=Path)
     parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--output", type=Path)
@@ -115,6 +126,8 @@ def main() -> int:
         parser.error("compute-jitter must be in [0, 1)")
     if args.epoch < 0 or args.world_size <= 0:
         parser.error("epoch must be non-negative and world-size positive")
+    if args.declaration_mode == "on-submit" and (args.dag or args.policy == "lookahead"):
+        parser.error("--declaration-mode on-submit supports linear non-Lookahead replay only")
     if args.dag:
         args.dag = resolve_migrated_path(repository_path(args.dag), PHASE3_MIGRATION_MAP)
     elif args.workload:
@@ -200,15 +213,27 @@ def main() -> int:
     expected_config = {
             "epoch": args.epoch, "world_size": args.world_size, "max_inflight": 1,
             "backend": args.backend, "completion_poll_interval_s": args.poll_interval,
+            "wake_completion_on_submit": args.wake_completion_on_submit,
             "dag_poll_interval_s": args.dag_poll_interval, "compute_jitter": args.compute_jitter,
             "warmup_iterations": args.warmup_iterations,
+            "observation_mode": args.observation_mode,
         }
     if not args.dag:
         expected_config["binding_preparation"] = args.binding_preparation
+        expected_config["declaration_mode"] = args.declaration_mode
     validation = validate_results(
         results, args.world_size, expected=expected, expected_nodes=expected_nodes, digests=digests,
         expected_config=expected_config,
     )
+    diagnostic_present = bool(
+        results and all(result.get("runtime_events") for result in results)
+        and any(result.get("coordinator_instrumentation") for result in results)
+    )
+    validation["observation_mode"] = args.observation_mode
+    validation["diagnostic_timestamps_present"] = diagnostic_present
+    if args.observation_mode != "minimal" and not diagnostic_present:
+        validation["errors"].append("diagnostic observation requested but timestamp records are missing")
+        validation["status"] = "failed"
     validation["errors"] = errors + validation["errors"]
     if errors:
         validation["status"] = "failed"
@@ -220,6 +245,7 @@ def main() -> int:
     config["profile_strict"] = args.profile_strict if args.comm_profile else None
     config["wait_budget_s"] = args.wait_budget_s
     config["binding_preparation"] = args.binding_preparation if not args.dag else "unchanged_dag"
+    config["declaration_mode"] = args.declaration_mode if not args.dag else "unchanged_dag"
     if args.comm_profile:
         config["profile_digest"] = load_profile(args.comm_profile).digest()
     git_head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,

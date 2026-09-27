@@ -278,6 +278,7 @@ def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank
     result: dict[str, Any] = {"job_id": job.job_id, "status": "ok", "tasks": [],
                               "compute_samples_s": {},
                               "job_start_ts": time.perf_counter_ns() // 1000}
+    diagnostic = getattr(args, "observation_mode", "full") != "minimal"
     for index, comm in enumerate(job.communications):
         if args.fault == "missing_task" and rank == 1 and job.job_id == "job-1" and index == len(job.communications) - 1:
             continue
@@ -285,8 +286,15 @@ def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank
             raise RuntimeError("another job failed")
         spec = task_spec(job, comm, epoch=args.epoch)
         hint = task_hint(job, index)
-        runtime.declare(spec, hint)
-        producer_start = time.perf_counter_ns() // 1000
+        declaration_mode = getattr(args, "declaration_mode", "before-producer")
+        if declaration_mode == "before-producer":
+            runtime.declare(spec, hint)
+        elif declaration_mode != "on-submit":
+            raise ValueError(f"unsupported declaration mode: {declaration_mode!r}")
+        producer_start = time.perf_counter_ns() // 1000 if diagnostic else None
+        if diagnostic:
+            runtime.event_log.record_at("producer_start", producer_start,
+                                        task_id=f"{job.job_id}/comm-{comm.id}")
         producer_s = linear_execution_duration(
             workload, args.epoch, job.job_id, comm.id, rank, "producer",
             comm.producer_compute_s, args.compute_jitter,
@@ -298,7 +306,7 @@ def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank
         result["compute_samples_s"][f"comm-{comm.id}/producer"] = producer_s
         result["compute_samples_s"][f"comm-{comm.id}/consumer"] = consumer_s
         stop_event.wait(producer_s)
-        ready_ts = time.perf_counter_ns() // 1000
+        ready_ts = time.perf_counter_ns() // 1000 if diagnostic else None
         group = groups[job.job_id]
         if precreated_bindings is None:
             binding, binding_event = _make_linear_binding(
@@ -312,9 +320,9 @@ def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank
                 binding = precreated_bindings.pop(spec.task_id)
             except KeyError as exc:
                 raise RuntimeError(f"missing precreated binding for {spec.task_id}") from exc
-            binding_event = next(
+            binding_event = (next(
                 item for item in binding_creation_events if item["task_id"] == spec.task_id
-            )
+            ) if diagnostic else {})
         if args.fault == "metadata_mismatch" and rank == 1 and job.job_id == "job-1" and index == 0:
             spec = replace(spec, collective=CollectiveSpec("all_reduce", spec.collective.numel + 1,
                                                            spec.collective.num_bytes + 4, "float32",
@@ -323,30 +331,38 @@ def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank
             def fail_launch():
                 raise RuntimeError("injected launch failure")
             binding = replace(binding, launch=fail_launch)
-        submit_call_ts = time.perf_counter_ns() // 1000
-        runtime.event_log.record("submit_call", task_id=spec.task_id)
+        submit_call_ts = time.perf_counter_ns() // 1000 if diagnostic else None
+        if diagnostic:
+            runtime.event_log.record("submit_call", task_id=spec.task_id)
         handle = runtime.submit(spec, binding, hint)
-        submit_return_ts = time.perf_counter_ns() // 1000
-        runtime.event_log.record("submit_return", task_id=spec.task_id)
-        consume_start = time.perf_counter_ns() // 1000
+        submit_return_ts = time.perf_counter_ns() // 1000 if diagnostic else None
+        if diagnostic:
+            runtime.event_log.record("submit_return", task_id=spec.task_id)
+        consume_start = time.perf_counter_ns() // 1000 if diagnostic else None
         stop_event.wait(consumer_s)
-        first_wait_ts = time.perf_counter_ns() // 1000
-        runtime.event_log.record("application_wait_start", task_id=spec.task_id)
+        first_wait_ts = time.perf_counter_ns() // 1000 if diagnostic else None
+        if diagnostic:
+            runtime.event_log.record("application_wait_start", task_id=spec.task_id)
         if not handle.wait_host(max(0.0, deadline - time.monotonic())):
             raise TimeoutError(f"wait timed out for {spec.task_id}")
-        consumer_end_ts = time.perf_counter_ns() // 1000
-        runtime.event_log.record("application_wait_return", task_id=spec.task_id)
+        consumer_end_ts = time.perf_counter_ns() // 1000 if diagnostic else None
+        if diagnostic:
+            runtime.event_log.record("application_wait_return", task_id=spec.task_id)
         expected = sum(item + 1 for item in ranks_for_job(job, world_size))
         task_result = {
             "task_id": spec.task_id, "job_id": job.job_id, "ordinal": comm.id,
             "correct": None, "decision_seq": handle.decision_seq,
             "group_id": spec.group_id, "group_seq": spec.group_seq,
-            "producer_start_ts": producer_start, "ready_ts": ready_ts,
-            **binding_event,
-            "submit_call_ts": submit_call_ts, "submit_return_ts": submit_return_ts,
-            "consumer_start_ts": consume_start, "first_wait_ts": first_wait_ts,
-            "consumer_end_ts": consumer_end_ts,
         }
+        if diagnostic:
+            task_result.update({
+                "producer_start_ts": producer_start, "ready_ts": ready_ts,
+                "collective_spec": spec.collective.to_dict(), "task_hint": hint.to_dict(),
+                **binding_event,
+                "submit_call_ts": submit_call_ts, "submit_return_ts": submit_return_ts,
+                "consumer_start_ts": consume_start, "first_wait_ts": first_wait_ts,
+                "consumer_end_ts": consumer_end_ts,
+            })
         result["tasks"].append(task_result)
         validation_records.append((task_result, binding.tensor, expected))
     result["job_end_ts"] = time.perf_counter_ns() // 1000
@@ -495,16 +511,27 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             coordinator = CoordinatorState(tuple(range(world_size)), epoch=args.epoch, policy=runtime_policy,
                                           static_order=order,
                                           wait_budget_s=wait_budget_s,
-                                          epoch_timeout_s=args.setup_timeout + args.timeout)
+                                          epoch_timeout_s=args.setup_timeout + args.timeout,
+                                          observation_mode=getattr(args, "observation_mode", "full"))
             server = CoordinatorServer(coordinator, "127.0.0.1", args.control_port)
             server.start()
 
+        runtime_event_log = EventLog(
+            "runtime", rank,
+            enabled=getattr(args, "observation_mode", "full") != "minimal",
+            thread_sharded=True,
+        )
         client = ControlClient(rank, args.epoch, "127.0.0.1", args.control_port,
-                               _remaining(setup_deadline))
+                               _remaining(setup_deadline),
+                               getattr(args, "observation_mode", "full") != "minimal",
+                               runtime_event_log)
         probe = _FailingProbe() if args.fault == "completion_probe_failure" and rank == 0 else None
         runtime = RankRuntime(rank, args.epoch, client, executor=DirectExecutor(),
                               completion_poll_interval_s=args.poll_interval,
-                              event_log=EventLog("runtime", rank), completion_probe=probe)
+                              wake_completion_on_submit=getattr(
+                                  args, "wake_completion_on_submit", False),
+                              event_log=runtime_event_log,
+                              completion_probe=probe)
         if dag is not None:
             group_ranks = dag.group_ranks
             used_groups = {node.group_id for job in dag.graph.jobs for node in job.nodes
@@ -518,7 +545,9 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                     runtime.register_group(group_spec(job, world_size, epoch=args.epoch), groups[job.job_id])
         runtime.start(_remaining(setup_deadline))
 
-        dag_events = EventLog("dag", rank)
+        observation_mode = getattr(args, "observation_mode", "full")
+        dag_events = EventLog("dag", rank, enabled=observation_mode != "minimal",
+                              thread_sharded=True)
         stop_event = threading.Event()
         # This barrier is the common application release boundary.  It is the
         # default process group, never a job collective controlled by the
@@ -567,10 +596,12 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
         harness_start_ts = time.perf_counter_ns() // 1000
         output = {
             "rank": rank, "status": "ok", "mode": "runtime",
+            "observation_mode": observation_mode,
             "input_mode": "dag" if dag is not None else "linear",
             "policy": args.policy, "backend": args.backend, "jobs": jobs,
             "epoch": args.epoch, "world_size": world_size, "max_inflight": 1,
             "completion_poll_interval_s": args.poll_interval,
+            "wake_completion_on_submit": getattr(args, "wake_completion_on_submit", False),
             "dag_poll_interval_s": args.dag_poll_interval,
             "compute_jitter": args.compute_jitter,
             "warmup_iterations": getattr(args, "warmup_iterations", 0),
@@ -586,6 +617,8 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             "wait_budget_s": wait_budget_s,
             "binding_preparation": ("unchanged_dag" if dag is not None else
                                     binding_preparation),
+            "declaration_mode": ("unchanged_dag" if dag is not None else
+                                 getattr(args, "declaration_mode", "before-producer")),
             "preparation_start_ts": preparation_start_ts,
             "preparation_end_ts": preparation_end_ts,
             "preparation_total_us": (preparation_end_ts - preparation_start_ts
@@ -614,7 +647,22 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             "validation_total_us": validation_end_ts - validation_start_ts,
             "task_sequence": [task["task_id"] for job in jobs for task in job["tasks"]],
             "grant_sequence": runtime.grant_order, "launch_sequence": runtime.launch_order,
+            "protocol_send_call_counts": {
+                "declare": (sum(len(job["tasks"]) for job in jobs)
+                            if dag is None and getattr(args, "declaration_mode", "before-producer")
+                            == "before-producer" else 0),
+                "offer": sum(len(job["tasks"]) for job in jobs),
+            },
             "runtime_events": runtime.event_log.as_dict()["events"],
+            "protocol_transition_counts": ({
+                "submitted_reports": getattr(server.coordinator, "submitted_report_count", None),
+                "completed_reports": getattr(server.coordinator, "completed_report_count", None),
+                "submitted_before_completed_enforced": True,
+            } if server is not None and rank == 0 else None),
+            "coordinator_instrumentation": (
+                list(getattr(server.coordinator, "instrumentation_records", []))
+                if server is not None and rank == 0 else []
+            ),
         }
         if dag is not None:
             local_jobs = _local_dag_jobs(dag, rank)
@@ -668,11 +716,16 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--setup-timeout", type=float, default=20.0)
     parser.add_argument("--poll-interval", type=float, default=0.001)
+    parser.add_argument("--wake-completion-on-submit", action="store_true",
+                        help="wake the periodic completion probe when new work becomes probeable")
     parser.add_argument("--dag-poll-interval", type=float, default=0.001)
     parser.add_argument("--compute-jitter", type=float, default=0.0)
     parser.add_argument("--wait-budget-s", type=float, default=0.02)
     parser.add_argument("--warmup-iterations", type=int, default=1)
     parser.add_argument("--binding-preparation", choices=("precreate", "on-ready"), default="precreate")
+    parser.add_argument("--declaration-mode", choices=("before-producer", "on-submit"),
+                        default="before-producer")
+    parser.add_argument("--observation-mode", choices=("minimal", "diagnostic", "full"), default="full")
     parser.add_argument("--comm-profile", type=Path)
     parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--control-port", type=int, required=True)
@@ -681,6 +734,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.timeout <= 0 or args.setup_timeout <= 0 or args.wait_budget_s < 0 or args.warmup_iterations < 0:
         parser.error("setup-timeout and timeout must be positive; wait-budget-s must be non-negative")
+    if args.declaration_mode == "on-submit" and (args.dag or args.policy == "lookahead"):
+        parser.error("--declaration-mode on-submit supports linear non-Lookahead replay only")
     try:
         output = run_rank(args)
     except BaseException as exc:  # noqa: BLE001

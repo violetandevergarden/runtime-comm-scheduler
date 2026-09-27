@@ -138,27 +138,52 @@ def test_static_ltf_loads_and_executes_external_order(tmp_path):
     assert dispatches[0] == order[0]
 
 
-def test_linear_metadata_mismatch_fails_before_launch(tmp_path):
+@pytest.mark.parametrize("declaration_mode", ("before-producer", "on-submit"))
+def test_linear_metadata_mismatch_fails_before_launch(declaration_mode, tmp_path):
     if os.environ.get("RUN_JOBPACER_RUNTIME_REPLAY") != "1":
         pytest.skip("set RUN_JOBPACER_RUNTIME_REPLAY=1 to run the local TCP replay")
     pytest.importorskip("torch")
     root = Path(__file__).resolve().parents[2]
-    output = tmp_path / "linear-metadata-mismatch.json"
+    output = tmp_path / f"metadata-mismatch-{declaration_mode}.json"
     env = dict(os.environ)
-    env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root), env.get("PYTHONPATH", "")))
     command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
                "--policy", "fifo", "--workload", "balanced", "--backend", "gloo",
-               "--world-size", "2", "--timeout", "3", "--fault", "metadata_mismatch",
-               "--output", str(output)]
-    completed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, timeout=15)
+               "--world-size", "2", "--timeout", "3", "--declaration-mode", declaration_mode,
+               "--fault", "metadata_mismatch", "--output", str(output)]
+    completed = subprocess.run(command, cwd=root, env=env, capture_output=True,
+                               text=True, timeout=15)
     assert completed.returncode != 0
     payload = json.loads(output.read_text())
     assert payload["validation"]["status"] == "failed"
     assert payload["validation"]["errors"]
 
 
+@pytest.mark.parametrize("declaration_mode", ("before-producer", "on-submit"))
+def test_linear_missing_task_is_bounded_without_declaration(declaration_mode, tmp_path):
+    if os.environ.get("RUN_JOBPACER_RUNTIME_REPLAY") != "1":
+        pytest.skip("set RUN_JOBPACER_RUNTIME_REPLAY=1 to run the local TCP replay")
+    pytest.importorskip("torch")
+    root = Path(__file__).resolve().parents[2]
+    output = tmp_path / f"missing-task-{declaration_mode}.json"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root), env.get("PYTHONPATH", "")))
+    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+               "--policy", "static_fifo", "--workload", "balanced", "--backend", "gloo",
+               "--world-size", "2", "--setup-timeout", "5", "--timeout", "3",
+               "--declaration-mode", declaration_mode, "--fault", "missing_task",
+               "--output", str(output)]
+    completed = subprocess.run(command, cwd=root, env=env, capture_output=True,
+                               text=True, timeout=15)
+    assert completed.returncode != 0
+    payload = json.loads(output.read_text())
+    assert payload["validation"]["status"] == "failed"
+    assert payload["validation"]["errors"]
+
+
+@pytest.mark.parametrize("declaration_mode", ("before-producer", "on-submit"))
 @pytest.mark.parametrize("fault", ("launch_failure", "completion_probe_failure"))
-def test_linear_launch_and_probe_failures_are_bounded(fault, tmp_path):
+def test_linear_launch_and_probe_failures_are_bounded(fault, declaration_mode, tmp_path):
     if os.environ.get("RUN_JOBPACER_RUNTIME_REPLAY") != "1":
         pytest.skip("set RUN_JOBPACER_RUNTIME_REPLAY=1 to run the local TCP replay")
     pytest.importorskip("torch")
@@ -169,13 +194,85 @@ def test_linear_launch_and_probe_failures_are_bounded(fault, tmp_path):
     command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
                "--policy", "fifo", "--workload", "balanced", "--backend", "gloo",
                "--world-size", "2", "--setup-timeout", "5", "--timeout", "3",
-               "--fault", fault, "--output", str(output)]
+               "--declaration-mode", declaration_mode, "--fault", fault,
+               "--output", str(output)]
     completed = subprocess.run(command, cwd=root, env=env, capture_output=True,
                                text=True, timeout=15)
     assert completed.returncode != 0
     payload = json.loads(output.read_text())
     assert payload["validation"]["status"] == "failed"
     assert payload["validation"]["errors"]
+
+
+def test_declaration_modes_preserve_linear_specs_hints_order_and_readiness(tmp_path):
+    if os.environ.get("RUN_JOBPACER_RUNTIME_REPLAY") != "1":
+        pytest.skip("set RUN_JOBPACER_RUNTIME_REPLAY=1 to run the local TCP replay")
+    pytest.importorskip("torch")
+    root = Path(__file__).resolve().parents[2]
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root), env.get("PYTHONPATH", "")))
+    payloads = {}
+    for declaration_mode in ("before-producer", "on-submit"):
+        output = tmp_path / f"declaration-{declaration_mode}.json"
+        command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+                   "--policy", "static_fifo", "--workload", "delayed", "--backend", "gloo",
+                   "--world-size", "2", "--epoch", "85", "--binding-preparation", "precreate",
+                   "--declaration-mode", declaration_mode, "--observation-mode", "diagnostic",
+                   "--timeout", "20", "--output", str(output)]
+        completed = subprocess.run(command, cwd=root, env=env, capture_output=True,
+                                   text=True, timeout=35)
+        assert completed.returncode == 0, completed.stderr + completed.stdout[-4000:]
+        payloads[declaration_mode] = json.loads(output.read_text())
+
+    before = payloads["before-producer"]
+    direct = payloads["on-submit"]
+    for payload, mode in ((before, "before-producer"), (direct, "on-submit")):
+        assert payload["validation"]["status"] == "ok"
+        assert payload["validation"]["all_collectives_correct"] is True
+        assert payload["config"]["declaration_mode"] == mode
+        ranks = payload["ranks"]
+        assert ranks[0]["launch_sequence"] == ranks[1]["launch_sequence"]
+        assert all(rank["grant_sequence"] == rank["launch_sequence"] for rank in ranks)
+        for rank in ranks:
+            events_by_task = {}
+            for event in rank["runtime_events"]:
+                if event.get("task_id"):
+                    events_by_task.setdefault(event["task_id"], []).append(event)
+            tasks = [task for job in rank["jobs"] for task in job["tasks"]]
+            assert len(tasks) == sum(len(job["tasks"]) for job in rank["jobs"])
+            assert all(task["collective_spec"] and task["task_hint"] for task in tasks)
+            for task in tasks:
+                task_events = events_by_task[task["task_id"]]
+                offer_start = next(event["time_us"] for event in task_events
+                                   if event["kind"] == "offer_send_start")
+                assert task["ready_ts"] <= offer_start
+                declare_events = [event for event in task_events
+                                  if event["kind"].startswith("declare_")
+                                  or event["kind"] == "declared"]
+                assert bool(declare_events) is (mode == "before-producer")
+    normalized = lambda payload: [
+        (rank["rank"], tuple((task["task_id"], task["group_id"], task["group_seq"],
+                              task["collective_spec"], task["task_hint"])
+                             for job in rank["jobs"] for task in job["tasks"]))
+        for rank in payload["ranks"]
+    ]
+    assert normalized(before) == normalized(direct)
+
+
+def test_on_submit_declaration_mode_rejects_lookahead_and_dag_before_launch(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root), env.get("PYTHONPATH", "")))
+    common = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+              "--declaration-mode", "on-submit", "--backend", "gloo"]
+    commands = [common + ["--policy", "lookahead", "--workload", "balanced"],
+                common + ["--policy", "fifo", "--dag",
+                          str(root / "benchmark/phase3/experiments/dag-semantics/smoke/linear.json")]]
+    for command in commands:
+        completed = subprocess.run(command, cwd=root, env=env, capture_output=True,
+                                   text=True, timeout=10)
+        assert completed.returncode == 2
+        assert "linear non-Lookahead" in completed.stderr
 
 
 @pytest.mark.parametrize("policy", ("fifo", "ltf", "static_fifo"))
@@ -218,6 +315,49 @@ def test_linear_binding_preparation_preserves_readiness_and_collective_semantics
             assert all(task["ready_ts"] <= task["binding_create_start_ts"]
                        <= task["binding_create_end_ts"] <= task["submit_call_ts"]
                        for task in tasks)
+
+
+@pytest.mark.parametrize("observation_mode", ("minimal", "diagnostic"))
+def test_linear_observation_modes_preserve_collective_semantics(observation_mode, tmp_path):
+    if os.environ.get("RUN_JOBPACER_RUNTIME_REPLAY") != "1":
+        pytest.skip("set RUN_JOBPACER_RUNTIME_REPLAY=1 to run the local TCP replay")
+    pytest.importorskip("torch")
+    root = Path(__file__).resolve().parents[2]
+    output = tmp_path / f"observation-{observation_mode}.json"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root), env.get("PYTHONPATH", "")))
+    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+               "--policy", "static_fifo", "--workload", "balanced", "--backend", "gloo",
+               "--world-size", "2", "--epoch", "84", "--binding-preparation", "precreate",
+               "--observation-mode", observation_mode, "--timeout", "20", "--output", str(output)]
+    completed = subprocess.run(command, cwd=root, env=env, capture_output=True,
+                               text=True, timeout=35)
+    assert completed.returncode == 0, completed.stderr + completed.stdout[-4000:]
+    payload = json.loads(output.read_text())
+    assert payload["validation"]["status"] == "ok"
+    assert payload["validation"]["observation_mode"] == observation_mode
+    assert payload["config"]["binding_preparation"] == "precreate"
+    assert payload["validation"]["all_collectives_correct"] is True
+    task_sequences = [rank["launch_sequence"] for rank in payload["ranks"]]
+    assert task_sequences[0] == task_sequences[1]
+    assert all(rank["grant_sequence"] == rank["launch_sequence"] for rank in payload["ranks"])
+    coordinator = next(rank for rank in payload["ranks"] if rank["rank"] == 0)
+    expected_reports = sum(len(job["tasks"]) for rank in payload["ranks"] for job in rank["jobs"])
+    assert coordinator["protocol_transition_counts"] == {
+        "submitted_reports": expected_reports,
+        "completed_reports": expected_reports,
+        "submitted_before_completed_enforced": True,
+    }
+    assert payload["validation"]["diagnostic_timestamps_present"] is (observation_mode == "diagnostic")
+    if observation_mode == "minimal":
+        assert all(rank["runtime_events"] == [] for rank in payload["ranks"])
+        assert coordinator["coordinator_instrumentation"] == []
+    else:
+        for rank in payload["ranks"]:
+            assert any(event["kind"] == "offer_send_start" for event in rank["runtime_events"])
+            assert any(event["kind"] == "collective_call_return" for event in rank["runtime_events"])
+        assert any(event["kind"] == "event_processing_start"
+                   for event in coordinator["coordinator_instrumentation"])
 
 
 @pytest.mark.parametrize("binding_preparation", ("precreate", "on-ready"))

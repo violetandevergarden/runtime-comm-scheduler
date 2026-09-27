@@ -57,6 +57,8 @@ ARM_COLORS = {
     "new-ltf-precreate": "#4c78a8",
     "new-ltf-poll-1ms": "#4c78a8",
     "new-ltf-poll-0.2ms": "#e45756",
+    "before-producer": "#4c78a8",
+    "on-submit": "#e45756",
 }
 LANES = ("compute", "preparation", "admission", "communication", "application_wait")
 LANE_COLORS = {
@@ -346,6 +348,12 @@ def phase3_timeline_data(trace: dict[str, Any], rank: int) -> dict[str, Any]:
                     prepare_end = task.get("tensor_create_end_ts")
 
                 intervals = job_data["intervals"]
+                if is_new_runtime:
+                    declare_start = events.get("declare_call_start")
+                    declare_end = events.get("declare_call_end")
+                    if declare_start is not None and declare_end is not None:
+                        _add_interval(intervals, "preparation", "DECLARE call",
+                                      declare_start, declare_end, origin)
                 _add_interval(intervals, "compute", "producer", producer_start, ready, origin)
                 if prepare_start is not None and prepare_end is not None:
                     _add_interval(intervals, "preparation", "tensor/binding creation",
@@ -375,6 +383,20 @@ def phase3_timeline_data(trace: dict[str, Any], rank: int) -> dict[str, Any]:
                     if timestamp is not None:
                         marker[name] = (float(timestamp) - origin) / 1000
                 if is_new_runtime:
+                    for name, event_name in (
+                        ("declare_call_start_ms", "declare_call_start"),
+                        ("declare_call_end_ms", "declare_call_end"),
+                        ("submit_runtime_start_ms", "submit_call_start"),
+                        ("offer_send_start_ms", "offer_send_start"),
+                        ("offer_send_end_ms", "offer_send_end"),
+                        ("grant_control_dequeued_ms", "grant_control_loop_dequeued"),
+                        ("launch_queue_put_start_ms", "launch_queue_put_start"),
+                        ("launch_queue_put_end_ms", "launch_queue_put_end"),
+                        ("launch_worker_dequeued_ms", "launch_worker_dequeued"),
+                    ):
+                        timestamp = events.get(event_name)
+                        if timestamp is not None:
+                            marker[name] = (float(timestamp) - origin) / 1000
                     for name, event_name in (("submitted_send_start_ms", "submitted_send_start"),
                                              ("submitted_send_end_ms", "submitted_send_end")):
                         timestamp = events.get(event_name)
@@ -777,6 +799,88 @@ def render_paired_timeline_comparison(
     return path
 
 
+def render_rank_pair_timeline(
+    trace: dict[str, Any] | str | Path, output: str | Path, *, label: str,
+) -> Path:
+    """Render one run's two rank-local timelines without cross-rank subtraction."""
+    plt, Line2D, Patch = _matplotlib()
+    if isinstance(trace, (str, Path)):
+        trace = json.loads(Path(trace).read_text(encoding="utf-8"))
+    panels = [phase3_timeline_data(trace, rank) for rank in (0, 1)]
+    job_count = max(len(panel["jobs"]) for panel in panels)
+    stride = len(LANES) + 1
+    height = max(6.0, 0.25 * (job_count * stride + 2) + 1.2)
+    figure, axes = plt.subplots(1, 2, figsize=(18, height), sharex=True, squeeze=False)
+    marker_lanes = (
+        ("declare_call_start_ms", "preparation"), ("declare_call_end_ms", "preparation"),
+        ("submit_call_ms", "preparation"), ("submit_runtime_start_ms", "preparation"),
+        ("offer_send_start_ms", "admission"), ("offer_send_end_ms", "admission"),
+        ("submit_return_ms", "preparation"), ("admit_ms", "admission"),
+        ("grant_control_dequeued_ms", "admission"), ("launch_queue_put_start_ms", "admission"),
+        ("launch_queue_put_end_ms", "admission"), ("launch_worker_dequeued_ms", "admission"),
+        ("collective_start_ms", "communication"), ("collective_return_ms", "communication"),
+        ("complete_ms", "communication"), ("wait_return_ms", "application_wait"),
+    )
+    for rank, (axis, panel) in enumerate(zip(axes.flat, panels)):
+        positions, labels = [], []
+        for job_index, job in enumerate(panel["jobs"]):
+            base_y = job_index * stride
+            for lane_index, lane in enumerate(LANES):
+                positions.append(base_y + lane_index)
+                labels.append(f"{job['job_id']} {lane.replace('_', ' ')}")
+            for interval in job["intervals"]:
+                lane_y = base_y + LANES.index(interval["lane"])
+                axis.barh(lane_y, interval["end_ms"] - interval["start_ms"],
+                          left=interval["start_ms"], height=0.48,
+                          color=LANE_COLORS.get(interval["kind"],
+                                                LANE_COLORS[interval["lane"]]), alpha=0.82)
+            for marker in job["markers"]:
+                ready = marker.get("ready_ms")
+                if ready is not None:
+                    axis.plot(ready, base_y + 0.28, "^", color="black", ms=4)
+                for name, lane in marker_lanes:
+                    value = marker.get(name)
+                    if value is not None:
+                        y = base_y + LANES.index(lane)
+                        axis.vlines(value, y - 0.24, y + 0.24,
+                                    color="#222222", linewidth=0.55, alpha=0.8)
+        validation_y = len(panel["jobs"]) * stride
+        positions.append(validation_y)
+        labels.append("harness validation")
+        validation = panel["validation"]
+        if validation is not None:
+            axis.barh(validation_y, validation["end_ms"] - validation["start_ms"],
+                      left=validation["start_ms"], height=0.48,
+                      color=LANE_COLORS["validation"], alpha=0.82)
+        axis.set_title(
+            f"rank {rank} · local application {panel['makespan_ms']:.3f} ms\n"
+            f"workload makespan {panel['workload_makespan_ms']:.3f} ms",
+            fontsize=10,
+        )
+        axis.set_xlabel("time from this rank's application release (ms)")
+        axis.set_yticks(positions)
+        axis.set_yticklabels(labels, fontsize=8)
+        axis.grid(axis="x", alpha=0.25)
+    figure.legend(handles=[
+        Patch(color=LANE_COLORS["producer"], label="producer"),
+        Patch(color=LANE_COLORS["preparation"], label="DECLARE / local preparation"),
+        Patch(color=LANE_COLORS["admission"], label="OFFER / grant / launch handoff"),
+        Patch(color=LANE_COLORS["communication"], label="collective → completion observation"),
+        Patch(color=LANE_COLORS["application_wait"], label="application wait"),
+        Line2D([], [], marker="|", color="#222222", linestyle="None",
+               label="local request, grant, launch and completion boundaries"),
+    ], loc="lower center", ncol=3, fontsize=8, frameon=False)
+    figure.suptitle(
+        f"Paired rank-local control-path timeline · {label}\n"
+        "The two panels use independent local clocks; absolute rank timestamps are not compared.",
+        y=0.995, fontsize=12,
+    )
+    figure.tight_layout(rect=(0, 0.04, 1, 0.95), w_pad=1.2)
+    path = _save(figure, output)
+    plt.close(figure)
+    return path
+
+
 def write_overhead_diagnostics(batch_dir: str | Path) -> list[Path]:
     """Export rank-local polling diagnostics and a concise batch report."""
     batch = repository_path(batch_dir).resolve()
@@ -1071,6 +1175,49 @@ def render_suite(
     return paths
 
 
+def render_control_path_comparison(batch_dir: str | Path, rank: int = 0) -> list[Path]:
+    """Render each fixed-workload block separately for control-path batches."""
+    batch = repository_path(batch_dir).resolve()
+    manifest = json.loads((batch / "manifest.json").read_text(encoding="utf-8"))
+    if manifest.get("stage") not in {"E2", "E3", "F1", "F2", "F3", "F4"}:
+        raise ValueError(f"not a supported control-path batch: {batch}")
+    rows = _read_csv(batch / "summary.csv")
+    workloads = sorted({row.get("workload", "") for row in rows if row.get("workload")})
+    paths: list[Path] = []
+    for workload in workloads:
+        selected_rows = [row for row in rows
+                         if row.get("workload") == workload and row.get("status") == "ok"
+                         and _number(row, "makespan_s") is not None]
+        if len({_arm(row) for row in selected_rows}) < 2:
+            continue
+        figure_dir = batch / "figures" / workload
+        figure_dir.mkdir(parents=True, exist_ok=True)
+        label = f"{manifest['stage']} · {workload} · {batch.name}"
+        if manifest.get("observation_mode") == "minimal":
+            paths.append(render_batch_makespan_comparison(
+                batch, figure_dir / "makespan-comparison.svg",
+                rows=selected_rows, label=label,
+            ))
+            continue
+        paths.extend((
+            render_batch_makespan_comparison(
+                batch, figure_dir / "makespan-comparison.svg",
+                rows=selected_rows, label=label,
+            ),
+            render_timeline_comparison(
+                batch, rank, figure_dir / f"timeline-rank-{rank}.svg",
+                rows=selected_rows, label=label,
+            ),
+            render_paired_timeline_comparison(
+                batch, figure_dir / "paired-timeline-diagnostic.svg",
+                rows=selected_rows, label=label,
+            ),
+        ))
+    if not paths:
+        raise ValueError(f"no comparable successful workload blocks in {batch}")
+    return paths
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command")
@@ -1096,6 +1243,12 @@ def main(argv: list[str] | None = None) -> int:
     batch_parser.add_argument("--batch-dir", type=Path, required=True)
     batch_parser.add_argument("--rank", type=int, default=0)
 
+    control_path = subparsers.add_parser(
+        "control-path", help="render makespan and rank-local timelines for a control-path batch"
+    )
+    control_path.add_argument("--batch-dir", type=Path, required=True)
+    control_path.add_argument("--rank", type=int, default=0)
+
     args = parser.parse_args(argv)
     command = args.command or "suite"
     try:
@@ -1106,6 +1259,8 @@ def main(argv: list[str] | None = None) -> int:
                 getattr(args, "output_dir", DEFAULT_OUTPUT_DIR),
                 getattr(args, "rank", 0),
             )
+        elif command == "control-path":
+            paths = render_control_path_comparison(args.batch_dir, args.rank)
         elif command == "batch":
             batch_dir = repository_path(args.batch_dir).resolve()
             figure_dir = batch_dir / "figures"

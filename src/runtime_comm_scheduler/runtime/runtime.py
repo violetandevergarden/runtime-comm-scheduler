@@ -34,6 +34,9 @@ class _LocalTask:
     declared: bool = False
     offered: bool = False
     completion_probe_count: int = 0
+    completion_probe_total_us: int = 0
+    completion_first_probe_us: int | None = None
+    completion_last_probe_us: int | None = None
 
 
 class RankRuntime:
@@ -46,6 +49,7 @@ class RankRuntime:
         completion_probe: Any | None = None,
         completion_poll_interval_s: float = 0.001,
         event_log: EventLog | None = None,
+        wake_completion_on_submit: bool = False,
     ) -> None:
         if completion_poll_interval_s <= 0:
             raise ValueError("completion_poll_interval_s must be positive")
@@ -58,7 +62,10 @@ class RankRuntime:
         self.completion_probe = completion_probe or WorkIsCompletedProbe()
         if not getattr(self.completion_probe, "supports_physical_completion", False):
             raise ValueError("completion probe must provide physical completion semantics")
+        if not isinstance(wake_completion_on_submit, bool):
+            raise TypeError("wake_completion_on_submit must be a bool")
         self.poll_interval = completion_poll_interval_s
+        self.wake_completion_on_submit = wake_completion_on_submit
         self._groups: dict[str, GroupSpec] = {}
         self._process_groups: dict[str, Any] = {}
         self._tasks: dict[str, _LocalTask] = {}
@@ -66,6 +73,7 @@ class RankRuntime:
         self._launch_queue: queue.Queue[str | None] = queue.Queue()
         self._condition = threading.Condition()
         self._stop = threading.Event()
+        self._completion_wakeup = threading.Event()
         self._failure: BaseException | None = None
         self._state = RuntimeState.CREATED
         self._started = False
@@ -142,27 +150,32 @@ class RankRuntime:
             raise send_error
 
     def declare(self, spec: TaskSpec, hint: TaskHint) -> None:
-        send_error: BaseException | None = None
-        with self._condition:
-            self._check_spec_locked(spec)
-            existing = self._tasks.get(spec.task_id)
-            if existing is not None:
-                if existing.spec != spec:
-                    raise ValueError(f"task metadata mismatch for {spec.task_id}")
-                raise ValueError(f"duplicate declaration for {spec.task_id}")
-            self._tasks[spec.task_id] = _LocalTask(
-                spec, hint, None, RuntimeHandle(spec.task_id), declared=True
-            )
-            try:
-                self.transport.send("DECLARE", {"task": spec.to_dict(), "hint": hint.to_dict()})
-            except BaseException as exc:  # noqa: BLE001
-                send_error = exc
-        if send_error is not None:
-            self._fail(send_error, stage="declare", task_id=spec.task_id)
-            raise send_error
-        self.event_log.record("declared", task_id=spec.task_id)
+        self.event_log.record("declare_call_start", task_id=spec.task_id)
+        try:
+            send_error: BaseException | None = None
+            with self._condition:
+                self._check_spec_locked(spec)
+                existing = self._tasks.get(spec.task_id)
+                if existing is not None:
+                    if existing.spec != spec:
+                        raise ValueError(f"task metadata mismatch for {spec.task_id}")
+                    raise ValueError(f"duplicate declaration for {spec.task_id}")
+                self._tasks[spec.task_id] = _LocalTask(
+                    spec, hint, None, RuntimeHandle(spec.task_id), declared=True
+                )
+                try:
+                    self.transport.send("DECLARE", {"task": spec.to_dict(), "hint": hint.to_dict()})
+                except BaseException as exc:  # noqa: BLE001
+                    send_error = exc
+            if send_error is not None:
+                self._fail(send_error, stage="declare", task_id=spec.task_id)
+                raise send_error
+            self.event_log.record("declared", task_id=spec.task_id)
+        finally:
+            self.event_log.record("declare_call_end", task_id=spec.task_id)
 
     def submit(self, spec: TaskSpec, binding: LocalBinding, hint: TaskHint) -> RuntimeHandle:
+        self.event_log.record("submit_call_start", task_id=spec.task_id)
         send_error: BaseException | None = None
         with self._condition:
             self._check_spec_locked(spec)
@@ -180,13 +193,16 @@ class RankRuntime:
                 offered=True,
             )
             try:
+                self.event_log.record("offer_send_start", task_id=spec.task_id)
                 self.transport.send("OFFER", {"task": spec.to_dict(), "hint": hint.to_dict()})
+                self.event_log.record("offer_send_end", task_id=spec.task_id)
             except BaseException as exc:  # noqa: BLE001
                 send_error = exc
         if send_error is not None:
             self._fail(send_error, stage="offer", task_id=spec.task_id)
             raise send_error
         self.event_log.record("offered", task_id=spec.task_id)
+        self.event_log.record("submit_call_return", task_id=spec.task_id)
         return handle
 
     def finish_epoch(self, timeout: float = 20.0) -> None:
@@ -231,6 +247,7 @@ class RankRuntime:
             self._active_task_ids.clear()
             self._condition.notify_all()
         self._stop.set()
+        self._completion_wakeup.set()
         self._launch_queue.put(None)
         self.transport.close()
         for thread in (self._reader, self._launcher, self._completion):
@@ -334,6 +351,7 @@ class RankRuntime:
                         or decision_seq <= 0
                     ):
                         raise CoordinatorError("GRANT decision_seq must be positive")
+                    received_us = message.get("_local_received_time_us")
                     with self._condition:
                         task = self._tasks.get(granted_spec.task_id)
                         if task is None or not task.offered:
@@ -349,8 +367,18 @@ class RankRuntime:
                             raise CoordinatorError("grant is for a non-member group")
                         task.handle.grant(decision_seq)
                         self._grant_order.append(granted_spec.task_id)
-                    self.event_log.record("grant_received", task_id=granted_spec.task_id, decision_seq=decision_seq)
+                    self.event_log.record_at("grant_received", received_us,
+                                             task_id=granted_spec.task_id,
+                                             decision_seq=decision_seq) if received_us is not None else self.event_log.record(
+                        "grant_received", task_id=granted_spec.task_id,
+                        decision_seq=decision_seq)
+                    self.event_log.record("grant_control_loop_dequeued", task_id=granted_spec.task_id,
+                                          decision_seq=decision_seq)
+                    self.event_log.record("launch_queue_put_start", task_id=granted_spec.task_id,
+                                          decision_seq=decision_seq)
                     self._launch_queue.put(granted_spec.task_id)
+                    self.event_log.record("launch_queue_put_end", task_id=granted_spec.task_id,
+                                          decision_seq=decision_seq)
                 elif kind == "FINISHED":
                     with self._condition:
                         self._finish_received = True
@@ -371,6 +399,7 @@ class RankRuntime:
             task_id = self._launch_queue.get()
             if task_id is None:
                 return
+            self.event_log.record("launch_worker_dequeued", task_id=task_id)
             task: _LocalTask | None = None
             try:
                 with self._condition:
@@ -399,6 +428,10 @@ class RankRuntime:
                 self.event_log.record("submitted_sent", task_id=task_id, decision_seq=decision_seq)
                 with self._condition:
                     self._active_task_ids.add(task_id)
+                if self.wake_completion_on_submit:
+                    # The Work is now probeable, and SUBMITTED has already
+                    # crossed the required control-channel boundary.
+                    self._completion_wakeup.set()
             except BaseException as exc:  # noqa: BLE001
                 if task is not None:
                     task.handle.fail(exc)
@@ -423,10 +456,26 @@ class RankRuntime:
                 try:
                     completed = False
                     if work is not None:
-                        with self._condition:
-                            task.completion_probe_count += 1
-                            probe_count = task.completion_probe_count
+                        diagnostic = self.event_log.enabled
+                        if diagnostic:
+                            probe_start_us = time.perf_counter_ns() // 1000
+                            with self._condition:
+                                task.completion_probe_count += 1
+                                probe_count = task.completion_probe_count
+                                if task.completion_first_probe_us is None:
+                                    task.completion_first_probe_us = probe_start_us
+                        else:
+                            probe_count = 0
                         completed = self.completion_probe.is_completed(work)
+                        if diagnostic:
+                            probe_end_us = time.perf_counter_ns() // 1000
+                            with self._condition:
+                                task.completion_probe_total_us += probe_end_us - probe_start_us
+                                task.completion_last_probe_us = probe_start_us
+                            if probe_count == 1:
+                                self.event_log.record_at("completion_probe_first", probe_start_us,
+                                                         task_id=task_id,
+                                                         decision_seq=decision_seq)
                     else:
                         probe_count = task.completion_probe_count
                     if completed:
@@ -434,10 +483,19 @@ class RankRuntime:
                             self._active_task_ids.discard(task_id)
                         self.event_log.record("completion_observed", task_id=task_id,
                                               decision_seq=decision_seq,
-                                              completion_probe_count=probe_count)
+                                              completion_probe_count=probe_count,
+                                              completion_probe_total_us=task.completion_probe_total_us,
+                                              completion_first_probe_us=task.completion_first_probe_us,
+                                              completion_last_probe_us=task.completion_last_probe_us)
                         if not task.handle.mark_completed():
                             continue
+                        self.event_log.record("completion_wakeup_application", task_id=task_id,
+                                              decision_seq=decision_seq)
+                        self.event_log.record("completed_send_start", task_id=task_id,
+                                              decision_seq=decision_seq)
                         self.transport.send("COMPLETED", {"task_id": task_id, "decision_seq": decision_seq})
+                        self.event_log.record("completed_send_end", task_id=task_id,
+                                              decision_seq=decision_seq)
                         with self._condition:
                             task.binding = None
                         self.event_log.record("completed_sent", task_id=task_id, decision_seq=decision_seq)
@@ -446,7 +504,8 @@ class RankRuntime:
                     task.handle.fail(exc)
                     self._fail(exc, stage="completion", task_id=task_id)
             if not did_work:
-                self._stop.wait(self.poll_interval)
+                self._completion_wakeup.wait(self.poll_interval)
+                self._completion_wakeup.clear()
 
     def _fail(self, error: BaseException, **details: Any) -> None:
         first = False
@@ -465,6 +524,7 @@ class RankRuntime:
         if first:
             self.event_log.record("failed", error=f"{type(error).__name__}: {error}")
         self._stop.set()
+        self._completion_wakeup.set()
         self._launch_queue.put(None)
         if first and self._started and self.state is not RuntimeState.CLOSED:
             try:

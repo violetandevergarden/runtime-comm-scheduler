@@ -39,6 +39,8 @@ ARM_SPECS = {
     "new-ltf-precreate": ("new", "ltf", False, False),
     "new-ltf-poll-1ms": ("new", "ltf", False, False),
     "new-ltf-poll-0.2ms": ("new", "ltf", False, False),
+    "new-static_fifo-minimal": ("new", "static_fifo", False, False),
+    "new-static_fifo-diagnostic": ("new", "static_fifo", False, False),
 }
 ARM_BINDING_PREPARATION = {
     "new-ltf-on-ready": "on-ready",
@@ -47,6 +49,10 @@ ARM_BINDING_PREPARATION = {
     "new-ltf-poll-0.2ms": "precreate",
 }
 ARM_POLL_INTERVAL = {"new-ltf-poll-1ms": 0.001, "new-ltf-poll-0.2ms": 0.0002}
+ARM_OBSERVATION_MODE = {
+    "new-static_fifo-minimal": "minimal",
+    "new-static_fifo-diagnostic": "diagnostic",
+}
 SOURCE_SNAPSHOT_ROOTS = (
     ROOT / "src/runtime_comm_scheduler/dag",
     ROOT / "src/runtime_comm_scheduler/runtime",
@@ -65,6 +71,7 @@ SOURCE_SNAPSHOT_ROOTS = (
     ROOT / "examples/jobpacer/workloads.py",
     ROOT / "examples/jobpacer/comm_profile.py",
     ROOT / "examples/jobpacer/scripts/run_experiments.py",
+    ROOT / "examples/jobpacer/scripts/run_control_path_diagnostic.py",
     ROOT / "examples/jobpacer/scripts/run_compact_suite.py",
     ROOT / "examples/jobpacer/scripts/run_interleaved_isolated.py",
 )
@@ -101,7 +108,10 @@ def _source_snapshot() -> dict[str, Any]:
 
 def _command(args: argparse.Namespace, policy: str, epoch: int, output: Path, *, old: bool = False,
              old_bare: bool = False, binding_preparation: str | None = None,
-             poll_interval: float | None = None) -> list[str]:
+             poll_interval: float | None = None,
+             observation_mode: str = "full",
+             completion_wakeup: bool = False,
+             declaration_mode: str | None = None) -> list[str]:
     source = ("--dag", str(args.dag)) if args.dag else ("--workload", args.workload)
     poll_interval = getattr(args, "poll_interval", 0.001) if poll_interval is None else poll_interval
     if old:
@@ -128,8 +138,13 @@ def _command(args: argparse.Namespace, policy: str, epoch: int, output: Path, *,
             "--warmup-iterations", str(args.warmup_iterations),
             "--binding-preparation", binding_preparation or
             getattr(args, "binding_preparation", "precreate"),
+            "--observation-mode", observation_mode,
             "--output", str(output),
         ]
+        if declaration_mode is not None:
+            command.extend(("--declaration-mode", declaration_mode))
+        if completion_wakeup:
+            command.append("--wake-completion-on-submit")
     if args.comm_profile:
         command.extend(("--comm-profile", str(args.comm_profile)))
     if policy == "static_ltf" and args.static_ltf_order:
@@ -152,6 +167,8 @@ def _measure_row(record: dict[str, Any], result: dict[str, Any] | None, result_p
         makespan = max(jcts, default=0.0)
     else:
         jcts, makespan = [], None
+    metrics = (result or {}).get("metrics", {})
+    rank_context = metrics.get("rank_context_switches", {}).values()
     return {
         "run_id": record["run_id"],
         "arm": record.get("arm", f"{record['group']}-{config['policy']}"),
@@ -163,8 +180,16 @@ def _measure_row(record: dict[str, Any], result: dict[str, Any] | None, result_p
         "compute_jitter": config["compute_jitter"],
         "binding_preparation": config.get("binding_preparation"),
         "poll_interval_s": config.get("poll_interval_s", config.get("poll_interval")),
+        "observation_mode": config.get("observation_mode"),
         "status": status,
         "makespan_s": makespan,
+        "process_cpu_time_s": sum(metrics.get("rank_process_cpu_time_s", {}).values())
+        if metrics.get("rank_process_cpu_time_s") else None,
+        "voluntary_context_switches": sum(item.get("voluntary", 0) for item in rank_context)
+        if metrics.get("rank_context_switches") else None,
+        "involuntary_context_switches": sum(item.get("involuntary", 0)
+                                             for item in metrics.get("rank_context_switches", {}).values())
+        if metrics.get("rank_context_switches") else None,
         "preparation_total_s": (_rank_max(result, "preparation_total_us") / 1_000_000
                                 if result and _rank_max(result, "preparation_total_us") is not None else None),
         "binding_creation_total_s": (_rank_max(result, "binding_creation_total_us") / 1_000_000
@@ -188,6 +213,8 @@ def _job_rows(record: dict[str, Any], result: dict[str, Any] | None) -> list[dic
         "epoch": record["config"]["epoch"], "repeat": record["config"]["repeat"],
         "binding_preparation": record["config"].get("binding_preparation"),
         "poll_interval_s": record["config"].get("poll_interval_s"),
+        "observation_mode": record["config"].get("observation_mode"),
+        "completion_wakeup_on_submit": record["config"].get("completion_wakeup_on_submit", False),
         "job_id": item["job_id"], "jct_s": item["makespan_us"] / 1_000_000,
         "status": status, "isolated_jct_s": None, "slowdown": None,
     } for item in performance.get("job_makespans", [])]
@@ -200,9 +227,14 @@ def _task_timing_rows(record: dict[str, Any], result: dict[str, Any] | None) -> 
     output = []
     for rank in result.get("ranks", []):
         events = {}
+        control_sends = {}
         for event in rank.get("runtime_events", []):
             if event.get("task_id"):
                 events.setdefault(event["task_id"], {})[event["kind"]] = event
+                if event.get("kind") == "control_send_interval":
+                    control_sends.setdefault(event["task_id"], {})[
+                        event.get("message_kind")
+                    ] = event
         for job in rank.get("jobs", []):
             for task in job.get("tasks", []):
                 task_id = task.get("task_id") or f"{job['job_id']}/comm-{task.get('ordinal', '?')}"
@@ -213,37 +245,139 @@ def _task_timing_rows(record: dict[str, Any], result: dict[str, Any] | None) -> 
                         return event.get("time_us")
                     return next((task[field] for field in fields if task.get(field) is not None), None)
                 ready = timestamp("", "ready_ts", "ready_record_ts")
-                submit_call = timestamp("submit_call", "submit_call_ts", "submit_api_start_ts")
-                submit_return = timestamp("submit_return", "submit_return_ts", "submit_api_return_ts")
+                submit_call = timestamp("submit_call_start", "submit_call", "submit_call_ts", "submit_api_start_ts")
+                submit_return = timestamp("submit_call_return", "submit_return", "submit_return_ts", "submit_api_return_ts")
+                def event_time(name: str):
+                    event = task_events.get(name)
+                    return event.get("time_us") if event else None
+                declare_start = event_time("declare_call_start")
+                declare_end = event_time("declare_call_end")
                 grant = timestamp("grant_received", "admit_ts")
                 call_start = timestamp("collective_call_start", "collective_call_start_ts")
                 call_return = timestamp("collective_call_return", "collective_call_return_ts")
                 complete = timestamp("completion_observed", "completion_observed_ts")
+                completion_event = task_events.get("completion_observed", {})
+                first_probe = completion_event.get("completion_first_probe_us")
+                last_probe = completion_event.get("completion_last_probe_us")
+                probe_count = completion_event.get("completion_probe_count")
                 wait_start = timestamp("application_wait_start", "first_wait_ts", "application_wait_start_ts")
                 wait_return = timestamp("application_wait_return", "consumer_end_ts", "wait_return_ts")
                 def elapsed(start, end):
                     return (end - start) if start is not None and end is not None else None
+                declare_send = control_sends.get(task_id, {}).get("DECLARE", {})
+                offer_send = control_sends.get(task_id, {}).get("OFFER", {})
+                completed_send = control_sends.get(task_id, {}).get("COMPLETED", {})
                 output.append({
                     "run_id": record["run_id"], "arm": record.get("arm"),
                     "rank": rank.get("rank"), "epoch": config.get("epoch"),
                     "repeat": config.get("repeat"), "job_id": job["job_id"],
                     "task_id": task_id,
+                    "observation_mode": config.get("observation_mode"),
                     "binding_preparation": config.get("binding_preparation"),
+                    "declaration_mode": config.get("declaration_mode", "before-producer"),
                     "poll_interval_s": config.get("poll_interval_s"),
+                    "completion_wakeup_on_submit": config.get(
+                        "completion_wakeup_on_submit", False),
                     "producer_ready_to_submit_call_us": elapsed(ready, submit_call),
+                    "declare_call_us": elapsed(declare_start, declare_end),
+                    "declare_control_send_lock_wait_us": declare_send.get("lock_wait_us"),
+                    "declare_socket_write_flush_us": declare_send.get("socket_write_flush_us"),
+                    "declare_control_send_total_us": elapsed(
+                        declare_send.get("lock_wait_start_us"), declare_send.get("time_us")),
                     "submit_api_us": elapsed(submit_call, submit_return),
+                    "offer_send_us": elapsed(event_time("offer_send_start"), event_time("offer_send_end")),
+                    "offer_control_send_lock_wait_us": offer_send.get("lock_wait_us"),
+                    "offer_socket_write_flush_us": offer_send.get("socket_write_flush_us"),
+                    "offer_control_send_total_us": elapsed(
+                        offer_send.get("lock_wait_start_us"), offer_send.get("time_us")),
+                    "completed_control_send_lock_wait_us": completed_send.get("lock_wait_us"),
+                    "completed_socket_write_flush_us": completed_send.get("socket_write_flush_us"),
+                    "completed_control_send_total_us": elapsed(
+                        completed_send.get("lock_wait_start_us"), completed_send.get("time_us")),
                     "submit_call_to_grant_us": elapsed(submit_call, grant),
+                    "grant_receive_to_launch_dequeue_us": elapsed(
+                        event_time("grant_received"), event_time("launch_worker_dequeued")),
                     "grant_to_collective_start_us": elapsed(grant, call_start),
+                    "launch_dequeue_to_collective_start_us": elapsed(
+                        event_time("launch_worker_dequeued"), call_start),
                     "collective_call_us": elapsed(call_start, call_return),
+                    "collective_return_to_submitted_send_end_us": elapsed(
+                        call_return, event_time("submitted_send_end")),
                     "call_return_to_completion_observation_us": elapsed(call_return, complete),
+                    "call_return_to_first_probe_us": elapsed(call_return, first_probe),
                     "application_wait_us": elapsed(wait_start, wait_return),
+                    "completion_observed_to_application_continue_us": elapsed(complete, wait_return),
+                    "completion_observed_to_completed_send_end_us": elapsed(
+                        complete, event_time("completed_send_end")),
                     "binding_create_us": task.get("binding_create_duration_us"),
                     "tensor_create_us": task.get("tensor_create_duration_us"),
-                    "completion_probe_count": task_events.get("completion_observed", {}).get(
-                        "completion_probe_count"),
+                    "completion_probe_count": probe_count,
+                    "completion_probe_total_us": completion_event.get("completion_probe_total_us"),
+                    "mean_completion_probe_interval_us": (
+                        (last_probe - first_probe) / (probe_count - 1)
+                        if isinstance(first_probe, int) and isinstance(last_probe, int)
+                        and isinstance(probe_count, int) and probe_count > 1 else None),
+                    "completion_first_probe_us": first_probe,
+                    "completion_last_probe_us": last_probe,
                     "correct": task.get("correct"),
                 })
+        for job in rank.get("jobs", []):
+            tasks = job.get("tasks", [])
+            for current, following in zip(tasks, tasks[1:]):
+                current_id = current.get("task_id")
+                next_id = following.get("task_id")
+                current_events = events.get(current_id, {})
+                next_events = events.get(next_id, {})
+                current_call_return = current_events.get("collective_call_return", {}).get("time_us")
+                next_call_start = next_events.get("collective_call_start", {}).get("time_us")
+                if current_call_return is not None and next_call_start is not None:
+                    next_row = next((item for item in output if item["run_id"] == record["run_id"]
+                                     and item["rank"] == rank.get("rank") and item["task_id"] == next_id), None)
+                    if next_row is not None:
+                        next_row["previous_collective_return_to_next_start_us"] = (
+                            next_call_start - current_call_return)
+                current_return = current_events.get("application_wait_return", {}).get("time_us")
+                next_declare_start = next_events.get("declare_call_start", {}).get("time_us")
+                next_submit_start = next_events.get("submit_call_start", {}).get("time_us")
+                if current_return is not None and next_declare_start is not None:
+                    next_row = next((item for item in output if item["run_id"] == record["run_id"]
+                                     and item["rank"] == rank.get("rank") and item["task_id"] == next_id), None)
+                    if next_row is not None:
+                        next_row["application_wait_return_to_next_declare_start_us"] = (
+                            next_declare_start - current_return)
+                if current_return is not None and next_submit_start is not None:
+                    next_row = next((item for item in output if item["run_id"] == record["run_id"]
+                                     and item["rank"] == rank.get("rank") and item["task_id"] == next_id), None)
+                    if next_row is not None:
+                        next_row["previous_wait_return_to_next_submit_call_us"] = (
+                            next_submit_start - current_return)
+                next_producer = next_events.get("producer_start", {}).get("time_us")
+                if current_return is not None and next_producer is not None:
+                    row = next((item for item in output if item["run_id"] == record["run_id"]
+                                and item["rank"] == rank.get("rank") and item["task_id"] == current_id), None)
+                    if row is not None:
+                        row["application_wait_return_to_next_producer_us"] = next_producer - current_return
     return output
+
+
+def _coordinator_diagnostic_rows(record: dict[str, Any], result: dict[str, Any] | None
+                                 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not result or record.get("returncode") != 0:
+        return [], []
+    rank = next((item for item in result.get("ranks", []) if item.get("rank") == 0), {})
+    base = {"run_id": record["run_id"], "arm": record.get("arm"),
+            "epoch": record["config"].get("epoch"), "repeat": record["config"].get("repeat"),
+            "observation_mode": record["config"].get("observation_mode")}
+    events = []
+    for item in rank.get("coordinator_instrumentation", []):
+        event = {**base, **item}
+        if (event.get("duration_us") is None and event.get("end_time_us") is not None
+                and event.get("time_us") is not None):
+            event["duration_us"] = event["end_time_us"] - event["time_us"]
+        events.append(event)
+    timing = result.get("metrics", {}).get("coordinator_diagnostic_task_timings", {})
+    tasks = [{**base, "task_id": task_id, **item} for task_id, item in timing.items()]
+    return tasks, events
 
 
 def _load_batch_manifest(jobs_path: Path) -> dict[str, Any]:
@@ -544,7 +678,8 @@ def _selected_arms(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
 
 
 def _plan(epochs: tuple[int, ...], repeats: int, arms: tuple[str, ...], order_seed: int,
-          binding_preparation: str = "precreate", poll_interval: float = 0.001) -> list[dict[str, Any]]:
+          binding_preparation: str = "precreate", poll_interval: float = 0.001,
+          observation_mode: str = "full") -> list[dict[str, Any]]:
     plan: list[dict[str, Any]] = []
     for epoch in epochs:
         for repeat in range(repeats):
@@ -555,10 +690,12 @@ def _plan(epochs: tuple[int, ...], repeats: int, arms: tuple[str, ...], order_se
                 effective_binding = ("legacy_tensor_precreated" if old else
                                      ARM_BINDING_PREPARATION.get(arm, binding_preparation))
                 effective_poll = ARM_POLL_INTERVAL.get(arm, poll_interval)
+                effective_observation = ARM_OBSERVATION_MODE.get(arm, observation_mode)
                 plan.append({"run_id": f"{len(plan) + 1:04d}-{arm}-e{epoch}-r{repeat}",
                              "arm": arm, "group": group, "policy": policy,
                              "old": old, "old_bare": old_bare,
                              "binding_preparation": effective_binding,
+                             "observation_mode": effective_observation,
                              "poll_interval": effective_poll,
                              "epoch": epoch, "repeat": repeat, "block_order": ordered})
     return plan
@@ -609,7 +746,8 @@ def _successful_record(record: dict[str, Any] | None, planned: dict[str, Any]) -
             or (planned.get("binding_preparation") is not None
                 and config.get("binding_preparation") != planned["binding_preparation"])
             or (planned.get("poll_interval") is not None
-                and config.get("poll_interval_s") != planned["poll_interval"])):
+                and config.get("poll_interval_s") != planned["poll_interval"])
+            or config.get("observation_mode", "full") != planned.get("observation_mode", "full")):
         return False
     result_path = _record_result_path(record)
     if (not result_path.is_file() or not record.get("result_sha256")
@@ -627,6 +765,8 @@ def _successful_record(record: dict[str, Any] | None, planned: dict[str, Any]) -
                 and (planned.get("old", False)
                      or planned.get("binding_preparation") is None
                      or result_config.get("binding_preparation") == planned["binding_preparation"])
+                and (planned.get("old", False)
+                     or result_config.get("observation_mode") == planned.get("observation_mode"))
                 and jitter_matches)
 
 
@@ -641,7 +781,7 @@ def _attempt_paths(raw_dir: Path, run_id: str) -> tuple[int, Path, Path, Path]:
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
-    fields = list(rows[0]) if rows else []
+    fields = list(dict.fromkeys(key for row in rows for key in row))
     temporary = path.with_suffix(path.suffix + ".tmp")
     with temporary.open("w", newline="") as output_file:
         if fields:
@@ -682,6 +822,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--wait-budget-s", type=float, default=0.02)
     parser.add_argument("--poll-interval", type=float, default=0.001)
     parser.add_argument("--binding-preparation", choices=("precreate", "on-ready"), default="precreate")
+    parser.add_argument("--observation-mode", choices=("minimal", "diagnostic", "full"), default="full")
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--warmup-iterations", type=int, default=1)
     parser.add_argument("--comm-profile", type=Path)
@@ -747,7 +888,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--seeds must not contain duplicates")
     arms = _selected_arms(args, parser)
     plan = _plan(epochs, args.repeats, arms, args.order_seed,
-                 args.binding_preparation, args.poll_interval)
+                 args.binding_preparation, args.poll_interval, args.observation_mode)
 
     output_dir = args.output_dir.resolve()
     raw_dir = output_dir / "raw"
@@ -760,15 +901,13 @@ def main(argv: list[str] | None = None) -> int:
         "epochs": epochs, "repeats": args.repeats, "compute_jitter": args.compute_jitter,
         "wait_budget_s": args.wait_budget_s, "poll_interval": args.poll_interval,
         "binding_preparation": args.binding_preparation,
+        "observation_mode": args.observation_mode,
         "order_seed": args.order_seed,
         "arms": arms,
         "arm_configuration": {item["arm"]: {
             "binding_preparation": item["binding_preparation"],
             "poll_interval_s": item["poll_interval"],
-        } for item in plan[:len(arms)]},
-        "arm_configuration": {item["arm"]: {
-            "binding_preparation": item["binding_preparation"],
-            "poll_interval_s": item["poll_interval"],
+            "observation_mode": item["observation_mode"],
         } for item in plan[:len(arms)]},
         "baseline": args.baseline, "secondary_baselines": args.secondary_baseline,
         "timeout": args.timeout, "comm_profile": str(args.comm_profile) if args.comm_profile else None,
@@ -889,7 +1028,8 @@ def main(argv: list[str] | None = None) -> int:
             command = _command(args, item["policy"], item["epoch"], result_path,
                                old=item["old"], old_bare=item["old_bare"],
                                binding_preparation=item["binding_preparation"],
-                               poll_interval=item["poll_interval"])
+                               poll_interval=item["poll_interval"],
+                               observation_mode=item["observation_mode"])
             started = time.time()
             started_at = datetime.fromtimestamp(started, timezone.utc).isoformat()
             try:
@@ -912,6 +1052,7 @@ def main(argv: list[str] | None = None) -> int:
                 "attempt": attempt, "retry_of": latest.get(run_id, {}).get("result_path"),
                 "config": {"policy": item["policy"], "arm": item["arm"],
                            "binding_preparation": item["binding_preparation"],
+                           "observation_mode": item["observation_mode"],
                            "poll_interval_s": item["poll_interval"],
                            "workload": args.workload or str(args.dag),
                            "epoch": item["epoch"], "repeat": item["repeat"],
@@ -938,10 +1079,21 @@ def main(argv: list[str] | None = None) -> int:
                 for row in _job_rows(record, _load(_record_result_path(record)))]
     task_rows = [row for record in records
                  for row in _task_timing_rows(record, _load(_record_result_path(record)))]
+    coordinator_task_rows: list[dict[str, Any]] = []
+    coordinator_event_rows: list[dict[str, Any]] = []
+    for record in records:
+        task_diagnostics, event_diagnostics = _coordinator_diagnostic_rows(
+            record, _load(_record_result_path(record)))
+        coordinator_task_rows.extend(task_diagnostics)
+        coordinator_event_rows.extend(event_diagnostics)
     mechanism_rows = [_mechanism_row(record, _load(_record_result_path(record))) for record in records]
     mechanism_summary = _mechanism_summary(mechanism_rows, records)
 
     _write_csv(output_dir / "summary.csv", summary_rows)
+    _write_csv(output_dir / "coordinator-task-timings.csv", coordinator_task_rows)
+    _write_csv(output_dir / "coordinator-events.csv", coordinator_event_rows)
+    _write_csv(tables_dir / "coordinator-task-timings.csv", coordinator_task_rows)
+    _write_csv(tables_dir / "coordinator-events.csv", coordinator_event_rows)
     for filename, table in (("jobs.csv", job_rows), ("task-timings.csv", task_rows),
                             ("mechanisms.csv", mechanism_rows)):
         if filename == "jobs.csv" and args.isolated_jobs:

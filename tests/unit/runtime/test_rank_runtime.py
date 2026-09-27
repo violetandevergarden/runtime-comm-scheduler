@@ -15,6 +15,7 @@ from runtime_comm_scheduler.runtime import (
     TaskHint,
     TaskSpec,
 )
+from runtime_comm_scheduler.runtime.telemetry import EventLog
 
 
 class FakeTransport:
@@ -70,6 +71,33 @@ class FakeExecutor:
         return ImmediateWork()
 
 
+class ImmediateCompletionProbe:
+    supports_physical_completion = True
+
+    def __init__(self):
+        self.called = threading.Event()
+
+    def is_completed(self, work):
+        self.called.set()
+        return True
+
+
+class ObservableEvent:
+    def __init__(self):
+        self._event = threading.Event()
+        self.wait_entered = threading.Event()
+
+    def set(self):
+        self._event.set()
+
+    def clear(self):
+        self._event.clear()
+
+    def wait(self, timeout=None):
+        self.wait_entered.set()
+        return self._event.wait(timeout)
+
+
 class FailFirstExecutor(FakeExecutor):
     def launch(self, binding):
         self.launches += 1
@@ -120,6 +148,58 @@ def test_submitted_precedes_completed_when_work_is_already_complete():
     ]
     assert runtime._tasks[task.task_id].binding is None
     runtime.close()
+
+
+def test_declare_records_call_boundaries_around_control_send():
+    transport = FakeTransport()
+    event_log = EventLog("runtime", 0, thread_sharded=True)
+    runtime = RankRuntime(0, 0, transport, event_log=event_log)
+    runtime.register_group(GroupSpec(0, "job", (0,)), object())
+    runtime.start()
+
+    task = _task()
+    runtime.declare(task, TaskHint(0, 0.001, 0))
+
+    events = [event for event in event_log.as_dict()["events"]
+              if event.get("task_id") == task.task_id]
+    times = {event["kind"]: event["time_us"] for event in events}
+    assert times["declare_call_start"] <= times["declared"] <= times["declare_call_end"]
+    assert [kind for kind, _ in transport.sent if kind == "DECLARE"] == ["DECLARE"]
+    runtime.close()
+
+
+def test_new_probeable_work_wakes_completion_thread_without_removing_periodic_polling():
+    transport = FakeTransport()
+    probe = ImmediateCompletionProbe()
+    runtime = RankRuntime(
+        0, 0, transport, executor=FakeExecutor(), completion_probe=probe,
+        completion_poll_interval_s=5.0, wake_completion_on_submit=True,
+    )
+    wakeup = ObservableEvent()
+    runtime._completion_wakeup = wakeup
+    runtime.register_group(GroupSpec(0, "job", (0,)), object())
+    runtime.start()
+    assert wakeup.wait_entered.wait(1)
+
+    task = _task()
+    handle = runtime.submit(
+        task,
+        LocalBinding(FakeTensor(), runtime._process_groups["job"], lambda: ImmediateWork()),
+        TaskHint(0, 0.001, 0),
+    )
+    transport.incoming.put({
+        "kind": "GRANT",
+        "epoch": 0,
+        "payload": {"task": task.to_dict(), "decision_seq": 1},
+    })
+
+    assert probe.called.wait(1)
+    assert handle.wait_host(1)
+    protocol_messages = [kind for kind, _ in transport.sent
+                         if kind in {"OFFER", "SUBMITTED", "COMPLETED"}]
+    assert protocol_messages == ["OFFER", "SUBMITTED", "COMPLETED"]
+    runtime.close()
+    assert runtime._completion is None or not runtime._completion.is_alive()
 
 
 def test_invalid_grant_does_not_launch_backend():

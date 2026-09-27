@@ -218,6 +218,8 @@ def test_linear_runtime_timeline_uses_rank_local_release_and_runtime_events():
                 "consumer_end_ts": 1500,
             }]}],
             "runtime_events": [
+                {"task_id": "job-0/comm-0", "kind": "declare_call_start", "time_us": 1210},
+                {"task_id": "job-0/comm-0", "kind": "declare_call_end", "time_us": 1220},
                 {"task_id": "job-0/comm-0", "kind": "grant_received", "time_us": 1300},
                 {"task_id": "job-0/comm-0", "kind": "launch_start", "time_us": 1350},
                 {"task_id": "job-0/comm-0", "kind": "completion_observed", "time_us": 1450},
@@ -229,6 +231,7 @@ def test_linear_runtime_timeline_uses_rank_local_release_and_runtime_events():
     intervals = data["jobs"][0]["intervals"]
 
     assert [(item["kind"], item["start_ms"], item["end_ms"]) for item in intervals] == [
+        ("DECLARE call", 0.21, 0.22),
         ("producer", 0.1, 0.2),
         ("producer ready → submit call", 0.2, 0.25),
         ("submit API call", 0.25, 0.31),
@@ -238,6 +241,9 @@ def test_linear_runtime_timeline_uses_rank_local_release_and_runtime_events():
         ("consumer", 0.32, 0.4),
         ("application/backend wait", 0.4, 0.5),
     ]
+    marker = data["jobs"][0]["markers"][0]
+    assert marker["declare_call_start_ms"] == 0.21
+    assert marker["declare_call_end_ms"] == 0.22
     assert data["validation"] == {"start_ms": 0.6, "end_ms": 0.7}
     assert data["makespan_ms"] == 0.7
 

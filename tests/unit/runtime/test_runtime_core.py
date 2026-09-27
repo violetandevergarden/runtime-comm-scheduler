@@ -66,6 +66,29 @@ def test_coordinator_requires_both_members_and_releases_one_inflight_task():
     assert coordinator.inflight is None
 
 
+def test_minimal_observation_preserves_protocol_counters_and_dispatch_order_only():
+    coordinator = CoordinatorState((0, 1), policy="fifo", observation_mode="minimal")
+    group = GroupSpec(0, "g", (0, 1))
+    for endpoint in (0, 1):
+        coordinator.apply(endpoint, "REGISTER_GROUP", 1, {"group": group.to_dict()}, 0.0)
+    task = _task("g", 0)
+    for endpoint in (0, 1):
+        out = coordinator.apply(endpoint, "OFFER", 2, _payload(task), 0.1)
+    assert [message.kind for message in out] == ["GRANT", "GRANT"]
+    for endpoint in (0, 1):
+        coordinator.apply(endpoint, "SUBMITTED", 3,
+                           {"task_id": task.task_id, "decision_seq": 1}, 0.2)
+    for endpoint in (0, 1):
+        coordinator.apply(endpoint, "COMPLETED", 4,
+                           {"task_id": task.task_id, "decision_seq": 1}, 0.3)
+    assert coordinator.submitted_report_count == coordinator.completed_report_count == 2
+    assert [record["task_id"] for record in coordinator.records
+            if record.get("decision") == "dispatch"] == [task.task_id]
+    assert all(record["kind"] not in {"submitted", "completed", "policy_snapshot", "eligible"}
+               for record in coordinator.records)
+    assert coordinator.instrumentation_records == []
+
+
 def test_static_policy_waits_at_head():
     policy = make_policy("static", static_order=("head", "tail"))
     decision = policy.decide(PolicySnapshot(0.0, (Candidate("tail", 0.1, 0.0, 1),), ()))

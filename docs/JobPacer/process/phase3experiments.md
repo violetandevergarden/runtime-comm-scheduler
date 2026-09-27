@@ -724,3 +724,125 @@ dirty worktree、共同 profile SHA-256、CPU 型号/affinity、线程变量和�
 `0283de537d286411b5014ca5436b6284c748fecc122360c8d1dfd8ab42573093`。详见
 [`docs/JobPacer/result/phase3experiments.md`](../result/phase3experiments.md) 的 2026-09-24 runtime-overhead
 结果节。
+
+## 20. Runtime control-path 定位与单项候选（2026-09-24 UTC）
+
+本轮继续使用 CPU/Gloo、两 rank、`max_inflight=1`、precreate、1 ms 完成轮询和固定线程环境。没有扩展策略矩阵。
+诊断分为最小观测与紧凑诊断；两者都保留协议检查、任务/launch 顺序、tensor 校验和失败处理。`full` 保留原有
+详细事件供兼容和深入诊断使用。每个热路径时间差只在所属 rank 或 coordinator 的本地 monotonic 时钟内计算。
+
+最初两版诊断模式在 4 KiB × 32 的 E1 中分别增加约 49.991 ms 和 52.271 ms，故暂停 E2，缩减重复 coordinator
+快照后再继续。最终紧凑诊断版本 E1 为 10/10 成功：最小观测 makespan 中位数 88.545 ms，诊断观测 99.764 ms，
+差 11.219 ms；两 rank 汇总 process CPU 中位数分别 115.407/131.037 ms。诊断仍有可见扰动，结果未通过减去常数
+方式修正。三次 E1 探测批次都留在结果目录，其中只有 compact-diagnostic 用作后续诊断配置。
+
+E2 20/20 成功。makespan 从两路径共同的最大 rank application-release→application-end duration 计算，避免旧路径
+与新路径混用指标别名。每配置为固定 epoch 6200 的五次 repeat，按 repeat 块交错运行，属于固定输入系统噪声观察，
+并非五个独立 seed。结果如下：
+
+| 输入 | old FIFO 中位 makespan | new Static FIFO 中位 makespan | 配对 new−old 中位差 | 每 collective 配对差 |
+| --- | ---: | ---: | ---: | ---: |
+| 4 KiB × 32 | 25.429 ms | 100.610 ms | +75.893 ms | +2.372 ms |
+| 1 MiB × 32 | 57.292 ms | 131.244 ms | +73.952 ms | +2.311 ms |
+
+新路径诊断中，4 KiB/1 MiB 的 rank-local submit→grant 中位分别约 1.211/1.243 ms，grant→collective start
+约 0.178/0.184 ms，collective return→completion observation 约 1.086/2.045 ms，应用 wait 约
+2.416/3.389 ms。首次 probe 通常在 collective return 后约 0.70/0.72 ms。Coordinator 单时钟上，event queue
+等待中位约 0.12 ms、消息处理约 0.032 ms；容量释放到下一项首次 eligible 约 0.42 ms，候选 ready 后容量未继续
+占用，policy 函数单独实测中位 0.003 ms（P90 0.005 ms），完整 decision processing 约 0.030 ms，grant writer
+queue 到 sendall end 约 0.23–0.24 ms。它们是不同边界的
+描述统计，不可相加为完整耗时分解；Phase 2 结果没有记录 CPU/context-switch 数据，故不做旧新 CPU 对照。
+
+单项 E3 候选是让新 runtime 在 work 进入可探测集合时唤醒完成探测线程，同时保留周期轮询。默认行为没有改变，
+`--wake-completion-on-submit` 只用于显式消融。E3 同样 20/20 成功：4 KiB 的首次 probe 中位从 0.673 ms 降到
+0.152 ms，但 probe 数中位从 1 增到 2，completion observation 反而从 1.200 ms 到 1.312 ms；makespan 中位从
+100.511 ms 升至 105.818 ms，五个配对 repeat 全部变慢。1 MiB 的首次 probe 也提前（0.694→0.153 ms），但
+completion observation 从 2.008 ms 增至 2.388 ms；配对方向混杂，wakeup 只在 3/5 repeat 较快，arm 中位
+makespan 从 132.953 ms 升至 137.899 ms。两个输入的汇总 rank process CPU 中位数均略增，额外 probe 没有转化为
+稳定的应用收益。
+
+因此 E3 未达到“预期区间改变且整体收益可重复”的门槛，E4（L0/L1 105 次回归）按计划不启动；没有将 wakeup
+设为默认值，也没有另选第二项优化继续试探。当前证据排除了“中央 policy 计算本身占据约 2 ms”的解释，显示
+准入/反馈和完成观测各有可测等待，但还不足以把全部新旧差值唯一归因到某一环节。结果、原始 JSON、paired
+timeline 图及分析文件位于 `benchmark/phase3/results/runtime-overhead/`，结论见
+[`phase3-runtime-overhead-20260924.md`](../result/phase3-runtime-overhead-20260924.md) 的 follow-up 节。
+
+验证：针对性 unit tests 59 passed；真实双 rank Gloo 集成 40 passed，覆盖观测模式、grant/launch 投影、
+SUBMITTED→COMPLETED 顺序、launch/probe failure 和有界关闭；E1/E2/E3 共 70 个固定输入正式对照 replay
+全部 validation=ok。以上不代表 GPU/NCCL 或多机验收。
+
+## 21. E2 已有 trace 的逐任务复核（2026-09-25）
+
+按后续排查要求，先核对已有 E2 的 4 KiB × 32 与 1 MiB × 32 trace，没有重跑 E2，也没有改写其 manifest、
+runs ledger、raw JSON 或既有图。原始 E2 的 20 次运行均通过校验。E2 缺少 DECLARE 调用起止边界，因此只补
+了 rank-local DECLARE start/end、submit 开始，以及每条控制消息一次性的发送锁等待和 socket 写入/flush
+区间；minimal 模式不产出这些详细事件。新增量不改变准备时机、轮询周期、消息顺序或完成协议。
+
+对 coordinator 的 155 个任务转移/输入，以每个 run 内任务统计汇总后再比较五次 repeat。容量释放时已有至少
+一个 OFFER 尚未进入中央输入队列的转移占 4 KiB 的 141/155、1 MiB 的 137/155；没有转移在容量仍占用时先
+变为 eligible。容量释放到首次 eligible 的 run-level 中位数分别为 415 µs 和 420 µs；两条件满足后到
+decision start 为 3–4 µs，decision processing 为 30–32 µs。更细分的 coordinator 与 rank-local 分段表见
+[`follow-up analysis`](../../../benchmark/phase3/results/runtime-overhead/instrumentation/20260925-E1-declare-send-lock/followup-analysis.md)。
+
+E2 的 rank trace 只能看到 DECLARE 返回点，于是另跑规定的 E1 补充批次：4 KiB × 32、new Static FIFO/precreate、
+1 ms polling，minimal 与 diagnostic 各 5 次交错，共 10 次；全部 Gloo replay 验证通过。诊断观测 makespan
+中位数 114.429 ms，minimal 为 102.038 ms，配对 repeat 差的中位数 +8.919 ms；CPU 时间也增加。该扰动有实质
+影响，未通过减固定值修正性能。
+
+新增 rank-local 结果显示，grant 收到到 launch worker dequeue 的中位数约 176–185 µs，dequeue 到 collective
+调用约 11–12 µs；不是主要重复等待。DECLARE 调用中位数 rank 0/1 为 319/170 µs，其中发送锁等待中位数
+69/60 µs，且常与前一项 COMPLETED 发送持锁区间重叠；OFFER 锁等待中位约 1 µs。较晚 OFFER 的 rank 会随
+消息规模变化，不能归结为固定慢 rank。E2 的 collective 返回到完成观测仍约 1.08–1.17 ms（4 KiB）和
+1.81–2.15 ms（1 MiB），此区间包含 backend 完成及轮询，不是精确物理完成延迟。
+
+结论停在定位：下一次 grant 最大且反复出现的中央门控等待，是最后一个成员 OFFER 尚未到达 coordinator
+输入队列；这可能来自成员应用推进/DECLARE/producer/submit 或接收线程排队，不能称作单向网络延迟。条件
+满足后的中央处理、grant 发送排队和本地 launch worker 等待都更短。不同 rank 时钟未互相相减，各阶段区间
+也未相加解释完整 2 ms。没有做 runtime 优化或启动额外策略矩阵。
+
+验证：runtime unit tests 42 passed；全仓 218 passed、45 skipped；允许 TCP socket 的真实双 rank Gloo 集成
+40 passed；git diff --check 通过。E1/E2 本地 raw、统计表与双 rank 配对时间线位于
+`benchmark/phase3/results/runtime-overhead/instrumentation/20260925-E1-declare-send-lock/`。
+
+## 22. DECLARE 消息消融 F0–F4（2026-09-25）
+
+本轮只改变线性 workload 的 declaration 时机，不调整发送锁、线程结构或 completion polling。`before-producer`
+仍为默认，按 DECLARE→producer→submit/OFFER 执行；`on-submit` 在 producer 完成后直接 submit，使用 OFFER
+携带的完整 TaskSpec/TaskHint，不新增协议。两种模式共享任务、预创建 binding、profile、静态/策略入口和正确性检查；
+Lookahead 与 DAG 拒绝 `on-submit`。改动限于 Phase 3 入口、rank harness、实验批处理、结果分析和测试。
+
+F0 真实 CPU/Gloo 双 rank 定向集成覆盖两种模式的 TaskSpec/Hint、任务和 launch/grant 投影、producer-before-OFFER、
+tensor 校验、元数据冲突、缺失任务、launch/探测失败有界退出及 Lookahead/DAG 拒绝：10 passed、37 deselected。
+全仓测试为 221 passed、51 skipped。没有改 coordinator 协议。
+
+F1/F2 使用 4 KiB×32、Static FIFO、precreate、1 ms poll、minimal/diagnostic 各 5 次；F3 在 1 MiB×32 上
+minimal 复测 5 对；均串行随机化模式顺序。F1 与 F3 的五个固定输入配对均为 `on-submit` makespan 更低：
+F1 中位差 −13.970 ms（范围 −45.260 至 −11.421 ms），F3 中位差 −12.871 ms（−41.512 至 −10.953 ms）。
+它们证明零计算链上的差异可重复，但不是多 seed 鲁棒性结论。F2 为诊断观测，绝对 makespan 受额外 trace 影响，
+只用于机制比较，不与 minimal 批次拼接或减去固定观测成本。
+
+F2 先在每次 replay 内汇总 32 次通信，再比较配对 repeats。`on-submit` 的上项 wait 返回→下一次 submit 中位
+减少约 540 µs（rank 0，5/5）及 286 µs（rank 1，5/5）；coordinator 的容量释放→最后 OFFER 入队减少
+550 µs（范围 −690 至 −227 µs，5/5），容量释放→首次 eligible 减少 562 µs（−642 至 −171 µs，5/5）。
+两条件满足后的 decision start 基本不变，decision processing 只有数微秒波动。与此同时 rank 0 OFFER 发送锁等待
+中位增加约 147 µs（5/5 增加），rank 1 中位增加约 2 µs。证据支持 DECLARE 移除缩短应用推进和中央等成员的
+空档，但更早 OFFER 部分转移了对控制发送锁的竞争；不能仅以 DECLARE 耗时消失判断收益。
+
+门控通过后执行 F4：L0/L1、new FIFO、5 个执行 seed×3 个 repeat×2 种模式，共 60 次串行 CPU/Gloo replay。
+使用 Phase A 同一 profile（digest `0283de537d286411b5014ca5436b6284c748fecc122360c8d1dfd8ab42573093`）、
+0.3 execution jitter、1 ms poll 和 precreate。60/60 replay validation 成功，协议发送/回执计数符合各模式预期；
+30/30 workload/seed/repeat 对的 producer/consumer 计算样本逐 rank、job 完全相同，且样本数量与输入一致。
+
+F4 按 seed 内三次 repeat 中位数，再比较五个 seed block。`on-submit−before-producer` 的 makespan seed 中位差：
+L0 为 −0.354 ms（五 seed 范围 −0.963 至 +2.223 ms，3/5 seed 更快）；L1 为 +0.406 ms（−0.316 至
++1.461 ms，1/5 更快）。15 个 repeat 配对的范围分别为 −4.748 至 +4.423 ms、−4.788 至 +4.018 ms，
+明显宽于中心差值。两场景每 replay process CPU 时间中位减少约 2.4 ms，voluntary context switch 中位减少
+45/47 次；但 L0/L1 应用 makespan 均未显示跨 seed 稳定改善。逐 job JCT 也有正负变化。
+
+因此结论限于：省去独立 DECLARE 可减少控制消息和 CPU/线程调度负担，并在零计算链缩短路径；F4 没证明这些
+收益能稳定转化为有计算/扰动应用的 makespan 改善。默认保持 `before-producer`，不扩 LTF、Lookahead、DAG 或
+新性能矩阵。原始记录和表格位于本地忽略目录
+`benchmark/phase3/results/runtime-overhead/control-path/20260925-F-declaration-mode/`；完整解释见
+[`Phase F 结果记录`](../result/phase3-runtime-overhead-20260924.md) 的后续章节。F4 每 workload 的 makespan 图
+分别位于该批次 `figures/L0-balanced/` 和 `figures/L1-head-misalignment/`。性能结果只适用于本机 CPU/Gloo，
+不外推至 GPU/NCCL、多机或其他 workload。

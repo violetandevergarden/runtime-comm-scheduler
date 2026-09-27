@@ -108,7 +108,9 @@ def test_metrics_label_coordinator_epoch_duration_and_prediction_time_anchor():
     }]
     result = metrics(results)
     assert set(result) == {
-        "coordinator_task_timings", "coordinator_idle_s", "coordinator_epoch_duration_s",
+        "coordinator_task_timings", "coordinator_diagnostic_task_timings",
+        "coordinator_message_queue_wait_us", "coordinator_message_processing_us",
+        "coordinator_idle_s", "coordinator_epoch_duration_s",
         "job_duration_s", "rank_task_timings", "rank_process_cpu_time_s", "rank_context_switches",
         "dag_rank_task_timings",
         "dag_node_ready_wait_s", "predicted_ready_error_s", "dag_timing_clock",
@@ -160,6 +162,43 @@ def test_linear_metrics_report_completion_feedback_and_probe_events():
     assert local["completion_observed_to_application_continue_s"] == pytest.approx(10 / 1_000_000)
     assert result["rank_process_cpu_time_s"] == {"0": 0.03}
     assert result["rank_context_switches"]["0"] == {"voluntary": 7, "involuntary": 2}
+
+
+def test_coordinator_gap_classification_excludes_next_dispatch_snapshot():
+    first, second = "job-0/comm-0", "job-0/comm-1"
+    result = metrics([{
+        "rank": 0,
+        "decision_records": [
+            {"kind": "decision", "decision": "dispatch", "task_id": first, "now": 1.0},
+            {"kind": "submitted", "task_id": first, "now": 1.1},
+            {"kind": "completed", "task_id": first, "now": 2.0},
+            {"kind": "policy_snapshot", "now": 3.0, "eligible": [{"task_id": second}]},
+            {"kind": "decision", "decision": "dispatch", "task_id": second, "now": 3.0},
+        ],
+        "coordinator_instrumentation": [
+            {"kind": "capacity_released", "task_id": first, "time_us": 2_000_000},
+            {"kind": "message_enqueued", "task_id": second, "message_kind": "OFFER",
+             "endpoint": 0, "time_us": 2_500_000},
+            {"kind": "message_enqueued", "task_id": second, "message_kind": "OFFER",
+             "endpoint": 1, "time_us": 2_600_000},
+            {"kind": "first_eligible", "task_id": second, "time_us": 2_900_000},
+            {"kind": "decision_processing", "task_id": second,
+             "time_us": 3_000_000, "end_time_us": 3_002_000},
+            {"kind": "grant_committed", "task_id": second, "time_us": 3_002_000},
+            {"kind": "grant_writer_queue_put_start", "task_id": second, "time_us": 3_003_000},
+            {"kind": "grant_writer_queue_put_end", "task_id": second, "time_us": 3_004_000},
+        ],
+    }])
+    legacy = result["coordinator_task_timings"][first]
+    assert legacy["legal_candidate_present_during_gap"] is True
+    assert legacy["legacy_gap_metric_includes_next_dispatch_snapshot"] is True
+    assert legacy["legal_candidate_present_before_next_dispatch"] is False
+    split = result["coordinator_diagnostic_task_timings"][second]
+    assert split["last_offer_enqueued_us"] == 2_600_000
+    assert split["capacity_release_to_last_offer_enqueued_us"] == 600_000
+    assert split["candidate_ready_after_capacity_release_us"] == 900_000
+    assert split["both_conditions_to_decision_start_us"] == 100_000
+    assert split["decision_processing_us"] == 2_000
 
 
 def test_performance_uses_rank_local_release_durations():

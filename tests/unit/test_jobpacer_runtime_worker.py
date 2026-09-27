@@ -235,7 +235,8 @@ def test_run_rank_keeps_one_replay_deadline_through_finish_and_skips_finish_afte
     args = argparse.Namespace(timeout=2.0, setup_timeout=1.0, poll_interval=0.01,
                               dag_poll_interval=0.01, compute_jitter=0.0, dag=None,
                               workload="balanced", static_order=None, policy="fifo",
-                              backend="gloo", epoch=0, control_port=12345, fault="none")
+                              backend="gloo", epoch=0, control_port=12345, fault="none",
+                              observation_mode="diagnostic")
 
     if job_fails:
         with pytest.raises(ValueError, match="job failed"):
@@ -305,7 +306,7 @@ def test_on_ready_linear_binding_creation_follows_producer_and_matches_precreate
 
     runtime = RecordingRuntime()
     args = argparse.Namespace(epoch=4, compute_jitter=0.0, fault="none",
-                              binding_preparation="on-ready")
+                              binding_preparation="on-ready", observation_mode="diagnostic")
     events = []
     result = runtime_worker._run_linear_job(
         job, workload=workload, args=args, runtime=runtime, groups={job.job_id: group},
@@ -321,3 +322,83 @@ def test_on_ready_linear_binding_creation_follows_producer_and_matches_precreate
                <= task["binding_create_end_ts"] <= task["submit_call_ts"]
                for task in result["tasks"])
     assert len({binding.tensor.data_ptr() for binding in runtime.bindings.values()}) == len(runtime.bindings)
+
+
+def test_declaration_modes_preserve_specs_hints_bindings_and_producer_before_offer(monkeypatch):
+    from runtime_comm_scheduler.runtime import EventLog
+
+    workload = built_workload("balanced")
+    job = workload.jobs[0]
+    group = object()
+    observations = {}
+
+    class Handle:
+        decision_seq = 1
+
+        def wait_host(self, _timeout):
+            return True
+
+    class RecordingRuntime:
+        def __init__(self, order):
+            self.event_log = EventLog("runtime", 0)
+            self.order = order
+            self.declarations = []
+            self.submissions = []
+
+        def declare(self, spec, hint):
+            self.order.append(("DECLARE", spec.task_id))
+            self.declarations.append((spec, hint))
+
+        def submit(self, spec, binding, hint):
+            self.order.append(("OFFER", spec.task_id))
+            self.submissions.append((spec, binding, hint))
+            return Handle()
+
+    def zero_duration(_workload, _epoch, job_id, ordinal, _rank, segment, base, _jitter):
+        if segment == "producer":
+            observations["order"].append(("producer", f"{job_id}/comm-{ordinal}"))
+        return 0.0
+
+    monkeypatch.setattr(runtime_worker, "linear_execution_duration", zero_duration)
+    for mode in ("before-producer", "on-submit"):
+        order = []
+        observations["order"] = order
+        bindings = {}
+        creation_events = []
+        for comm in job.communications:
+            spec = runtime_worker.task_spec(job, comm, epoch=9)
+            bindings[spec.task_id] = runtime_worker.make_collective_binding(
+                spec, group, rank=0, device="cpu")
+            creation_events.append({"task_id": spec.task_id, "binding_create_duration_us": 0})
+        runtime = RecordingRuntime(order)
+        args = argparse.Namespace(epoch=9, compute_jitter=0.0, fault="none",
+                                  binding_preparation="precreate", declaration_mode=mode,
+                                  observation_mode="diagnostic")
+        result = runtime_worker._run_linear_job(
+            job, workload=workload, args=args, runtime=runtime, groups={job.job_id: group},
+            rank=0, world_size=2, device="cpu", deadline=time.monotonic() + 2,
+            stop_event=threading.Event(), validation_records=[], precreated_bindings=bindings,
+            binding_creation_events=creation_events, binding_events_lock=threading.Lock(),
+        )
+        expected_order = []
+        for task in result["tasks"]:
+            if mode == "before-producer":
+                expected_order.append(("DECLARE", task["task_id"]))
+            expected_order.extend((("producer", task["task_id"]), ("OFFER", task["task_id"])))
+        assert order == expected_order
+        assert [item["task_id"] for item in result["tasks"]] == [
+            spec.task_id for spec, _binding, _hint in runtime.submissions]
+        assert len(runtime.declarations) == (len(runtime.submissions)
+                                               if mode == "before-producer" else 0)
+        assert all(binding.process_group is group for _spec, binding, _hint in runtime.submissions)
+        assert len({binding.tensor.data_ptr() for _spec, binding, _hint in runtime.submissions}) == len(
+            runtime.submissions)
+        observations[mode] = {
+            "specs": [spec.to_dict() for spec, _binding, _hint in runtime.submissions],
+            "hints": [hint.to_dict() for _spec, _binding, hint in runtime.submissions],
+            "bindings": [
+                (tuple(binding.tensor.shape), str(binding.tensor.dtype), str(binding.tensor.device))
+                for _spec, binding, _hint in runtime.submissions
+            ],
+        }
+    assert observations["before-producer"] == observations["on-submit"]

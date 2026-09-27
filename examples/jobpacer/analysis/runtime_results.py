@@ -109,6 +109,19 @@ def validate_results(results: list[dict[str, Any]], world_size: int, *,
 
     coordinator_records = next((result.get("decision_records", []) for result in results
                                 if result.get("decision_records")), [])
+    coordinator_rank = by_rank.get(0, {})
+    protocol_counts = coordinator_rank.get("protocol_transition_counts")
+    if protocol_counts is not None:
+        expected_reports = sum(
+            len(expected.get("__groups__", {}).get(meta["group_id"], ()))
+            for meta in expected.get("__all__", {}).values()
+        )
+        if protocol_counts.get("submitted_reports") != expected_reports:
+            errors.append("coordinator SUBMITTED report count mismatch")
+        if protocol_counts.get("completed_reports") != expected_reports:
+            errors.append("coordinator COMPLETED report count mismatch")
+        if protocol_counts.get("submitted_before_completed_enforced") is not True:
+            errors.append("coordinator did not confirm SUBMITTED-before-COMPLETED enforcement")
     dispatches = {item.get("task_id") for item in coordinator_records
                   if item.get("kind") == "decision" and item.get("decision") == "dispatch"}
     expected_global = set(expected.get("__all__", {}))
@@ -135,10 +148,17 @@ def metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         (result.get("decision_records", []) for result in results if result.get("decision_records")),
         [],
     )
+    coordinator_instrumentation = next(
+        (result.get("coordinator_instrumentation", []) for result in results
+         if result.get("coordinator_instrumentation")),
+        [],
+    )
+    minimal_observation = any(result.get("observation_mode") == "minimal" for result in results)
     dispatch_times = {
         item["task_id"]: item["now"]
         for item in coordinator_records
         if item.get("kind") == "decision" and item.get("decision") == "dispatch"
+        and item.get("now") is not None
     }
     eligible_times = {
         item["task_id"]: item["now"]
@@ -156,6 +176,8 @@ def metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
     snapshots = [item for item in coordinator_records if item.get("kind") == "policy_snapshot"]
     coordinator_tasks = {}
     for dispatch_index, dispatch in enumerate(dispatch_records):
+        if dispatch.get("now") is None:
+            continue
         task_id = dispatch["task_id"]
         grant_time = dispatch["now"]
         submitted = progress.get(task_id, {}).get("submitted", [])
@@ -171,6 +193,10 @@ def metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
                              and next_grant_time is not None
                              and item.get("now", float("inf")) <= next_grant_time]
             eligible_in_gap = any(item.get("eligible") for item in gap_snapshots)
+            eligible_before_dispatch = any(
+                item.get("eligible") and item.get("now", float("inf")) < next_grant_time
+                for item in gap_snapshots
+            ) if next_grant_time is not None else None
             coordinator_tasks[task_id] = {
                 "eligible_to_grant_s": grant_time - eligible_times[task_id] if task_id in eligible_times else None,
                 "grant_to_all_submitted_s": submitted_all - grant_time,
@@ -180,8 +206,92 @@ def metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
                 "next_task_id": next_grant.get("task_id") if next_grant else None,
                 "legal_candidate_present_during_gap": (eligible_in_gap
                                                         if next_grant_time is not None else None),
+                "legal_candidate_present_before_next_dispatch": eligible_before_dispatch,
+                "legacy_gap_metric_includes_next_dispatch_snapshot": True,
                 "coordinator_clock": "single coordinator monotonic clock",
             }
+    coordinator_diag_by_kind: dict[str, list[dict[str, Any]]] = {}
+    coordinator_diag_by_task: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for item in coordinator_instrumentation:
+        coordinator_diag_by_kind.setdefault(item.get("kind", "unknown"), []).append(item)
+        if item.get("task_id") is not None:
+            coordinator_diag_by_task.setdefault(item["task_id"], {}).setdefault(
+                item.get("kind", "unknown"), []).append(item)
+    coordinator_diagnostic_tasks: dict[str, dict[str, Any]] = {}
+    first_eligible_us = {
+        task_id: min(item["time_us"] for item in kinds.get("first_eligible", []))
+        for task_id, kinds in coordinator_diag_by_task.items() if kinds.get("first_eligible")
+    }
+    capacity_release_us = {
+        task_id: max(item["time_us"] for item in kinds.get("capacity_released", []))
+        for task_id, kinds in coordinator_diag_by_task.items() if kinds.get("capacity_released")
+    }
+    for index, dispatch in enumerate(dispatch_records):
+        task_id = dispatch["task_id"]
+        kinds = coordinator_diag_by_task.get(task_id, {})
+        decision = next((item for item in kinds.get("decision_processing", [])), None)
+        committed = next((item for item in kinds.get("grant_committed", [])), None)
+        queue_starts = kinds.get("grant_writer_queue_put_start", [])
+        queue_ends = kinds.get("grant_writer_queue_put_end", [])
+        socket_starts = kinds.get("control_socket_sendall_start", [])
+        socket_ends = kinds.get("control_socket_sendall_end", [])
+        offer_enqueues = [item for item in kinds.get("message_enqueued", [])
+                          if item.get("message_kind") == "OFFER"]
+        last_offer_enqueued = max((item["time_us"] for item in offer_enqueues), default=None)
+        previous_id = dispatch_records[index - 1]["task_id"] if index else None
+        release = capacity_release_us.get(previous_id) if previous_id else None
+        eligible = first_eligible_us.get(task_id)
+        decision_start = decision.get("time_us") if decision else None
+        decision_end = decision.get("end_time_us") if decision else None
+        ready = max(release, eligible) if release is not None and eligible is not None else None
+        coordinator_diagnostic_tasks[task_id] = {
+            "previous_task_id": previous_id,
+            "previous_capacity_release_us": release,
+            "last_offer_enqueued_us": last_offer_enqueued,
+            "capacity_release_to_last_offer_enqueued_us": (
+                last_offer_enqueued - release
+                if last_offer_enqueued is not None and release is not None else None),
+            "first_eligible_us": eligible,
+            "decision_start_us": decision_start,
+            "decision_end_us": decision_end,
+            "decision_processing_us": (decision_end - decision_start
+                                        if decision_start is not None and decision_end is not None else None),
+            "ready_after_capacity_and_offer_us": ready,
+            "both_conditions_to_decision_start_us": (max(0, decision_start - ready)
+                if decision_start is not None and ready is not None else None),
+            "candidate_ready_after_capacity_release_us": (max(0, eligible - release)
+                if eligible is not None and release is not None else None),
+            "capacity_held_after_candidate_ready_us": (max(0, release - eligible)
+                if eligible is not None and release is not None else None),
+            "grant_commit_us": committed.get("time_us") if committed else None,
+            "grant_writer_queue_put_start_us": min((item["time_us"] for item in queue_starts), default=None),
+            "grant_writer_queue_put_end_us": max((item["time_us"] for item in queue_ends), default=None),
+            "grant_socket_sendall_start_us": min((item["time_us"] for item in socket_starts), default=None),
+            "grant_socket_sendall_end_us": max((item["time_us"] for item in socket_ends), default=None),
+            "post_decision_to_queue_us": (min(item["time_us"] for item in queue_starts) - decision_end
+                if queue_starts and decision_end is not None else None),
+            "writer_queue_to_sendall_end_us": (max(item["time_us"] for item in socket_ends)
+                - min(item["time_us"] for item in queue_ends)
+                if socket_ends and queue_ends else None),
+            "interval_classification": (
+                "capacity_and_candidate_ready_processing"
+                if release is not None and eligible is not None and decision_start is not None
+                else "diagnostic_boundaries_missing"),
+            "coordinator_clock": "single coordinator monotonic clock",
+        }
+    message_queue_wait_us: dict[str, list[int]] = {}
+    for item in coordinator_diag_by_kind.get("event_loop_dequeued", []):
+        if item.get("queue_wait_us") is not None:
+            message_queue_wait_us.setdefault(item["message_kind"], []).append(item["queue_wait_us"])
+    message_processing_us: dict[str, list[int]] = {}
+    processing_starts = [item for item in coordinator_diag_by_kind.get("event_processing_start", [])]
+    processing_ends = [item for item in coordinator_diag_by_kind.get("event_processing_end", [])]
+    end_by_key = {(item.get("endpoint"), item.get("event_seq")): item for item in processing_ends}
+    for item in processing_starts:
+        ended = end_by_key.get((item.get("endpoint"), item.get("event_seq")))
+        if ended is not None:
+            message_processing_us.setdefault(item["message_kind"], []).append(
+                ended["time_us"] - item["time_us"])
     job_durations = {}
     for result in results:
         for job in result.get("jobs", []):
@@ -225,6 +335,24 @@ def metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
                         "grant_to_collective_start_s": (times.get("collective_call_start", times.get("launch_start", times["grant_received"]))
                                                          - times["grant_received"]) / 1_000_000.0,
                     }
+                    def interval(start: str, end: str) -> float | None:
+                        if start in times and end in times:
+                            return (times[end] - times[start]) / 1_000_000.0
+                        return None
+
+                    for name, start, end in (
+                        ("submit_api_duration_s", "submit_call_start", "submit_call_return"),
+                        ("offer_send_duration_s", "offer_send_start", "offer_send_end"),
+                        ("grant_receive_to_launch_dequeue_s", "grant_received", "launch_worker_dequeued"),
+                        ("launch_dequeue_to_collective_start_s", "launch_worker_dequeued", "collective_call_start"),
+                        ("collective_return_to_submitted_send_end_s", "collective_call_return", "submitted_send_end"),
+                        ("completion_observed_to_application_wait_return_s", "completion_observed", "application_wait_return"),
+                        ("completion_observed_to_completed_send_end_s", "completion_observed", "completed_send_end"),
+                        ("first_probe_to_completion_observed_s", "completion_probe_first", "completion_observed"),
+                    ):
+                        duration = interval(start, end)
+                        if duration is not None:
+                            values[name] = duration
                     if task.get("ready_ts") is not None:
                         values["producer_ready_to_submit_call_s"] = (
                             task["submit_call_ts"] - task["ready_ts"]
@@ -253,7 +381,28 @@ def metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
                     completion_event = event_records.get(task["task_id"], {}).get("completion_observed", {})
                     if completion_event.get("completion_probe_count") is not None:
                         values["completion_probe_count"] = float(completion_event["completion_probe_count"])
+                    if completion_event.get("completion_probe_total_us") is not None:
+                        values["completion_probe_total_s"] = (
+                            completion_event["completion_probe_total_us"] / 1_000_000.0)
+                    first_probe_us = completion_event.get("completion_first_probe_us")
+                    last_probe_us = completion_event.get("completion_last_probe_us")
+                    probe_count = completion_event.get("completion_probe_count")
+                    if (isinstance(first_probe_us, int) and isinstance(last_probe_us, int)
+                            and isinstance(probe_count, int) and probe_count > 1):
+                        values["mean_probe_interval_s"] = (
+                            (last_probe_us - first_probe_us) / (probe_count - 1) / 1_000_000.0)
                     local_waits.setdefault(rank_key, {})[task["task_id"]] = values
+        for job in result.get("jobs", []):
+            tasks = job.get("tasks", [])
+            for current, following in zip(tasks, tasks[1:]):
+                current_times = event_times.get(current.get("task_id"), {})
+                next_times = event_times.get(following.get("task_id"), {})
+                wait_return = current_times.get("application_wait_return")
+                next_producer = next_times.get("producer_start")
+                if wait_return is not None and next_producer is not None:
+                    local_waits.setdefault(rank_key, {}).setdefault(current["task_id"], {})[
+                        "application_wait_return_to_next_producer_s"] = (
+                            next_producer - wait_return) / 1_000_000.0
         if result.get("input_mode") == "dag":
             rank = str(result.get("rank"))
             dag_events = result.get("dag_events", [])
@@ -295,8 +444,13 @@ def metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
                     dag_rank_task_timings.setdefault(rank, {})[task_id] = values
     return {
         "coordinator_task_timings": coordinator_tasks,
+        "coordinator_diagnostic_task_timings": coordinator_diagnostic_tasks,
+        "coordinator_message_queue_wait_us": message_queue_wait_us,
+        "coordinator_message_processing_us": message_processing_us,
         "coordinator_idle_s": idle_by_reason,
-        "coordinator_epoch_duration_s": max(finished) - min(started) if finished and started else None,
+        "coordinator_epoch_duration_s": (max(finished) - min(started)
+                                          if (not minimal_observation or coordinator_instrumentation)
+                                          and finished and started else None),
         "job_duration_s": {job: max(values) for job, values in job_durations.items()},
         "rank_task_timings": local_waits,
         "rank_process_cpu_time_s": rank_process_cpu_time_s,

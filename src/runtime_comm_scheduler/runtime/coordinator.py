@@ -24,6 +24,7 @@ from .policy import (
     make_policy,
     select_ltf,
 )
+from .telemetry import EventLog
 
 
 class CoordinatorError(RuntimeError):
@@ -80,6 +81,7 @@ class CoordinatorState:
         max_inflight: int = 1,
         wait_budget_s: float = 0.02,
         epoch_timeout_s: float = 30.0,
+        observation_mode: str = "full",
     ) -> None:
         if not endpoints or len(set(endpoints)) != len(endpoints):
             raise ValueError("coordinator endpoints must be unique")
@@ -90,6 +92,9 @@ class CoordinatorState:
         self.max_inflight = max_inflight
         if epoch_timeout_s < 0:
             raise ValueError("epoch_timeout_s must be non-negative")
+        if observation_mode not in {"minimal", "diagnostic", "full"}:
+            raise ValueError("observation_mode must be 'minimal', 'diagnostic' or 'full'")
+        self.observation_mode = observation_mode
         self.epoch_timeout_s = epoch_timeout_s
         self.endpoint: dict[int, _EndpointState] = {
             rank: _EndpointState() for rank in self.endpoints
@@ -111,6 +116,11 @@ class CoordinatorState:
         self._must_dispatch = False
         self._started_at: float | None = None
         self.records: list[dict[str, Any]] = []
+        self._instrumentation_log = EventLog(
+            "coordinator", enabled=observation_mode != "minimal", thread_sharded=True
+        )
+        self.submitted_report_count = 0
+        self.completed_report_count = 0
         self._idle_reason: str | None = None
         self._idle_started_at: float | None = None
         self.policy: Policy = make_policy(
@@ -173,7 +183,7 @@ class CoordinatorState:
             self._progress(endpoint, kind, payload, now)
         elif kind == "INPUT_CLOSED":
             state.input_closed = True
-            self.records.append(
+            self._append_record(
                 {"kind": "input_closed", "endpoint": endpoint, "now": now}
             )
             missing_from_endpoint = [
@@ -205,7 +215,7 @@ class CoordinatorState:
 
         out = self._maybe_finish(now)
         if not out and not self.finished:
-            out = self._decide(now)
+            out = self._measured_decide(now)
         return out
 
     def tick(self, now: float) -> list[Outbound]:
@@ -218,7 +228,40 @@ class CoordinatorState:
             return self._failure_messages()
         self._refresh_eligibility(now)
         out = self._maybe_finish(now)
-        return out or self._decide(now)
+        return out or self._measured_decide(now)
+
+    def record_instrumentation(self, kind: str, *, time_us: int | None = None,
+                               **fields: Any) -> None:
+        timestamp = time.perf_counter_ns() // 1000 if time_us is None else time_us
+        self._instrumentation_log.record_at(kind, timestamp, **fields)
+
+    @property
+    def instrumentation_records(self) -> list[dict[str, Any]]:
+        return self._instrumentation_log.as_dict()["events"]
+
+    def _append_record(self, record: dict[str, Any]) -> None:
+        # Compact modes retain the committed dispatch sequence and terminal
+        # outcome used by result validation, but skip explanatory state snapshots.
+        if self.observation_mode == "full":
+            self.records.append(record)
+        elif record.get("kind") in {"finished", "failed"}:
+            self.records.append(record)
+        elif record.get("kind") == "decision" and record.get("decision") == "dispatch":
+            self.records.append({key: record[key] for key in
+                                 ("kind", "decision", "task_id", "decision_seq")
+                                 if key in record})
+
+    def _measured_decide(self, now: float) -> list[Outbound]:
+        start_us = time.perf_counter_ns() // 1000
+        out = self._decide(now)
+        end_us = time.perf_counter_ns() // 1000
+        task_id = None
+        if out and out[0].kind == "GRANT":
+            task_id = out[0].payload["task"]["task_id"]
+        self.record_instrumentation("decision_processing", time_us=start_us,
+                                    end_time_us=end_us, task_id=task_id,
+                                    outbound_count=len(out))
+        return out
 
     def fail(self, reason: str, **details: Any) -> list[Outbound]:
         if self.finished:
@@ -236,7 +279,7 @@ class CoordinatorState:
             self._fail("epoch_timeout", now=now, inflight=self.inflight)
             return
         if self.active_wait is not None and now >= self.active_wait.deadline:
-            self.records.append(
+            self._append_record(
                 {
                     "kind": "lookahead_deadline",
                     "now": now,
@@ -267,7 +310,7 @@ class CoordinatorState:
         self.groups[group.group_id] = group
         self._group_registered.setdefault(group.group_id, set()).add(endpoint)
         self._next_group_seq.setdefault(group.group_id, 0)
-        self.records.append(
+        self._append_record(
             {"kind": "group_registered", "group_id": group.group_id, "endpoint": endpoint, "now": now}
         )
 
@@ -338,7 +381,7 @@ class CoordinatorState:
             )
 
         existing.hints[endpoint] = hint
-        self.records.append(
+        self._append_record(
             {
                 "kind": kind.lower(),
                 "task_id": spec.task_id,
@@ -374,11 +417,13 @@ class CoordinatorState:
             if not member.offered or member.submitted:
                 raise CoordinatorError(f"invalid submitted transition for {task_id}")
             member.submitted = True
+            self.submitted_report_count += 1
         else:
             if not member.submitted or member.completed:
                 raise CoordinatorError(f"invalid completed transition for {task_id}")
             member.completed = True
-        self.records.append(
+            self.completed_report_count += 1
+        self._append_record(
             {
                 "kind": kind.lower(),
                 "task_id": task_id,
@@ -391,6 +436,8 @@ class CoordinatorState:
         if kind == "COMPLETED" and all(
             item.completed for item in task.members.values()
         ):
+            self.record_instrumentation("capacity_released",
+                                        task_id=task_id, decision_seq=decision_seq)
             self._next_group_seq[task.spec.group_id] = task.spec.group_seq + 1
             self.inflight = None
             self.active_wait = None
@@ -408,7 +455,9 @@ class CoordinatorState:
                 continue
             self._eligible_seq += 1
             task.eligible_seq = self._eligible_seq
-            self.records.append(
+            self.record_instrumentation("first_eligible", task_id=task.spec.task_id,
+                                        eligible_seq=task.eligible_seq)
+            self._append_record(
                 {
                     "kind": "eligible",
                     "task_id": task.spec.task_id,
@@ -497,7 +546,7 @@ class CoordinatorState:
         if previous_wait is not None and now >= previous_wait.deadline:
             self.active_wait = None
             self._must_dispatch = True
-        self.records.append(
+        self._append_record(
             {
                 "kind": "policy_snapshot",
                 "now": now,
@@ -534,11 +583,26 @@ class CoordinatorState:
         if self._must_dispatch and not eligible:
             self._set_idle("NO_ELIGIBLE", now)
             return []
-        decision = self.policy.decide(
-            PolicySnapshot(
-                now, eligible, anticipated, self.active_wait, self._must_dispatch
+        policy_start_us = time.perf_counter_ns() // 1000
+        try:
+            decision = self.policy.decide(
+                PolicySnapshot(
+                    now, eligible, anticipated, self.active_wait, self._must_dispatch
+                )
             )
-        )
+        except BaseException:
+            policy_end_us = time.perf_counter_ns() // 1000
+            self.record_instrumentation("policy_call", time_us=policy_start_us,
+                                        end_time_us=policy_end_us,
+                                        eligible_count=len(eligible),
+                                        anticipated_count=len(anticipated), failed=True)
+            raise
+        policy_end_us = time.perf_counter_ns() // 1000
+        self.record_instrumentation("policy_call", time_us=policy_start_us,
+                                    end_time_us=policy_end_us,
+                                    task_id=decision.task_id if isinstance(decision, Dispatch) else None,
+                                    eligible_count=len(eligible),
+                                    anticipated_count=len(anticipated))
         if isinstance(decision, Wait):
             if self._must_dispatch:
                 decision = Dispatch(select_ltf(eligible).task_id, "LOOKAHEAD_DEADLINE_FALLBACK")
@@ -556,7 +620,7 @@ class CoordinatorState:
                 )
                 self._must_dispatch = False
                 self._set_idle("ACTIVE_LOOKAHEAD", now)
-                self.records.append(
+                self._append_record(
                     {
                         "kind": "decision",
                         "decision": "wait",
@@ -581,6 +645,9 @@ class CoordinatorState:
             task = self.tasks[selected.task_id]
             task.grant_seq = self.decision_seq
             self.inflight = task.spec.task_id
+            self.record_instrumentation("grant_committed", task_id=task.spec.task_id,
+                                        decision_seq=self.decision_seq,
+                                        eligible_count=len(eligible))
             self.active_wait = None
             self._must_dispatch = False
             self._close_idle(now)
@@ -599,7 +666,7 @@ class CoordinatorState:
                         },
                     )
                 )
-            self.records.append(
+            self._append_record(
                 {
                     "kind": "decision",
                     "decision": "dispatch",
@@ -614,7 +681,7 @@ class CoordinatorState:
             return out
         if isinstance(decision, Idle):
             self._set_idle(decision.reason, now)
-            self.records.append(
+            self._append_record(
                 {
                     "kind": "idle",
                     "reason": decision.reason,
@@ -673,7 +740,7 @@ class CoordinatorState:
             "decision_seq": self.decision_seq,
             "task_count": len(self.tasks),
         }
-        self.records.append({"kind": "finished", "now": now, **payload})
+        self._append_record({"kind": "finished", "now": now, **payload})
         return [Outbound(rank, "FINISHED", payload) for rank in self.endpoints]
 
     def _set_idle(self, reason: str, now: float) -> None:
@@ -686,7 +753,7 @@ class CoordinatorState:
     def _close_idle(self, now: float) -> None:
         if self._idle_reason is None or self._idle_started_at is None:
             return
-        self.records.append(
+        self._append_record(
             {
                 "kind": "idle_interval",
                 "reason": self._idle_reason,
@@ -702,7 +769,7 @@ class CoordinatorState:
         if self.failed is None:
             self._close_idle(details.get("now", self._started_at or 0.0))
             self.failed = {"epoch": self.epoch, "reason": reason, **details}
-            self.records.append({"kind": "failed", **self.failed})
+            self._append_record({"kind": "failed", **self.failed})
 
     def _failure_messages(self) -> list[Outbound]:
         if self.failed is None:

@@ -33,6 +33,7 @@ from typing import Any
 
 from .coordinator import CoordinatorError, CoordinatorState, Outbound
 from .protocol import decode_message, encode_message, hello_message, event_message
+from .telemetry import EventLog, monotonic_us
 
 
 @dataclass
@@ -40,6 +41,7 @@ class _Inbound:
     endpoint: int
     message: dict[str, Any] | None
     error: BaseException | None = None
+    enqueued_us: int | None = None
 
 
 class CoordinatorServer:
@@ -144,14 +146,14 @@ class CoordinatorServer:
                 writer = threading.Thread(target=self._writer_loop, args=(endpoint, conn, self._writers[endpoint]), daemon=True)
                 writer.start()
                 self._threads.append(writer)
-            self._inbound.put(_Inbound(endpoint, first))
+            self._enqueue_inbound(endpoint, first)
             for line in reader:
-                self._inbound.put(_Inbound(endpoint, decode_message(line)))
+                self._enqueue_inbound(endpoint, decode_message(line))
         except BaseException as exc:  # noqa: BLE001
-            self._inbound.put(_Inbound(endpoint if endpoint is not None else -1, None, exc))
+            self._enqueue_inbound(endpoint if endpoint is not None else -1, None, exc)
         finally:
             if endpoint is not None and not self._stop.is_set() and not self.coordinator.done:
-                self._inbound.put(_Inbound(endpoint, None, ConnectionError("control connection closed")))
+                self._enqueue_inbound(endpoint, None, ConnectionError("control connection closed"))
             try:
                 conn.close()
             except OSError:
@@ -163,7 +165,18 @@ class CoordinatorServer:
             if message is None:
                 return
             try:
+                payload = message.get("payload", {})
+                task_id = payload.get("task", {}).get("task_id") or payload.get("task_id")
+                coordinator = getattr(self, "coordinator", None)
+                if coordinator is not None and coordinator.observation_mode != "minimal":
+                    self.coordinator.record_instrumentation(
+                        "control_socket_sendall_start", task_id=task_id,
+                        endpoint=endpoint, message_kind=message.get("kind"))
                 conn.sendall(encode_message(message))
+                if coordinator is not None and coordinator.observation_mode != "minimal":
+                    self.coordinator.record_instrumentation(
+                        "control_socket_sendall_end", task_id=task_id,
+                        endpoint=endpoint, message_kind=message.get("kind"))
                 if message.get("kind") == "FINISHED":
                     with self._lock:
                         finish_sent = self._finish_sent.get(endpoint)
@@ -187,14 +200,33 @@ class CoordinatorServer:
             except queue.Empty:
                 self._dispatch(self.coordinator.tick(time.monotonic()))
                 continue
+            message = inbound.message or {}
+            kind = message.get("kind", "transport_error")
+            payload = message.get("payload", {})
+            task_data = payload.get("task", {}) if isinstance(payload, dict) else {}
+            task_id = task_data.get("task_id") if isinstance(task_data, dict) else None
+            if task_id is None and isinstance(payload, dict):
+                task_id = payload.get("task_id")
+            if self.coordinator.observation_mode != "minimal":
+                dequeued_us = monotonic_us()
+                self.coordinator.record_instrumentation(
+                    "event_loop_dequeued", time_us=dequeued_us,
+                    endpoint=inbound.endpoint, message_kind=kind, task_id=task_id,
+                    event_seq=message.get("event_seq"),
+                    queue_wait_us=(dequeued_us - inbound.enqueued_us
+                                   if inbound.enqueued_us is not None else None))
             if inbound.error is not None:
                 try:
+                    process_start = monotonic_us()
                     self._dispatch(self.coordinator.fail("transport", endpoint=inbound.endpoint, error=str(inbound.error)))
+                    self.coordinator.record_instrumentation(
+                        "event_processing", time_us=process_start,
+                        end_time_us=monotonic_us(), endpoint=inbound.endpoint,
+                        message_kind=kind, task_id=task_id)
                 except CoordinatorError:
                     pass
                 continue
             assert inbound.message is not None
-            message = inbound.message
             if message.get("kind") == "HELLO":
                 if len(self._connections) == len(self.coordinator.endpoints):
                     self._ready.set()
@@ -203,7 +235,18 @@ class CoordinatorServer:
             try:
                 if message.get("epoch") != self.coordinator.epoch:
                     raise CoordinatorError("old or future epoch")
+                process_start = monotonic_us()
+                self.coordinator.record_instrumentation(
+                    "event_processing_start", time_us=process_start,
+                    endpoint=inbound.endpoint, message_kind=kind, task_id=task_id,
+                    event_seq=message.get("event_seq"))
                 out = self.coordinator.apply(inbound.endpoint, message["kind"], int(message["event_seq"]), message["payload"], time.monotonic())
+                process_end = monotonic_us()
+                self.coordinator.record_instrumentation(
+                    "event_processing_end", time_us=process_end,
+                    endpoint=inbound.endpoint, message_kind=kind, task_id=task_id,
+                    event_seq=message.get("event_seq"),
+                    duration_us=process_end - process_start)
                 self._dispatch(out)
             except BaseException as exc:  # noqa: BLE001
                 try:
@@ -217,16 +260,45 @@ class CoordinatorServer:
                 writer = self._writers.get(item.endpoint)
                 if writer is None:
                     continue
+                task_id = item.payload.get("task", {}).get("task_id") or item.payload.get("task_id")
+                if self.coordinator.observation_mode != "minimal":
+                    self.coordinator.record_instrumentation(
+                        "grant_writer_queue_put_start", endpoint=item.endpoint,
+                        task_id=task_id, message_kind=item.kind)
                 writer.put({"protocol": 1, "kind": item.kind, "epoch": self.coordinator.epoch, "endpoint": item.endpoint, "payload": item.payload})
+                if self.coordinator.observation_mode != "minimal":
+                    self.coordinator.record_instrumentation(
+                        "grant_writer_queue_put_end", endpoint=item.endpoint,
+                        task_id=task_id, message_kind=item.kind)
+
+    def _enqueue_inbound(self, endpoint: int, message: dict[str, Any] | None,
+                         error: BaseException | None = None) -> None:
+        enqueued_us = monotonic_us() if self.coordinator.observation_mode != "minimal" else None
+        self._inbound.put(_Inbound(endpoint, message, error, enqueued_us))
+        if enqueued_us is not None:
+            payload = message.get("payload", {}) if message else {}
+            task_data = payload.get("task", {}) if isinstance(payload, dict) else {}
+            task_id = task_data.get("task_id") if isinstance(task_data, dict) else None
+            if task_id is None and isinstance(payload, dict):
+                task_id = payload.get("task_id")
+            self.coordinator.record_instrumentation(
+                "message_enqueued", time_us=enqueued_us, endpoint=endpoint,
+                message_kind=message.get("kind") if message else "transport_error",
+                task_id=task_id,
+                event_seq=message.get("event_seq") if message else None)
 
 
 class ControlClient:
-    def __init__(self, endpoint: int, epoch: int, host: str, port: int, timeout: float = 20.0) -> None:
+    def __init__(self, endpoint: int, epoch: int, host: str, port: int, timeout: float = 20.0,
+                 instrumentation_enabled: bool = True,
+                 event_log: EventLog | None = None) -> None:
         self.endpoint = endpoint
         self.epoch = epoch
         self.host = host
         self.port = port
         self.timeout = timeout
+        self.instrumentation_enabled = instrumentation_enabled
+        self.event_log = event_log
         self._socket: socket.socket | None = None
         self._writer: Any = None
         self._incoming: queue.Queue[dict[str, Any] | BaseException] = queue.Queue()
@@ -260,13 +332,45 @@ class ControlClient:
         self._reader_thread.start()
 
     def send(self, kind: str, payload: dict[str, Any]) -> None:
-        with self._lock:
-            if self._writer is None:
-                raise RuntimeError("control client is not connected")
-            message = event_message(kind, self.epoch, self.endpoint, self._event_seq, payload)
-            self._event_seq += 1
-            self._writer.write(encode_message(message))
-            self._writer.flush()
+        event_log = self.event_log
+        diagnostic = event_log is not None and event_log.enabled
+        task = payload.get("task", {})
+        task_id = task.get("task_id") if isinstance(task, dict) else None
+        if task_id is None:
+            task_id = payload.get("task_id")
+        lock_wait_start_us = monotonic_us() if diagnostic else None
+        lock_acquired_us = write_start_us = write_end_us = None
+        try:
+            with self._lock:
+                if diagnostic:
+                    lock_acquired_us = monotonic_us()
+                if self._writer is None:
+                    raise RuntimeError("control client is not connected")
+                message = event_message(kind, self.epoch, self.endpoint, self._event_seq, payload)
+                self._event_seq += 1
+                if diagnostic:
+                    write_start_us = monotonic_us()
+                self._writer.write(encode_message(message))
+                self._writer.flush()
+                if diagnostic:
+                    write_end_us = monotonic_us()
+        finally:
+            if diagnostic:
+                event_time_us = write_end_us or monotonic_us()
+                event_log.record_at(
+                    "control_send_interval", event_time_us, task_id=task_id,
+                    message_kind=kind,
+                    lock_wait_start_us=lock_wait_start_us,
+                    lock_acquired_us=lock_acquired_us,
+                    socket_write_start_us=write_start_us,
+                    socket_write_end_us=write_end_us,
+                    lock_wait_us=(lock_acquired_us - lock_wait_start_us
+                                  if lock_acquired_us is not None else None),
+                    socket_write_flush_us=(write_end_us - write_start_us
+                                           if write_start_us is not None and write_end_us is not None
+                                           else None),
+                    send_completed=write_end_us is not None,
+                )
 
     def receive(self, timeout: float | None = None) -> dict[str, Any]:
         item = self._incoming.get(timeout=timeout)
@@ -299,7 +403,10 @@ class ControlClient:
         try:
             reader = self._socket.makefile("rb")
             for line in reader:
-                self._incoming.put(decode_message(line))
+                message = decode_message(line)
+                if self.instrumentation_enabled:
+                    message["_local_received_time_us"] = monotonic_us()
+                self._incoming.put(message)
             self._incoming.put(ConnectionError("control connection closed"))
         except BaseException as exc:  # noqa: BLE001
             self._incoming.put(exc)
