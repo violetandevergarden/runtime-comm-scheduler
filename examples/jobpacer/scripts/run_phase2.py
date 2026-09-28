@@ -19,6 +19,7 @@ from examples.jobpacer.analysis.measurement import occupancy_metrics
 from examples.jobpacer.runtime.plan_builder import build_plan, key_labels, policy_names
 from examples.jobpacer.workloads import load_workload, ranks_for_job
 from examples.jobpacer.comm_profile import apply_profile, load_profile
+from examples.jobpacer.scripts.cuda_devices import validate_visible_cuda_devices
 
 
 HERE = Path(__file__).resolve().parent
@@ -41,13 +42,10 @@ def _run_rank(rank: int, args: argparse.Namespace, port: int) -> subprocess.Pope
         MASTER_PORT=str(port),
         RANK=str(rank),
         WORLD_SIZE=str(args.world_size),
-        # CUDA_VISIBLE_DEVICES remaps the exposed physical GPU to cuda:0.
-        LOCAL_RANK="0",
+        LOCAL_RANK=str(rank),
     )
     source_root = str(ROOT / "src")
     env["PYTHONPATH"] = os.pathsep.join((source_root, str(ROOT), env.get("PYTHONPATH", "")))
-    if args.backend == "nccl":
-        env["CUDA_VISIBLE_DEVICES"] = str(rank)
     command = [
         sys.executable,
         "-m",
@@ -78,12 +76,24 @@ def _run_rank(rank: int, args: argparse.Namespace, port: int) -> subprocess.Pope
         str(args.epoch),
         "--warmup-iterations",
         str(args.warmup_iterations),
+        "--lane",
+        args.lane,
+        "--compute-mode",
+        args.compute_mode,
+        "--compute-matrix-size",
+        str(args.compute_matrix_size),
+        "--compute-repeats",
+        str(args.compute_repeats),
         "--fault",
         args.fault,
     ]
     if args.comm_profile:
         command.extend(["--comm-profile", str(args.comm_profile)])
     command.append("--profile-strict" if args.profile_strict else "--no-profile-strict")
+    if args.cuda_profiler_dir:
+        command.extend(
+            ["--cuda-profiler-output", str(args.cuda_profiler_dir / f"rank{rank}.json")]
+        )
     return subprocess.Popen(
         command,
         env=env,
@@ -144,6 +154,16 @@ def _validate_results(
         int(result["rank"]): occupancy_metrics(result) for result in results
     }
     capacity_ok = all(item["finite_capacity_ok"] for item in capacity_by_rank.values())
+    cuda_consumer_ok = (
+        all(
+            task.get("cuda_consumer_correct") is True
+            for result in results
+            for job in result.get("jobs", [])
+            for task in job.get("tasks", [])
+        )
+        if getattr(args, "lane", "H") == "S"
+        else None
+    )
     for result in results:
         if result.get("trace_schema_version") == 2:
             boundary_ok &= (
@@ -215,6 +235,7 @@ def _validate_results(
             and scheduler_order_ok is not False
             and group_order_ok is not False
             and serial_admission_ok is not False
+            and cuda_consumer_ok is not False
             and (
                 args.selection != "ready_first"
                 or args.max_outstanding != 1
@@ -235,6 +256,7 @@ def _validate_results(
         "group_sequences_match_plan": group_order_ok,
         "strict_serial_admission_verified": serial_admission_ok,
         "rank_local_serial_admission_verified": serial_admission_ok,
+        "cuda_consumer_correct": cuda_consumer_ok,
         "global_completion_barrier_before_next_selection": (
             all(
                 result.get("control", {}).get("global_completion_barrier_before_next_selection", False)
@@ -372,13 +394,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compute-jitter", type=float, default=0.0)
     parser.add_argument("--epoch", type=int, default=0)
     parser.add_argument("--warmup-iterations", type=int, default=1)
+    parser.add_argument("--lane", choices=("H", "S"), default="H")
+    parser.add_argument("--compute-mode", choices=("host-sleep", "cuda-matmul"), default="host-sleep")
+    parser.add_argument("--compute-matrix-size", type=int, default=1024)
+    parser.add_argument("--compute-repeats", type=int, default=1)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--cuda-profiler-dir", type=Path)
     parser.add_argument("--comm-profile", type=Path)
     parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
         "--fault", choices=("none", "missing_key", "metadata_mismatch"), default="none"
     )
     args = parser.parse_args(argv)
+    if args.backend == "nccl":
+        try:
+            validate_visible_cuda_devices(args.world_size)
+        except (RuntimeError, ValueError) as exc:
+            parser.error(str(exc))
     workload_path = Path(args.workload)
     if workload_path.exists() or workload_path.suffix.lower() == ".json":
         resolved_workload = resolve_migrated_path(workload_path, PHASE12_MIGRATION_MAP)
@@ -387,6 +419,9 @@ def main(argv: list[str] | None = None) -> int:
         args.workload = str(resolved_workload)
     if args.output:
         args.output = repository_path(args.output)
+    if args.cuda_profiler_dir:
+        args.cuda_profiler_dir = repository_path(args.cuda_profiler_dir)
+        args.cuda_profiler_dir.mkdir(parents=True, exist_ok=True)
     if args.comm_profile:
         args.comm_profile = resolve_migrated_path(repository_path(args.comm_profile), PHASE12_MIGRATION_MAP)
         if not args.comm_profile.is_file():
@@ -399,6 +434,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--compute-jitter must be in [0, 1)")
     if args.warmup_iterations < 0:
         parser.error("--warmup-iterations must be non-negative")
+    if args.compute_matrix_size < 16 or args.compute_repeats <= 0:
+        parser.error("CUDA compute requires matrix size >= 16 and positive repeats")
+    if args.lane == "S" and (
+        args.mode != "scheduler" or args.backend != "nccl" or args.compute_mode != "cuda-matmul"
+    ):
+        parser.error("--lane S requires scheduler mode, NCCL, and --compute-mode cuda-matmul")
     if (Path(args.workload).exists()
             and is_formal_experiment_input(args.workload, FORMAL_INPUT_ROOT)
             and not args.comm_profile):
@@ -449,6 +490,11 @@ def main(argv: list[str] | None = None) -> int:
             "world_size": args.world_size,
             "max_outstanding": args.max_outstanding,
             "completion_poll_interval_s": args.completion_poll_interval_s,
+            "measurement_lane": args.lane,
+            "compute_mode": args.compute_mode,
+            "compute_matrix_size": args.compute_matrix_size if args.compute_mode == "cuda-matmul" else None,
+            "compute_repeats": args.compute_repeats if args.compute_mode == "cuda-matmul" else None,
+            "compute_warmup_iterations": args.warmup_iterations if args.lane == "S" else None,
             "compute_jitter": args.compute_jitter,
             "epoch": args.epoch,
             "timeout_s": args.timeout,

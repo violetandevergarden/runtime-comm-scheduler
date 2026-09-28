@@ -416,3 +416,25 @@ def test_duplicate_grant_fails_runtime_and_cannot_launch_twice():
     assert runtime.grant_order == [task.task_id]
     assert executor.launches <= 1
     runtime.close()
+
+
+def test_completion_probe_reports_done_without_application_consumption():
+    transport = FakeTransport()
+    runtime, _ = _runtime(transport)
+    task = _task()
+    handle = runtime.submit(
+        task,
+        LocalBinding(FakeTensor(), runtime._process_groups["job"], lambda: ImmediateWork()),
+        TaskHint(0, 0.001, 0),
+    )
+    transport.incoming.put({
+        "kind": "GRANT", "epoch": 0,
+        "payload": {"task": task.to_dict(), "decision_seq": 1},
+    })
+    deadline = time.monotonic() + 1
+    while time.monotonic() < deadline and not any(kind == "COMPLETED" for kind, _ in transport.sent):
+        time.sleep(0.001)
+    assert any(kind == "COMPLETED" for kind, _ in transport.sent)
+    assert handle.state.value == "completed"
+    assert handle.wait_host(0)
+    runtime.close()

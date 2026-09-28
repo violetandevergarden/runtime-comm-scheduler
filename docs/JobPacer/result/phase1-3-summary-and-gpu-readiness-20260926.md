@@ -101,6 +101,8 @@ tail(i) = consumer_compute_i
 
 动态 LTF 按该 tail 排序，静态 LTF 使用上面的 `max` 评分，两者不完全相同；动态线性 tail 还把后续可重叠部分相加。Phase 3.1 计划要求统一估计定义，当前代码尚不能视为满足这一点。因此线性 Static LTF → LTF 的差异同时含在线候选与评分变化；GPU 第一轮优先 FIFO，不以该对照证明“相同 LTF 仅在线化”的收益。以后应独立修正/冻结评分并重新生成对应批次，不能追改历史结果。
 
+**2026-09-28 评分语义勘误：**上述观察保留为 2026-09-26 时的源码状态。当前新 runtime 的 Dynamic LTF 与线性 Static LTF 都使用 `estimated_comm_s + remaining_tail_s`；DAG Dynamic/Static LTF 也加上当前通信耗时，Lookahead 前沿使用相同评分。历史 Gloo/GPU 输出继续按当时源码解释，未据此回写顺序或性能结论；新合同的验证见[评分合同补充](phase3-gpu-unified-dag-correction-20260928.md#2026-09-28-ltf-评分合同补充)。
+
 ### 2.5 Phase 3.2：DAG 应用层推进
 
 当前代码已拆分到 [`dag/model.py`](../../../src/runtime_comm_scheduler/dag/model.py) 和
@@ -110,7 +112,7 @@ tail(i) = consumer_compute_i
 - 图校验包含重复/缺失依赖、环、group_seq 连续性，以及图依赖与 group 规范顺序叠加后的环。
 - 每 job 一个推进循环和串行 compute worker；ready 通信交给 RankRuntime，不将整个计算图放入 coordinator。
 - compute callable 正常返回视为完成；通信以 runtime handle 的完成状态解锁后继。该 compute 契约目前针对 CPU 同步 callable，直接换成异步 CUDA kernel launch 会过早完成节点。
-- DAG tail 按最长后继路径递推：`tail(v)=max(duration(u)+tail(u))`，不含当前节点自身时长。静态/动态 DAG LTF 使用该摘要，比线性历史公式更明确。
+- DAG tail 按最长后继路径递推：`tail(v)=max(duration(u)+tail(u))`，不含当前节点自身时长。当前 DAG 静态/动态 LTF 使用 `estimated_comm_s + tail(v)`；tail 摘要和线性 workload 的 tail 构造仍不同。
 - Lookahead 只声明可安全预测的直接依赖前沿；未知后继不会提前参与等待。
 - 固定 group 顺序仍约束候选：DAG-ready、OFFER 到齐、全局 eligible 不是同一事件。
 

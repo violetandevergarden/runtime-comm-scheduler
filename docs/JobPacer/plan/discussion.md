@@ -68,7 +68,7 @@ Grant 是不可撤销的决定提交点：某成员可能已经执行，其他�
 eligible 是成员和依赖条件已满足的任务；anticipated frontier 是可能很快到达的前沿。线性 job 只考虑当前下一项，不能因远端后继 tail 很大而等待它、阻止其前驱获服务。
 
 - Dynamic FIFO 按首次进入 eligible 的顺序选择，稳定 ID 仅破同分。
-- Dynamic LTF 使用统一定义的 remaining tail，估计不读取真实未来扰动。
+- Dynamic LTF 按 `estimated_comm_s + remaining_tail_s` 选择最长估计剩余路径，估计不读取真实未来扰动。
 - Bounded lookahead 为目标建立固定截止时间；状态更新可提前重算，不能反复刷新预算。到期有候选就回退服务。
 
 等待需比较预期收益和空闲成本；仅目标 tail 更大不够。第一版采用透明的简单启发式，并记录估计与实际结果，不追求全局最优。

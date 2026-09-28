@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -24,6 +25,7 @@ from runtime_comm_scheduler import (
 )
 
 from examples.jobpacer.comm_profile import apply_profile, load_profile, workload_digest
+from examples.jobpacer.runtime.gpu_compute import CudaMatmulProgram
 from examples.jobpacer.runtime.plan_builder import build_plan, planned_tasks, policy_diagnostics, policy_names
 from examples.jobpacer.workloads import Workload, linear_execution_duration, load_workload, ranks_for_job
 
@@ -102,6 +104,15 @@ def _make_tensor(spec, rank: int, device: str) -> torch.Tensor:
 
 def _expected_sum(ranks: tuple[int, ...]) -> float:
     return sum(rank + 1 for rank in ranks)
+
+
+def _wait_cuda_event(event, *, timeout_s: float, label: str) -> int:
+    deadline = time.monotonic() + timeout_s
+    while not bool(event.query()):
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"timed out waiting for {label}")
+        time.sleep(0.0001)
+    return _now_us()
 
 
 class _CompletionObserver:
@@ -336,6 +347,9 @@ def _run_job(
     start_barrier: threading.Barrier,
     start_event: threading.Event,
     release_ts: list[int],
+    lane: str,
+    gpu_segments: dict[tuple[str, int], dict[str, Any]],
+    device_event_timeout_s: float,
 ) -> dict[str, Any]:
     start_barrier.wait()
     start_event.wait()
@@ -377,8 +391,30 @@ def _run_job(
                 workload, epoch, job.job_id, spec.id, rank, "consumer",
                 spec.consumer_compute_s, compute_jitter,
             )
-            _sleep(producer_s)
-            ready_ts = _now_us()
+            gpu_segment = gpu_segments.get((job.job_id, spec.id)) if lane == "S" else None
+            independent_receipt = None
+            producer_device_elapsed_ms = None
+            if lane == "S":
+                if gpu_segment is None:
+                    raise RuntimeError(f"missing precreated CUDA segment for {job.job_id}/{spec.id}")
+                producer_stream = gpu_segment["producer_stream"]
+                with torch.cuda.device(device), torch.cuda.stream(producer_stream):
+                    gpu_segment["producer_start"].record(producer_stream)
+                    tensor.fill_(float(rank + 1))
+                    gpu_segment["producer_done"].record(producer_stream)
+                ready_ts = _wait_cuda_event(
+                    gpu_segment["producer_done"],
+                    timeout_s=device_event_timeout_s,
+                    label=f"producer event for {job.job_id}/{spec.id}",
+                )
+                producer_device_elapsed_ms = float(
+                    gpu_segment["producer_start"].elapsed_time(gpu_segment["producer_done"])
+                )
+                # Physical-ready semantics: do not submit NCCL until producer writes are complete.
+                independent_receipt = gpu_segment["program"].submit()
+            else:
+                _sleep(producer_s)
+                ready_ts = _now_us()
             group = groups[job.job_id]
 
             def launch(tensor=tensor, group=group):
@@ -441,15 +477,50 @@ def _run_job(
                 timing = None
                 work = underlying
             consumer_start = _now_us()
-            _sleep(consumer_s)
-            consumer_compute_end = _now_us()
-            application_wait_start_ts = _now_us()
-            if not work.wait():
-                raise RuntimeError(
-                    f"collective wait returned false for {task.key.as_list()}"
+            independent_device_elapsed_ms = None
+            consumer_device_elapsed_ms = None
+            if lane == "S":
+                application_wait_start_ts = _now_us()
+                consumer_stream = gpu_segment["consumer_stream"]
+                with torch.cuda.device(device), torch.cuda.stream(consumer_stream):
+                    if not work.wait():
+                        raise RuntimeError(
+                            f"collective wait returned false for {task.key.as_list()}"
+                        )
+                    wait_return_ts = _now_us()
+                    consumer_stream.wait_event(independent_receipt.done_event)
+                    consumer_start = _now_us()
+                    gpu_segment["consumer_start"].record(consumer_stream)
+                    torch.sum(
+                        tensor,
+                        dim=tuple(range(tensor.ndim)),
+                        out=gpu_segment["consumer_value"],
+                    )
+                    gpu_segment["consumer_done"].record(consumer_stream)
+                consumer_compute_end = _wait_cuda_event(
+                    gpu_segment["consumer_done"],
+                    timeout_s=device_event_timeout_s,
+                    label=f"consumer event for {job.job_id}/{spec.id}",
                 )
-            wait_return_ts = _now_us()
-            application_task_end_ts = wait_return_ts
+                application_task_end_ts = consumer_compute_end
+                if not independent_receipt.is_completed():
+                    raise RuntimeError(
+                        f"independent CUDA compute did not complete for {job.job_id}/{spec.id}"
+                    )
+                independent_device_elapsed_ms = independent_receipt.elapsed_ms()
+                consumer_device_elapsed_ms = float(
+                    gpu_segment["consumer_start"].elapsed_time(gpu_segment["consumer_done"])
+                )
+            else:
+                _sleep(consumer_s)
+                consumer_compute_end = _now_us()
+                application_wait_start_ts = _now_us()
+                if not work.wait():
+                    raise RuntimeError(
+                        f"collective wait returned false for {task.key.as_list()}"
+                    )
+                wait_return_ts = _now_us()
+                application_task_end_ts = wait_return_ts
             if timing is not None:
                 timing.consumer_compute_start_ts = consumer_start
                 timing.consumer_compute_end_ts = consumer_compute_end
@@ -565,7 +636,21 @@ def _run_job(
                     else None
                 ),
                 "mode": mode,
+                "measurement_lane": lane,
             }
+            if lane == "S":
+                task_result.update(
+                    {
+                        "consumer_dependency_impl": "torch_nccl_work_wait_consumer_stream",
+                        "compute_work_kind": "fixed_count_matmul",
+                        "compute_matrix_size": gpu_segment["program"].matrix_size,
+                        "compute_repeats": gpu_segment["program"].repeats,
+                        "compute_warmup_iterations": gpu_segment["program"].warmup_count,
+                        "producer_device_elapsed_ms": producer_device_elapsed_ms,
+                        "independent_device_elapsed_ms": independent_device_elapsed_ms,
+                        "dependent_consumer_device_elapsed_ms": consumer_device_elapsed_ms,
+                    }
+                )
             task_result["first_wait_ts"] = task_result["application_wait_start_ts"]
             task_result["complete_ts"] = task_result["completion_observed_ts"]
             task_result["consumer_end_ts"] = application_task_end_ts
@@ -649,6 +734,57 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 "tensor_create_duration_us": create_end_ts - create_start_ts,
             }
     preparation_end_ts = _now_us()
+    gpu_compute_preparation_start_ts = _now_us()
+    gpu_segments: dict[tuple[str, int], dict[str, Any]] = {}
+    if getattr(args, "lane", "H") == "S":
+        local_error: BaseException | None = None
+        try:
+            for job in local_jobs:
+                for spec in job.communications:
+                    seed_material = f"{args.epoch}:{job.job_id}:{spec.id}:{rank}:independent"
+                    seed = int.from_bytes(hashlib.sha256(seed_material.encode()).digest()[:8], "big")
+                    program = CudaMatmulProgram(
+                        device,
+                        matrix_size=args.compute_matrix_size,
+                        repeats=args.compute_repeats,
+                        seed=seed,
+                    )
+                    producer_stream = torch.cuda.Stream(device=device)
+                    consumer_stream = torch.cuda.Stream(device=device)
+                    segment = {
+                        "program": program,
+                        "producer_stream": producer_stream,
+                        "producer_start": torch.cuda.Event(enable_timing=True, blocking=False),
+                        "producer_done": torch.cuda.Event(enable_timing=True, blocking=False),
+                        "consumer_stream": consumer_stream,
+                        "consumer_start": torch.cuda.Event(enable_timing=True, blocking=False),
+                        "consumer_done": torch.cuda.Event(enable_timing=True, blocking=False),
+                        "consumer_value": torch.empty((), dtype=tensors[(job.job_id, spec.id)].dtype, device=device),
+                    }
+                    program.warmup(args.warmup_iterations)
+                    if args.warmup_iterations:
+                        with torch.cuda.device(device), torch.cuda.stream(consumer_stream):
+                            for _ in range(args.warmup_iterations):
+                                torch.sum(
+                                    tensors[(job.job_id, spec.id)],
+                                    dim=tuple(range(tensors[(job.job_id, spec.id)].ndim)),
+                                    out=segment["consumer_value"],
+                                )
+                        consumer_stream.synchronize()
+                    gpu_segments[(job.job_id, spec.id)] = segment
+        except BaseException as exc:
+            local_error = exc
+        prepare_errors: list[str | None] = [None] * world_size
+        dist.all_gather_object(
+            prepare_errors,
+            None if local_error is None else f"{type(local_error).__name__}: {local_error}",
+        )
+        failures = [(endpoint, error) for endpoint, error in enumerate(prepare_errors) if error]
+        if failures:
+            if local_error is not None:
+                raise local_error
+            raise RuntimeError(f"CUDA S-lane preparation failed on another rank: {failures}")
+    gpu_compute_preparation_end_ts = _now_us()
     for job in local_jobs:
         dist.barrier(group=groups[job.job_id])
     scheduler = None
@@ -715,6 +851,9 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 start_barrier=start_barrier,
                 start_event=start_event,
                 release_ts=release_timestamp,
+                lane=getattr(args, "lane", "H"),
+                gpu_segments=gpu_segments,
+                device_event_timeout_s=args.thread_timeout,
             )
 
         release_timestamp: list[int] = []
@@ -737,6 +876,26 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 f"job thread did not finish within {args.thread_timeout}s"
             )
         jobs_result = [result_by_job[job.job_id] for job in local_jobs]
+        if getattr(args, "lane", "H") == "S":
+            # Verify the actual device-side consumer output after the measured end point.
+            for job in local_jobs:
+                expected_value = _expected_sum(ranks_for_job(job, world_size))
+                for spec in job.communications:
+                    segment = gpu_segments[(job.job_id, spec.id)]
+                    observed = float(segment["consumer_value"].item())
+                    expected_total = expected_value * tensors[(job.job_id, spec.id)].numel()
+                    correct_consumer = observed == float(expected_total)
+                    task_result = next(
+                        item for item in result_by_job[job.job_id]["tasks"]
+                        if int(item["ordinal"]) == spec.id
+                    )
+                    task_result["cuda_consumer_result_sum"] = observed
+                    task_result["cuda_consumer_correct"] = correct_consumer
+                    if not correct_consumer:
+                        raise AssertionError(
+                            f"incorrect CUDA consumer result for {job.job_id}/{spec.id}: "
+                            f"{observed} != {expected_total}"
+                        )
         for job_result in jobs_result:
             for task_result in job_result["tasks"]:
                 task_result.update(tensor_preparation_events[
@@ -870,6 +1029,17 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             "backend": args.backend,
             "world_size": world_size,
             "completion_poll_interval_s": args.completion_poll_interval_s,
+            "measurement_lane": getattr(args, "lane", "H"),
+            "compute_mode": getattr(args, "compute_mode", "host-sleep"),
+            "compute_matrix_size": getattr(args, "compute_matrix_size", None),
+            "compute_repeats": getattr(args, "compute_repeats", None),
+            "gpu_compute_preparation_start_ts": gpu_compute_preparation_start_ts,
+            "gpu_compute_preparation_end_ts": gpu_compute_preparation_end_ts,
+            "application_end_definition": (
+                "all local terminal consumer CUDA events physically completed"
+                if getattr(args, "lane", "H") == "S"
+                else "all local host waits returned"
+            ),
             "workload": workload.to_dict(),
             "workload_digest": applied_workload_digest,
             "communication_profile": {
@@ -1055,15 +1225,43 @@ def main() -> int:
     parser.add_argument("--compute-jitter", type=float, default=0.0)
     parser.add_argument("--epoch", type=int, default=0)
     parser.add_argument("--warmup-iterations", type=int, default=1)
+    parser.add_argument("--lane", choices=("H", "S"), default="H")
+    parser.add_argument("--compute-mode", choices=("host-sleep", "cuda-matmul"), default="host-sleep")
+    parser.add_argument("--compute-matrix-size", type=int, default=1024)
+    parser.add_argument("--compute-repeats", type=int, default=1)
+    parser.add_argument("--cuda-profiler-output", type=Path)
     parser.add_argument("--comm-profile", type=Path)
     parser.add_argument("--profile-strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
         "--fault", choices=("none", "missing_key", "metadata_mismatch"), default="none"
     )
     args = parser.parse_args()
+    if args.lane == "S" and (
+        args.mode != "scheduler" or args.backend != "nccl" or args.compute_mode != "cuda-matmul"
+    ):
+        parser.error("S lane requires scheduler mode, NCCL, and cuda-matmul")
+    if args.compute_matrix_size < 16 or args.compute_repeats <= 0:
+        parser.error("CUDA compute requires matrix size >= 16 and positive repeats")
+    if args.cuda_profiler_output and args.backend != "nccl":
+        parser.error("--cuda-profiler-output requires NCCL/CUDA")
     output: dict[str, Any]
     try:
-        output = run_rank(args)
+        if args.cuda_profiler_output:
+            args.cuda_profiler_output.parent.mkdir(parents=True, exist_ok=True)
+            torch.cuda.set_device(int(os.environ.get("LOCAL_RANK", "0")))
+            with torch.profiler.profile(
+                activities=[
+                    torch.profiler.ProfilerActivity.CPU,
+                    torch.profiler.ProfilerActivity.CUDA,
+                ],
+                record_shapes=False,
+                with_stack=False,
+            ) as profiler:
+                output = run_rank(args)
+            profiler.export_chrome_trace(str(args.cuda_profiler_output))
+            output["cuda_profiler_trace"] = str(args.cuda_profiler_output)
+        else:
+            output = run_rank(args)
         status = 0
     except BaseException as exc:  # noqa: BLE001 - JSON is the driver contract
         output = {

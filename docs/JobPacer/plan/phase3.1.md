@@ -132,10 +132,10 @@ Runtime 在安全释放前保持 tensor 等对象存活，消费位置由 worklo
 | --- | --- |
 | StaticOrder | 预先给定 task_id 序列，下一项不 eligible 就等待，不能绕过 |
 | DynamicFIFO | 按首次满足成员及顺序条件、进入 eligible 的中央序号选择，ID 仅破同分 |
-| DynamicLTF | 选择预计通信后 remaining tail 最大的 eligible，ID 破同分 |
+| DynamicLTF | 按 `estimated_comm_s + remaining_tail_s` 最大选择 eligible，ID 破同分 |
 | BoundedLookahead | 基于 LTF，允许为当前前沿中预计很快 ready 的任务有界等待 |
 
-StaticOrder 接受静态 FIFO/LTF 离线序列；其完整输入要求不得扩散到其他策略。Remaining tail 统一指当前通信完成后的预计剩余 job 时间，不计当前已结束的 producer；静态与动态使用相同定义及估计。
+StaticOrder 接受静态 FIFO/LTF 离线序列；其完整输入要求不得扩散到其他策略。Remaining tail 统一指当前通信完成后的预计剩余 job 时间，不计当前已结束的 producer；LTF 静态顺序与动态选择都用 `estimated_comm_s + remaining_tail_s`，评分公式不由任务携带的字符串决定。
 
 Lookahead 首版采用两任务局部估计：比较“立即执行当前候选，再执行未来目标”与“等待目标，先目标再当前候选”，分别计算预计通信完成时间加各自 remaining tail 后的最大值。仅当等待方案更优且预计等待不超过 wait_budget 时等待。这是可解释的启发式，不宣称全局最优。
 

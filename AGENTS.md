@@ -2,30 +2,35 @@
 
 ## 项目与当前阶段
 
-本仓库研究真实 PyTorch collective 的运行时通信调度。当前主线是 JobPacer Phase 3.1：用中心化 coordinator 根据在线状态决定通信准入，并比较静态顺序与动态策略。
+本仓库研究真实 PyTorch collective 的运行时通信调度。当前主线是 JobPacer Phase 3：Phase 3.1 中心化在线通信准入、Phase 3.2 手写 DAG 推进，以及远程双 GPU/NCCL 的语义验收与小规模策略对照。2026-09-27 已执行首轮 GPU 实验，但批次完成不等于所有验收项通过或获得净性能收益。
 
 开始工作前阅读与任务相关的文档：
 
 - `docs/JobPacer/plan/discussion.md`：设计讨论与后续阶段边界。
-- `docs/JobPacer/plan/phase3.1.md`：Phase 3.1 目标、协议、验收要求。
+- `docs/JobPacer/plan/phase3.1.md`：通信 runtime 的目标、协议、验收要求。
+- `docs/JobPacer/plan/phase3.2.md`：DAG 依赖、计算完成与策略前沿。
+- `docs/JobPacer/process/phase3-gpu-experiments-and-fixes.md`：GPU 实现与 G0–G5 实验合同。
+- `docs/JobPacer/result/phase3-gpu-20260927.md`：首轮双卡结果、产物和未验收项。
 - `docs/JobPacer/process/`：实现与修复过程。
 - `docs/JobPacer/result/phase3.1.md`：已记录的实验结果与未验收范围。
 
-根目录 README 和部分早期设计文档仍描述旧的单 job、静态 Plan 路线，不能据此覆盖新的 JobPacer 计划。用户当前明确要求优先；文档描述的是目标或历史结果，当前能力需结合代码与验证判断。发现冲突时明确说明，不把目标当作已完成事实。
+根目录 README 是当前入口；早期设计文档中的单 job、静态 Plan 路线属于历史背景，不能据此覆盖新的 JobPacer 计划。用户当前明确要求优先；文档描述的是目标或历史结果，当前能力需结合代码与验证判断。发现冲突时明确说明，不把目标当作已完成事实。
 
 ## 代码边界
 
 - `src/runtime_comm_scheduler/runtime/`：新 runtime 核心，包括模型、coordinator、policy、本地执行、控制通道和观测。
+- `src/runtime_comm_scheduler/dag/`：runtime 上层的图模型、校验和节点推进；不把计算调度塞入 coordinator。
 - `examples/jobpacer/runtime/runtime_adapter.py`：workload 到新模型的映射。
-- `examples/jobpacer/runtime/runtime_worker.py`、`scripts/run_phase3.py`：新 runtime 的 rank harness 与启动、汇总入口。
-- `tests/unit/runtime/`、`tests/integration/test_runtime_replay.py`：新 runtime 的单元与双 rank 集成检查。
+- `examples/jobpacer/runtime/gpu_compute.py`：示例中的固定工作量 CUDA compute。
+- `examples/jobpacer/runtime/runtime_worker.py`、`examples/jobpacer/scripts/run_phase3.py`：新 runtime 的 rank harness 与启动、汇总入口。
+- `tests/unit/runtime/`、`tests/integration/test_runtime_replay.py`、`tests/integration/test_runtime_replay_nccl.py`：新 runtime 的单元、Gloo 与 opt-in 双卡 NCCL 检查。
 - 包根目录的 `plan.py`、`scheduler.py`、`work.py` 等及旧 replay 属于历史路径，仍可用于基线和回归。
 
 新 runtime 不以兼容或复用旧 Plan、TaskKey、AdmissionScheduler、ScheduledWork 为目标。不要为复用重新引入旧核心依赖，也不要未经任务要求删除历史实现、实验输入或结果。核心不得反向依赖 examples；示例负责构造 workload 和启动实验，不承担核心协议或调度状态机。
 
 ## 实现范围与原则
 
-Phase 3.1 以线性 job、all-reduce、单个全局通信容量（`max_inflight=1`）、中心化 coordinator 为范围，优先完成 CPU/Gloo 机制；GPU/NCCL 需独立验收。
+当前通信核心仍限定 all-reduce、单个全局通信容量（`max_inflight=1`）和中心化 coordinator。线性 workload 与 Phase 3.2 DAG 共用新 runtime；CPU/Gloo、GPU/NCCL、DAG 设备完成及性能收益分别验收。已有双卡成功记录不覆盖所有故障路径。
 
 - 根据实际调用链和失败路径修复问题，不只针对一个示例补丁。
 - 保持任务规范、策略估计和本地执行绑定分离。tensor、ProcessGroup、CUDA event、closure 留在本地。
@@ -35,7 +40,7 @@ Phase 3.1 以线性 job、all-reduce、单个全局通信容量（`max_inflight=
 - 保持 `pyproject.toml` 声明的 Python 版本兼容性；不要仅因本地解释器较新就使用更高版本语法。
 - 修复用户指出的问题时补能复现根因的回归检查；并发检查尽量用事件/屏障控制交错，不靠大量 sleep 或重复碰运气。
 
-后续衔接只保留必要边界：Phase 3.2 的计算 DAG 推进位于 adapter/workload 层；Phase 5 保持中心化管理，扩展进程部署与执行端归属；Phase 6 再增加多资源与并发选择。本阶段不提前实现这些功能，允许后续按需求修改 API。
+阶段边界：Phase 3.2 的计算 DAG 推进已位于 runtime 上层，由 adapter/workload 绑定计算；Phase 5 保持中心化管理，扩展进程部署与执行端归属；Phase 6 再增加多资源与并发选择。本阶段不提前实现这些功能，允许后续按需求修改 API。
 
 ## 必须保持的语义
 
@@ -54,9 +59,11 @@ Phase 3.1 以线性 job、all-reduce、单个全局通信容量（`max_inflight=
 
 ## 验证命令
 
-以下命令从仓库根目录执行，使用当前项目环境；不要擅自安装或升级 PyTorch/CUDA/NCCL。
+以下命令从仓库根目录执行。远程实验使用仓库 `.venv`，先激活后运行，避免混用系统 Python；不要擅自安装或升级 PyTorch/CUDA/NCCL。硬件与版本以运行时采集为准，历史报告不是当前环境探测。
 
 ```bash
+source .venv/bin/activate
+
 # 新 runtime 的针对性检查
 PYTHONPATH=src pytest -q tests/unit/runtime
 
@@ -66,6 +73,10 @@ PYTHONPATH=src pytest -q
 # 双 rank 真实 CPU/Gloo 集成，需本地 TCP socket 权限
 env PYTHONPATH=src RUN_JOBPACER_RUNTIME_REPLAY=1 \
   pytest -q tests/integration/test_runtime_replay.py
+
+# 双卡 NCCL 语义套件；先确认两张可见 GPU 及其 UUID
+env PYTHONPATH=src RUN_JOBPACER_RUNTIME_NCCL=1 \
+  python -m pytest -q tests/integration/test_runtime_replay_nccl.py
 
 # 单次 replay，输出存放在临时目录
 PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
@@ -77,14 +88,18 @@ git diff --check
 
 按改动风险选择验证范围。协议、线程、完成或关闭流程修改必须检查相应异常路径；需要真实通信的结论不能只靠 mock。Socket 被沙箱拒绝属于环境限制，按工具权限流程处理，不改代码绕过、不报告为逻辑回归。GPU 不可用或路径未验收时如实标注，不默认切换到其他设备或扩大实验规模。
 
+GPU rank 按继承的 `CUDA_VISIBLE_DEVICES` 命名空间映射到逻辑 `cuda:rank`；不要覆盖分配的可见设备或停止其他用户进程。H lane 的 host 物理完成与 S lane 的 consumer stream 依赖、末端设备完成须分别核验；producer 初始化、warmup 与独立 compute 之间也必须建立跨 stream 依赖。
+
 ## 实验与文档
 
 - 静态/动态策略的主要对照共用新 runtime 执行路径；StaticOrder 队首未 eligible 时必须等待，不能动态跳过。
-- 比较时固定 workload、profiling 估计、扰动样本、group 成员、backend、并发限制及计算/消费语义。
+- 比较时固定 workload、profiling 估计、扰动样本、group 成员、backend、并发限制及计算/消费语义。linear→DAG bridge 须逐项对齐 producer、独立计算、consumer、依赖与终点；相同算子尺寸和通信任务集合不足以证明等价。
 - 策略估计不得读取真实未来扰动。固定计算时长样本，不固定所有任务绝对 ready 时间。
 - 不直接相减未同步的不同 rank 时钟。区分本地执行时间、中央接收时间、完成探测时间及设备完成时间。
 - 检查实际 launch 投影、成员覆盖和 tensor 结果，不能只检查 grant 日志或进程退出码。
+- 最终实现变更后重新运行相应回归；早于最后一次改动的通过记录不能证明当前工作树通过。修改共用 replay worker 时同时检查旧 H lane 和新增 S lane。
 - 记录命令、软件/硬件环境、通过/失败/跳过、时长及结果路径。一次运行的顺序或性能不能写成稳定结论。
+- `benchmark/phase3/results/` 被 Git 忽略；原始数据、manifest、命令、源码快照和哈希需独立保存，普通提交不会携带它们。使用与各批次对应的源码复现，不假设最终源码能复现全部早期批次。
 - 结果文档只记录已验证事实。单元测试通过、Gloo 集成通过、GPU 语义通过和性能收益分别报告。
 - 计划写在 `plan/`，实施说明写在 `process/`，验收事实写在 `result/`；修正历史结论时保留上下文并说明勘误。
 

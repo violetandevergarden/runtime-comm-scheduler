@@ -306,7 +306,7 @@ job、node/group 和具体字段，不能等 epoch timeout 才发现。
 若 DAG 模式运行 `static_fifo/static_ltf` 且没有显式文件，则本地确定性生成顺序：对联合
 图做 Kahn 推进，先立即消化所有 ready compute，再从 ready comm 中选择一项。FIFO 使用
 manifest 的 `(job_index, node_index, task_id)`，LTF 使用
-`(-remaining_tail_s, job_index, node_index, task_id)`。每选择一个 comm 才把它加入静态
+`(-(estimated_comm_s + remaining_tail_s), job_index, node_index, task_id)`。每选择一个 comm 才把它加入静态
 计划。生成结果仍经过上述完整性和祖先顺序校验。
 
 这只是合法、可复现的静态对照，不模拟计算完成时刻，也不宣称是最优拓扑排序。
@@ -331,8 +331,10 @@ tail(v) = 0                                           if v is a sink
 ```
 
 comm 节点传给 `TaskHint.remaining_tail_s` 的值是 `tail(comm)`：不包含当前 comm 自身耗时，
-并行分支取最大值而不是相加。该定义替代 `runtime_adapter.remaining_tail()` 的线性累加；
-两种指标不混用。
+并行分支取最大值而不是相加。LTF 分数统一为
+`estimated_comm_s + remaining_tail_s`，因此表示从该通信开始的估计剩余关键路径；动态 LTF、
+Lookahead 前沿排名和静态 LTF 共用该固定公式，TaskHint 不携带公式选择字段。
+线性和 DAG 的 tail 构造可以不同，但当前通信耗时都会计入 LTF 分数。
 
 单元测试至少固定一个 diamond：一条后继分支 3 ms、另一条 7 ms，前驱 comm 的 tail
 必须取 7 ms 路径，不能得到 10 ms。
@@ -342,11 +344,11 @@ comm 节点传给 `TaskHint.remaining_tail_s` 的值是 `tail(comm)`：不包含
 runner 会把所有 DAG-ready comm 提交给 runtime，不在本地先选一个。现有 coordinator：
 
 - DynamicFIFO 继续按首次全部成员 OFFER 且 group 当前 seq 合法时的 `eligible_seq`；
-- DynamicLTF 继续读取 `TaskHint.remaining_tail_s`；
+- DynamicLTF 按 `estimated_comm_s + remaining_tail_s` 排序；
 - `group_seq` 尚未轮到的 comm 即使已经 OFFER，也不会成为 eligible；
 - 全局 `max_inflight=1` 保持不变。
 
-因此 `policy.py` 和 `coordinator.py` 首版不改。新增 DAG 单测若暴露通用 runtime 缺陷，
+因此 DAG 排序与线性调度共用 runtime 策略评分。新增 DAG 单测若暴露通用 runtime 缺陷，
 应在共享实现修复并给 Phase 3.1 增加回归测试，不能在 runner 内模拟 coordinator 选择。
 
 ### 5.3 Lookahead 安全声明

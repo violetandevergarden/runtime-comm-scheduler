@@ -20,8 +20,11 @@ import torch
 import torch.distributed as dist
 
 from examples.jobpacer.comm_profile import CommSignature, CommunicationProfile, ProfileRecord
+from examples.jobpacer.scripts.cuda_devices import validate_visible_cuda_devices
 from examples.jobpacer.analysis.benchmark_paths import repository_path, resolve_migrated_path
+from examples.jobpacer.runtime.runtime_adapter import load_dag
 from examples.jobpacer.workloads import load_workload, ranks_for_job
+from runtime_comm_scheduler.dag import CommNode
 
 
 HERE = Path(__file__).resolve().parent
@@ -100,40 +103,66 @@ def _measure(
 
 def _profile_rank(args: argparse.Namespace) -> dict[str, Any]:
     rank = args.rank
-    workload = load_workload(args.workload)
+    dag = load_dag(args.dag, world_size=args.world_size) if args.dag else None
+    if dag is not None:
+        workload = None
+    else:
+        workload = load_workload(args.workload)
     if args.backend == "nccl":
-        torch.cuda.set_device(0)
-        device = "cuda:0"
+        local_rank = int(os.environ.get("LOCAL_RANK", str(rank)))
+        torch.cuda.set_device(local_rank)
+        device = f"cuda:{local_rank}"
         device_type = "cuda"
     else:
         device = "cpu"
         device_type = "cpu"
     dist.init_process_group(args.backend)
     rank_sets: list[tuple[int, ...]] = []
-    for job in workload.jobs:
-        ranks = ranks_for_job(job, args.world_size)
-        if ranks not in rank_sets:
-            rank_sets.append(ranks)
+    if dag is not None:
+        for group in dag.graph.groups:
+            if group.ranks not in rank_sets:
+                rank_sets.append(group.ranks)
+    else:
+        for job in workload.jobs:
+            ranks = ranks_for_job(job, args.world_size)
+            if ranks not in rank_sets:
+                rank_sets.append(ranks)
     groups = {ranks: dist.new_group(ranks=list(ranks)) for ranks in rank_sets}
 
     measurements: list[tuple[CommSignature, tuple[int, ...]]] = []
     signature_ranks: dict[CommSignature, tuple[int, ...]] = {}
-    for job in workload.jobs:
-        ranks = ranks_for_job(job, args.world_size)
-        for communication in job.communications:
-            signature = CommSignature.for_communication(
-                communication,
-                group_size=len(ranks),
-                backend=args.backend,
-                device_type=device_type,
-            )
-            previous = signature_ranks.setdefault(signature, ranks)
-            if previous != ranks:
-                raise ValueError(
-                    f"signature {signature} occurs on different rank sets {previous} and {ranks}"
+    if dag is not None:
+        group_ranks = {group.group_id: group.ranks for group in dag.graph.groups}
+        for job in dag.graph.jobs:
+            for node in job.nodes:
+                if not isinstance(node, CommNode):
+                    continue
+                ranks = group_ranks[node.group_id]
+                signature = CommSignature(node.collective.op, node.collective.num_bytes,
+                                          node.collective.dtype, len(ranks), args.backend,
+                                          device_type, node.collective.reduction)
+                previous = signature_ranks.setdefault(signature, ranks)
+                if previous != ranks:
+                    raise ValueError(f"signature {signature} occurs on different rank sets {previous} and {ranks}")
+                if (signature, ranks) not in measurements:
+                    measurements.append((signature, ranks))
+    else:
+        for job in workload.jobs:
+            ranks = ranks_for_job(job, args.world_size)
+            for communication in job.communications:
+                signature = CommSignature.for_communication(
+                    communication,
+                    group_size=len(ranks),
+                    backend=args.backend,
+                    device_type=device_type,
                 )
-            if (signature, ranks) not in measurements:
-                measurements.append((signature, ranks))
+                previous = signature_ranks.setdefault(signature, ranks)
+                if previous != ranks:
+                    raise ValueError(
+                        f"signature {signature} occurs on different rank sets {previous} and {ranks}"
+                    )
+                if (signature, ranks) not in measurements:
+                    measurements.append((signature, ranks))
 
     records: list[ProfileRecord] = []
     try:
@@ -159,8 +188,12 @@ def _profile_rank(args: argparse.Namespace) -> dict[str, Any]:
             records.append(ProfileRecord(**document))
 
         local_device_name = torch.cuda.get_device_name() if device_type == "cuda" else None
+        local_device_uuid = (str(getattr(torch.cuda.get_device_properties(torch.cuda.current_device()),
+                                         "uuid", "")) or None) if device_type == "cuda" else None
         device_names: list[str | None] = [None] * args.world_size
         dist.all_gather_object(device_names, local_device_name)
+        device_uuids: list[str | None] = [None] * args.world_size
+        dist.all_gather_object(device_uuids, local_device_uuid)
         environment = {
             "backend": args.backend,
             "device_type": device_type,
@@ -171,6 +204,7 @@ def _profile_rank(args: argparse.Namespace) -> dict[str, Any]:
             "cuda_version": torch.version.cuda,
             "nccl_version": torch.cuda.nccl.version() if device_type == "cuda" else None,
             "device_names": device_names,
+            "device_uuids": device_uuids,
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "cpu_affinity": sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None,
             "thread_environment": {key: os.environ.get(key) for key in
@@ -196,15 +230,18 @@ def _profile_rank(args: argparse.Namespace) -> dict[str, Any]:
 def _spawn(rank: int, args: argparse.Namespace, port: int) -> subprocess.Popen[str]:
     env = dict(os.environ)
     env.update(MASTER_ADDR="127.0.0.1", MASTER_PORT=str(port), RANK=str(rank), WORLD_SIZE=str(args.world_size))
+    env["LOCAL_RANK"] = str(rank)
     env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "src"), str(ROOT), env.get("PYTHONPATH", "")))
-    if args.backend == "nccl":
-        env["CUDA_VISIBLE_DEVICES"] = str(rank)
     command = [
-        sys.executable, "-m", "examples.jobpacer.scripts.run_comm_profile", "--workload", args.workload,
+        sys.executable, "-m", "examples.jobpacer.scripts.run_comm_profile",
         "--backend", args.backend, "--world-size", str(args.world_size),
         "--warmup", str(args.warmup), "--iterations", str(args.iterations),
         "--timeout", str(args.timeout), "--output", str(args.output), "--rank", str(rank),
     ]
+    if args.dag:
+        command.extend(("--dag", str(args.dag)))
+    else:
+        command.extend(("--workload", args.workload))
     return subprocess.Popen(command, env=env, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
 
@@ -220,7 +257,9 @@ def _collect(process: subprocess.Popen[str], timeout: float) -> tuple[bool, str]
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--workload", default="balanced")
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--workload", default="balanced")
+    source.add_argument("--dag", type=Path)
     parser.add_argument("--backend", choices=("gloo", "nccl"), default="gloo")
     parser.add_argument("--world-size", type=int, default=2)
     parser.add_argument("--warmup", type=int, default=10)
@@ -229,15 +268,23 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--rank", type=int, help=argparse.SUPPRESS)
     args = parser.parse_args()
-    workload_path = Path(args.workload)
-    if workload_path.exists() or workload_path.suffix.lower() == ".json":
-        resolved_workload = resolve_migrated_path(repository_path(workload_path), PHASE12_MIGRATION_MAP)
-        if not resolved_workload.is_file():
-            resolved_workload = resolve_migrated_path(resolved_workload, PHASE3_MIGRATION_MAP)
-        args.workload = str(resolved_workload)
+    if args.dag:
+        args.dag = resolve_migrated_path(repository_path(args.dag), PHASE3_MIGRATION_MAP)
+    else:
+        workload_path = Path(args.workload)
+        if workload_path.exists() or workload_path.suffix.lower() == ".json":
+            resolved_workload = resolve_migrated_path(repository_path(workload_path), PHASE12_MIGRATION_MAP)
+            if not resolved_workload.is_file():
+                resolved_workload = resolve_migrated_path(resolved_workload, PHASE3_MIGRATION_MAP)
+            args.workload = str(resolved_workload)
     args.output = repository_path(args.output).resolve()
     if args.world_size < 2 or args.warmup < 0 or args.iterations <= 0:
         parser.error("world-size >= 2, warmup >= 0, and iterations > 0 are required")
+    if args.backend == "nccl" and args.rank is None:
+        try:
+            validate_visible_cuda_devices(args.world_size)
+        except (RuntimeError, ValueError) as exc:
+            parser.error(str(exc))
     if args.rank is not None:
         try:
             result = _profile_rank(args)

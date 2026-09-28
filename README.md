@@ -1,145 +1,105 @@
 # Runtime Communication Scheduler
 
-面向单个混合并行训练任务的 runtime-adaptive collective scheduling 研究原型。项目研究如何在训练框架、PyTorch distributed runtime、NCCL 和网络之间建立可逐步下沉的 schedule layer，使训练 DAG 语义能够影响真实 collective 的执行。
+研究真实 PyTorch collective 的运行时通信调度。当前主线是 **JobPacer Phase 3**：中心化 coordinator 根据各 rank 的在线就绪与完成状态决定通信准入，比较静态顺序与动态策略；线性 workload 和手写 DAG 共用新的 runtime。
 
-本项目与 `SimAI/simai-flow-scheduler` 互补：SimAI 已用于 flow-level trace replay、带宽分配和 policy 验证；本项目研究真实 training stack 中究竟能够观察、控制和安全重排哪些通信事件。
+本项目与 `SimAI/simai-flow-scheduler` 互补：前者用于 flow-level replay 与策略研究，本仓库验证真实执行栈中可观察、可控制和可安全重排的通信边界。
 
-## 项目范围与长期目标
-
-当前聚焦单个 dense Megatron-style training job。DP、TP、PP 都可以作为训练语义来源，但第一个真实集成点只处理 DP gradient synchronization。multi-tenant 暂不纳入项目接口和实现，未来如有需要再扩展。
-
-长期目标是支持从 high-level collective admission 到更细粒度 data-plane control 的演进：
+## 当前范围与架构
 
 ```text
-framework semantic scheduling
-  -> ProcessGroup-level enforcement
-  -> NCCL communicator/channel/chunk control
-  -> NIC/network traffic control
+线性 workload / DAG runner
+  → RankRuntime.submit(TaskSpec, LocalBinding, TaskHint) → handle
+  → OFFER → 中心化 coordinator：合法候选 → policy → GRANT
+  → 各 rank 单 launch worker → PyTorch Gloo / NCCL all-reduce
+  → SUBMITTED → 独立物理完成探测 → COMPLETED
 ```
 
-当前不预设必须在哪一层结束。每次向下扩展都应由上一层机制不足以实现目标 policy 的证据驱动。
+`TaskSpec` 表达共同任务身份与 group 顺序，`TaskHint` 表达估计，本地 tensor、ProcessGroup、CUDA event 和 closure 保存在 `LocalBinding`。控制通道使用独立 TCP，不使用被调度的 collective 做 rendezvous。
 
-## 整体架构
+当前保持单个全局通信容量 `max_inflight=1`，从 grant 提交到全部成员物理完成期间占用。每 rank 的实际 launch 必须保持共同 grant 的本地投影顺序。`submit()` 不等待 grant；host 完成等待与 consumer stream 依赖分别定义，不能把 NCCL `Work.wait()` 的 CPU 返回当作设备完成。
 
-```text
-训练框架语义适配层
-  - 识别 layer、microbatch、DP/TP/PP 角色、producer 和 consumer
-  - 绑定本地 tensor、CUDA ready event 和原始 collective launcher
-                         |
-                         v
-每 rank 的 schedule layer
-  - 根据共享执行计划校验 CommIntent
-  - 执行 runtime admission、delay 和安全的跨 process group 发射仲裁
-  - 返回 ScheduledWork 并记录 telemetry
-                         |
-                         v
-ProcessGroup / NCCL 数据面
-  - 执行已经通过 admission 的 collective
-  - 初期完全复用原始 ProcessGroupNCCL 和 NCCL
-  - 后续可成为更细粒度控制的修改对象
-                         |
-                         v
-GPU 互连 / NIC / 网络
-```
+Phase 3.2 的 DAG runner 位于通信 runtime 上层，负责计算节点和完成依赖推进。GPU compute 使用固定次数 CUDA matmul 和完成事件；它是实验 workload，并非真实训练框架集成。多在途通信、多资源调度、独立 coordinator 部署及 Megatron 接入不属于当前已验收能力。
 
-前两层有意分离：训练框架是唯一掌握 training-DAG 语义的层级；schedule layer 是实际 gate collective submission 的执行点。
+## 远程 GPU 实验状态
 
-## Plan + Admission 调度模型
+2026-09-27 首轮实验使用 2× RTX 4090、Python 3.12、PyTorch 2.13.0+cu126、CUDA runtime 12.6、NCCL 2.29.3。版本来自该轮环境记录，不代表其他 checkout 的配置。
 
-调度器不依赖单一 priority queue，而是结合两个互补机制。
+- G2 固定通信链中，新 runtime 的整体路径明显慢于旧路径；每项额外闭环约 4.7–5.4 ms，不能归因为纯控制面成本。
+- G3 L1 复现了静态队首等待和动态 FIFO 提前服务其他候选；同 runtime 内有收益，但未证明相对旧路径的净收益。
+- G4 三臂有 54 个有效 replay，另保留失败重试记录；单次 Kineto 诊断未证明新 runtime 有有效、可重复的 GPU kernel overlap。
+- G0 尚缺网络断连与同进程重复 epoch；G1 噪声批次未实现计划中的交错 A/B，不能标为完整验收。
 
-### Plan：基础执行计划
+完整历史记录见 [GPU 实验报告](docs/JobPacer/result/phase3-gpu-20260927.md)与[实施及实验合同](docs/JobPacer/process/phase3-gpu-experiments-and-fixes.md)。计划、批次执行、正确性验收与性能收益应分别阅读。
 
-Plan 是一个概念上的、带版本的基础执行计划，描述一个 scheduling window（初期为一个 iteration）的预期执行结构。它由 `CommIntent` 的确定性元数据和有序的 `TaskKey` 序列组成，不额外引入独立的 intent 类型：
+### 2026-09-27 工作树复核
 
-- 每个预期 collective 的稳定 `TaskKey`；
-- 每个 rank 上的有序 task 序列；
-- 每个 process group 诱导出的 collective 子序列；
-- collective 类型、字节数、训练语义和预测时延等 `CommIntent` 元数据。
+首轮报告的全仓测试记录早于当前复核，不能作为当前工作树全通过的依据。本次使用 `.venv/bin/python` 执行 `PYTHONPATH=src python -m pytest -q`：**238 passed、48 skipped、5 failed，34.29 秒**。三项为历史 benchmark 路径/fixture 缺失；另两项为 Phase 1 Gloo bare replay 失败和 Phase 2 profile/replay 超时。
 
-Plan 在各 rank 间共享，初期只允许在 iteration 之间的安全边界切换。它建立了保证 collective 正确性所需的顺序契约。
+代码审查确认，共用 [replay_worker.py](examples/jobpacer/runtime/replay_worker.py) 新增 S lane 后，`application_wait_start_ts` 只在 S 分支赋值，而 H 分支也读取它。Phase 1 默认 H 路径已实际触发 `UnboundLocalError`；Phase 2 H 路径也存在同一未赋值读取。应先恢复旧路径回归，再使用当前源码继续 H lane 对照；已有批次应使用各自归档源码复现。
 
-### Dynamic Admission：运行时准入
+G5 的 bridge 批次成功执行，但尚不能认定为等价迁移：所选 [DAG 输入](benchmark/phase3/experiments/bridge/G0-linear-bridge.json) 是 `matmul → comm` 串行链，线性 S lane 则在 producer fill 完成后启动独立 matmul 与通信，并在 consumer 汇合。两者依赖、consumer 工作和应用终点不同；相同 matmul 尺寸和通信集合不足以验收 bridge。diamond 的单独语义证据应与此区分。
 
-运行时，训练框架在每个 rank 创建本地 `CommIntent`，将计划中的 `TaskKey` 绑定到实际 tensor、CUDA ready event 和原始 `torch.distributed` launcher。Admission 层可以：
+本次另运行 `PYTHONPATH=src RUN_JOBPACER_RUNTIME_NCCL=1 .venv/bin/python -m pytest -q tests/integration/test_runtime_replay_nccl.py`：**4 passed，24.87 秒**；单独重跑 `tests/integration/test_jobpacer_profile.py` 仍超时失败（24.67 秒）。pytest 产物位于本机 `/tmp/pytest-of-liuxunpeng/pytest-13`（全仓）、`pytest-14`（NCCL）及 `pytest-15`（profile 重试），属于临时文件。`git diff --check` 通过。
 
-- 等待 producer ready；
-- 延迟计划中的 collective；
-- 限制 outstanding collective 数量；
-- 在不同 process group 之间选择 ready task 的发射时机；
-- 记录运行时测量，为下一版本 plan 提供数据。
+上述是此前复核时的状态。2026-09-28 已继续实施 schema-v2 GPU 统一 DAG、old/new 通信 adapter 与 raw-ordered 受控参考；D0 双卡语义 smoke 和本轮 Gloo/NCCL 回归见[实施过程记录](docs/JobPacer/process/phase3-gpu-unified-dag-correction.md)及[结果记录](docs/JobPacer/result/phase3-gpu-unified-dag-correction-20260928.md)。原始 bare、六场景 pilot、重复 epoch、断连验收和正式 1,050 次性能矩阵仍未完成，不能据单次 smoke 判断收益。
 
-Admission 不能在本地独立改变同一个 process group 内的 collective 顺序。只有在每个受影响 process group 的诱导序列仍然对其所有成员 rank 一致时，才允许进行跨 group 仲裁。
+## 目录与阅读顺序
 
-## 任务生命周期
+| 路径 | 职责 |
+| --- | --- |
+| `src/runtime_comm_scheduler/runtime/` | 模型、coordinator、policy、控制通道、本地执行及完成探测 |
+| `src/runtime_comm_scheduler/dag/` | 图模型、校验、计算与通信节点推进 |
+| `examples/jobpacer/runtime/` | workload 映射、rank harness、GPU compute |
+| `examples/jobpacer/scripts/` | 单次 replay、通信 profile、实验批次入口 |
+| `examples/jobpacer/analysis/` | 结果校验、汇总与可视化 |
+| `benchmark/phase3/experiments/` | 语义分类的实验输入 |
+| `benchmark/phase3/results/` | 本地产物，默认被 Git 忽略 |
+| `tests/unit/runtime/`、`tests/integration/` | 单元与真实通信检查 |
 
-```text
-CommIntent
-  -> READY
-  -> WAITING_FOR_ADMISSION
-  -> ADMITTED
-  -> SUBMITTED
-  -> COMPLETED | FAILED
-```
+设计先读 [讨论总结](docs/JobPacer/plan/discussion.md)、[Phase 3.1](docs/JobPacer/plan/phase3.1.md) 和 [Phase 3.2](docs/JobPacer/plan/phase3.2.md)。CPU 阶段事实见 [Phase 3.1 结果](docs/JobPacer/result/phase3.1.md)、[Phase 3.2 结果](docs/JobPacer/result/phase3.2.md)；协作约束见 [AGENTS.md](AGENTS.md)。
 
-`READY`、`SUBMITTED` 和 `COMPLETED` 是不同事件。scheduler 只能在 `SUBMITTED` 之前介入；collective 一旦提交给 NCCL，就不能在当前层级取消或抢占。对 NCCL，`ScheduledWork.wait()` 表示把完成依赖接入 consumer current stream，不等同于 GPU 物理完成；后者由 completion probe 独立观察。
+## 运行与验证
 
-## 目录结构
-
-- `docs/design/architecture.md`：长期维护的系统边界、事件模型、机制和正确性约束。
-- `docs/phase1-plan.md`：runtime scheduler 核心 Phase 1 的目标、设计、里程碑和验收标准。
-- `docs/JobPacer/plan/phase1.md`：JobPacer 多 job 裸发 replay baseline（Phase 1）及 workload 契约。
-- `docs/JobPacer/plan/phase2.md`：JobPacer 接入 scheduler 的调度实验计划。
-- `docs/experiments/`：实验记录和 profiler/Nsight 产物索引。
-- `src/runtime_comm_scheduler/`：机制接口和后续实现。
-- `src/runtime_comm_scheduler/adapters/`：框架语义适配器，首先适配 Megatron。
-- `tests/`：单元测试以及 Gloo/NCCL distributed harness。
-- `examples/`：最小可运行示例。
-- `configs/`：预留给后续实验配置。
-
-## 当前状态
-
-- **M0（Gloo 行为 harness）已完成**：两 rank 场景覆盖 FIFO、固定重排、延迟
-  ready 与 divergence 挂起，记录见 [docs/experiments/m0-m4.md](docs/experiments/m0-m4.md)。
-- **M1（核心 schema 与 plan 校验）已完成**：确定性 `TaskKey`、`CommIntent`
-  生命周期、`Plan` 表示与五类校验。
-- **M2（V0 同步 admission）已完成**：`AdmissionScheduler` 的 submit → 校验 →
-  准入 → 发射路径，两 rank Gloo harness 重现 FIFO 与固定重排且 sequence log
-  一致，乱序提交被强制为计划顺序，错误场景 fail-stop 有界退出。
-- **M3（NCCL/CUDA event 语义）已完成**：在两台 RTX 3090 上验证 CUDA ready
-  event 的 producer dependency。M3 当时把 `Work.wait()` 错误解释为 GPU 物理
-  完成等待并加入了设备同步；该解释和补偿已由 M4.5 纠正，历史记录保留在实验
-  文档的勘误中。
-- **M4（异步 admission worker）已完成**：deferred launch 移到专门 worker
-  线程 + 显式 gate stream。producer 的 `submit` 只校验 + park +
-  唤醒、立即返回；worker 线程按 plan 顺序 drain 发射，`out_of_order_submit`
-  经 worker 仍强制计划顺序，`delayed_ready` 的 stream dependency 经 comm
-  stream 正确，16 intent 场景 producer 继续执行与 collective 重叠。关口实验
-  同时记录了硬限制：同一 communicator 多线程并发提交不安全（会打挂进程）。
-  详见
-  [docs/experiments/m0-m4.md](docs/experiments/m0-m4.md)。
-- **M4.5（scheduler/Work 语义重构）已完成**：scheduler
-  收敛为单 worker、rank-wide plan 投影和全局 outstanding；execution plane
-  按 process group 使用独立 gate stream；`ScheduledWork.wait()` 只透传底层
-  stream dependency，physical completion 由独立 probe 推进。原 3090 容器下线后，
-  经批准使用 2× RTX 3080 Ti 完成 GPU/NCCL capability gate；实施设计见
-  [docs/m4.5-refactor-plan.md](docs/m4.5-refactor-plan.md)，实验记录见
-  [docs/experiments/m4.5-gpu3080.md](docs/experiments/m4.5-gpu3080.md)。
-- **待开发**：Megatron DP adapter 与 plan 版本切换，
-  详见 [docs/phase1-plan.md](docs/phase1-plan.md)。
-
-### JobPacer replay
-
-JobPacer Phase 1 提供 scheduler-free 的多 job 基线：每个 rank 内以线程执行
-通信—计算交替 workload，通信通过真实 Gloo/NCCL `all_reduce` 裸发，并输出每个
-job 的 makespan、实际提交顺序和逐 task trace。Phase 2 使用同一 workload 与输出
-格式，将通信提交替换为 `AdmissionScheduler`。
+从仓库根目录使用已有项目环境；远程环境为 `.venv`，不要为复现实验擅自升级 PyTorch/CUDA/NCCL。
 
 ```bash
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase1 \
-  --workload balanced --backend gloo --world-size 2 \
-  --output artifacts/jobpacer-phase1-gloo.json
+source .venv/bin/activate
+
+# 新 runtime 单元检查及全仓回归
+PYTHONPATH=src python -m pytest -q tests/unit/runtime
+PYTHONPATH=src python -m pytest -q
+
+# 真实双 rank CPU/Gloo 集成，需要本地 TCP socket 权限
+PYTHONPATH=src RUN_JOBPACER_RUNTIME_REPLAY=1 \
+  python -m pytest -q tests/integration/test_runtime_replay.py
+
+# GPU 检查前确认可见设备；继承资源分配的 CUDA_VISIBLE_DEVICES
+nvidia-smi --query-gpu=index,name,uuid --format=csv
+PYTHONPATH=src RUN_JOBPACER_RUNTIME_NCCL=1 \
+  python -m pytest -q tests/integration/test_runtime_replay_nccl.py
+
+# 新 runtime 单次 Gloo replay
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+  --policy fifo --workload balanced --backend gloo \
+  --world-size 2 --timeout 20 --output /tmp/jobpacer-phase3-gloo.json
+
+# 新 runtime 双卡 NCCL smoke；这不是性能矩阵
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+  --policy fifo --workload balanced --backend nccl \
+  --world-size 2 --warmup-iterations 5 --setup-timeout 60 --timeout 30 \
+  --output /tmp/jobpacer-phase3-nccl.json
+
+git diff --check
 ```
 
-可用 workload：`balanced`、`tail`、`delayed`，也可传入符合
-[`phase1.md`](docs/JobPacer/plan/phase1.md) schema 的 JSON manifest。
+未开启 opt-in 的跳过项不算通过。GPU/NCCL 正常与失败路径、实际 launch 投影、成员覆盖、tensor 数值和设备完成边界需分别检查；小规模语义测试不证明稳定性能收益。
+
+## 实验产物与复现
+
+本轮远程产物位于 `benchmark/phase3/results/gpu-readiness/preflight-20260927-c1d5008/`，包括 raw、batch manifest、命令与日志、profile、源码归档和 SHA-256 清单。该目录被 Git 忽略，普通 clone/commit 不会带走这些数据；需单独备份并按批次恢复对应源码。起始 HEAD 为 `c1d5008`，实验实现包含未提交修改，不能只检出该 commit 就声称恢复了实验。
+
+本次复核 `inputs/SHA256SUMS.final.txt` 所列文件全部匹配。该清单核对不等于递归验证所有 raw 文件，也不代表结果已提交。
+
+## 历史路径
+
+包根目录的 `Plan`、`AdmissionScheduler`、`ScheduledWork` 及 Phase 1/2 replay 保留作为历史实现和对照。新 runtime 不依赖这些旧核心接口。原 M0–M4.5 记录见 [Gloo/早期 NCCL 实验](docs/experiments/m0-m4.md)、[M4.5 GPU 验收](docs/experiments/m4.5-gpu3080.md)；这些结果不替代 Phase 3 新路径的验收。

@@ -1,0 +1,358 @@
+{
+  "execution": {
+    "buffers": {
+      "job-0": {
+        "a": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            8,
+            8
+          ]
+        },
+        "b": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            8,
+            8
+          ]
+        },
+        "w": {
+          "dtype": "float32",
+          "init": "empty",
+          "shape": [
+            8,
+            8
+          ]
+        },
+        "x": {
+          "dtype": "float32",
+          "init": "empty",
+          "shape": [
+            8,
+            8
+          ]
+        },
+        "y": {
+          "dtype": "float32",
+          "init": "empty",
+          "shape": [
+            8,
+            8
+          ]
+        },
+        "z": {
+          "dtype": "float32",
+          "init": "empty",
+          "shape": []
+        }
+      },
+      "job-1": {
+        "a": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            8,
+            8
+          ]
+        },
+        "b": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            8,
+            8
+          ]
+        },
+        "w": {
+          "dtype": "float32",
+          "init": "empty",
+          "shape": [
+            8,
+            8
+          ]
+        },
+        "x": {
+          "dtype": "float32",
+          "init": "empty",
+          "shape": [
+            8,
+            8
+          ]
+        },
+        "y": {
+          "dtype": "float32",
+          "init": "empty",
+          "shape": [
+            8,
+            8
+          ]
+        },
+        "z": {
+          "dtype": "float32",
+          "init": "empty",
+          "shape": []
+        }
+      }
+    },
+    "comm_bindings": {
+      "job-0/comm-finish": {
+        "buffer": "w"
+      },
+      "job-0/comm-input": {
+        "buffer": "x"
+      },
+      "job-1/comm-finish": {
+        "buffer": "w"
+      },
+      "job-1/comm-input": {
+        "buffer": "x"
+      }
+    },
+    "compute_model": "one-active-compute-per-job",
+    "compute_programs": {
+      "job-0/finish-buffer": {
+        "op": "fill",
+        "output": "w"
+      },
+      "job-0/independent": {
+        "inputs": [
+          "a",
+          "b"
+        ],
+        "op": "matmul",
+        "output": "y",
+        "repeats": 3
+      },
+      "job-0/join": {
+        "inputs": [
+          "x",
+          "y"
+        ],
+        "op": "sum_join",
+        "output": "z"
+      },
+      "job-0/producer": {
+        "inputs": [
+          "a",
+          "b"
+        ],
+        "op": "matmul",
+        "output": "x",
+        "repeats": 2
+      },
+      "job-1/finish-buffer": {
+        "op": "fill",
+        "output": "w"
+      },
+      "job-1/independent": {
+        "inputs": [
+          "a",
+          "b"
+        ],
+        "op": "matmul",
+        "output": "y",
+        "repeats": 3
+      },
+      "job-1/join": {
+        "inputs": [
+          "x",
+          "y"
+        ],
+        "op": "sum_join",
+        "output": "z"
+      },
+      "job-1/producer": {
+        "inputs": [
+          "a",
+          "b"
+        ],
+        "op": "matmul",
+        "output": "x",
+        "repeats": 2
+      }
+    },
+    "mode": "cuda-program",
+    "profiles": {},
+    "sample_id": "d0-smoke-fixed-v1",
+    "submit_after": {
+      "job-0/independent": [
+        "job-0/comm-input"
+      ],
+      "job-1/independent": [
+        "job-1/comm-input"
+      ]
+    }
+  },
+  "groups": [
+    {
+      "group_id": "g0",
+      "ranks": [
+        0,
+        1
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "job_id": "job-0",
+      "nodes": [
+        {
+          "deps": [],
+          "estimated_duration_s": 0.0002,
+          "kind": "compute",
+          "node_id": "producer"
+        },
+        {
+          "collective": {
+            "dtype": "float32",
+            "num_bytes": 256,
+            "numel": 64,
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              8,
+              8
+            ]
+          },
+          "deps": [
+            "producer"
+          ],
+          "estimated_comm_s": 0.001,
+          "group_id": "g0",
+          "group_seq": 0,
+          "kind": "comm",
+          "node_id": "comm-input"
+        },
+        {
+          "deps": [
+            "producer"
+          ],
+          "estimated_duration_s": 0.0003,
+          "kind": "compute",
+          "node_id": "independent"
+        },
+        {
+          "deps": [
+            "comm-input",
+            "independent"
+          ],
+          "estimated_duration_s": 0.0001,
+          "kind": "compute",
+          "node_id": "join"
+        },
+        {
+          "deps": [
+            "join"
+          ],
+          "estimated_duration_s": 0.0001,
+          "kind": "compute",
+          "node_id": "finish-buffer"
+        },
+        {
+          "collective": {
+            "dtype": "float32",
+            "num_bytes": 256,
+            "numel": 64,
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              8,
+              8
+            ]
+          },
+          "deps": [
+            "finish-buffer"
+          ],
+          "estimated_comm_s": 0.001,
+          "group_id": "g0",
+          "group_seq": 2,
+          "kind": "comm",
+          "node_id": "comm-finish"
+        }
+      ]
+    },
+    {
+      "job_id": "job-1",
+      "nodes": [
+        {
+          "deps": [],
+          "estimated_duration_s": 0.0002,
+          "kind": "compute",
+          "node_id": "producer"
+        },
+        {
+          "collective": {
+            "dtype": "float32",
+            "num_bytes": 256,
+            "numel": 64,
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              8,
+              8
+            ]
+          },
+          "deps": [
+            "producer"
+          ],
+          "estimated_comm_s": 0.001,
+          "group_id": "g0",
+          "group_seq": 1,
+          "kind": "comm",
+          "node_id": "comm-input"
+        },
+        {
+          "deps": [
+            "producer"
+          ],
+          "estimated_duration_s": 0.0003,
+          "kind": "compute",
+          "node_id": "independent"
+        },
+        {
+          "deps": [
+            "comm-input",
+            "independent"
+          ],
+          "estimated_duration_s": 0.0001,
+          "kind": "compute",
+          "node_id": "join"
+        },
+        {
+          "deps": [
+            "join"
+          ],
+          "estimated_duration_s": 0.0001,
+          "kind": "compute",
+          "node_id": "finish-buffer"
+        },
+        {
+          "collective": {
+            "dtype": "float32",
+            "num_bytes": 256,
+            "numel": 64,
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              8,
+              8
+            ]
+          },
+          "deps": [
+            "finish-buffer"
+          ],
+          "estimated_comm_s": 0.001,
+          "group_id": "g0",
+          "group_seq": 3,
+          "kind": "comm",
+          "node_id": "comm-finish"
+        }
+      ]
+    }
+  ],
+  "name": "gpu-unified-dag-d0-smoke",
+  "schema_version": 2,
+  "seed": 8101
+}

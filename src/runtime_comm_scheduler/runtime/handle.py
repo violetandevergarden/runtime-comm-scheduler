@@ -60,8 +60,11 @@ class RuntimeHandle:
             self._condition.notify_all()
 
     def bind(self, work: Any) -> None:
-        if work is None or not callable(getattr(work, "wait", None)):
-            raise TypeError("runtime launch must return a Work-like object with wait()")
+        has_work_wait = callable(getattr(work, "wait", None))
+        has_stream_receipt = (callable(getattr(work, "is_completed", None))
+                              and callable(getattr(work, "wait_on", None)))
+        if work is None or not (has_work_wait or has_stream_receipt):
+            raise TypeError("runtime launch must return a Work-like object or stream completion receipt")
         with self._condition:
             if self._state is not HandleState.GRANTED or self._work is not None:
                 raise RuntimeError(f"invalid bind for {self.task_id}: {self._state.value}")
@@ -103,20 +106,30 @@ class RuntimeHandle:
             self._raise_if_failed_locked()
             return True
 
-    def wait_on(self, stream: Any) -> None:
-        """Establish a consumer dependency when the backend exposes one."""
+    def wait_on(self, stream: Any, timeout: float | None = 20.0) -> bool:
+        """Establish a dependency on this collective for one consumer stream.
+
+        Returns when the dependency has been enqueued, not when the GPU work
+        has physically completed. The default binding deadline is finite.
+        """
+        if timeout is not None and timeout < 0:
+            raise ValueError("timeout must be non-negative or None")
+        deadline = None if timeout is None else time.monotonic() + timeout
         with self._condition:
-            while self._work is None and self._error is None:
-                self._condition.wait()
+            while (self._work is None and self._error is None
+                   and self._state not in (HandleState.COMPLETED, HandleState.FAILED)):
+                remaining = self._remaining(deadline)
+                if remaining == 0:
+                    return False
+                self._condition.wait(remaining)
             self._raise_if_failed_locked()
             work = self._work
         if work is None:
-            return
-        wait_stream = getattr(stream, "wait_stream", None)
-        if wait_stream is not None:
-            wait_stream(work)
-        elif callable(getattr(work, "wait", None)):
-            work.wait()
+            raise RuntimeError(f"task {self.task_id} completed without an execution receipt")
+        add_dependency = getattr(work, "wait_on", None)
+        if not callable(add_dependency):
+            raise NotImplementedError("backend execution receipt does not support CUDA stream dependencies")
+        return bool(add_dependency(stream, timeout=timeout))
 
     def _raise_if_failed_locked(self) -> None:
         if self._error is not None:

@@ -56,7 +56,7 @@ Gloo 的性能结论限定于记录的机器和 backend，不能直接外推 PCI
 | S0 | 新 Static FIFO | `run_runtime_replay.py --policy static_fifo` | 同 runtime 的固定轮转基线 |
 | S1 | 新 Static LTF | `--policy static_ltf` | 同 runtime 的静态优先级基线 |
 | D0 | Dynamic FIFO | `--policy fifo` | 利用实际 eligible 到达次序 |
-| D1 | Dynamic LTF | `--policy ltf` | 在 eligible 候选间按 tail 选择 |
+| D1 | Dynamic LTF | `--policy ltf` | 在 eligible 候选间按 `estimated_comm_s + remaining_tail_s` 选择 |
 | D2 | Bounded Lookahead | `--policy lookahead` | 有界等待相对立即 LTF 的增益/损失 |
 
 静态 FIFO 是预定轮转序列；Dynamic FIFO 是首次进入 eligible 的次序，名称相近但语义不同。

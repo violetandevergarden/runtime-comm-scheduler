@@ -72,3 +72,12 @@ decision records、配置及 DAG digest。`manifest.json` 记录所有相关源�
 `src/runtime_comm_scheduler/dag.py`，三个可复现实验输入位于 `benchmark/phase3/`；
 `examples/jobpacer/` 只保留启动、worker 和历史线性 workload 适配。结果只证明两 rank CPU/Gloo 和 CPU sleep replay，不
 外推 GPU/NCCL、真实训练算力共享、在线到达、多通信在途、多资源或跨 host 行为。
+
+## 2026-09-28 LTF 评分语义勘误
+
+本结果中的历史 DAG LTF replay 与顺序记录按当时源码解释：Dynamic LTF 仅使用
+`remaining_tail_s`，Static LTF 的生成顺序也按 tail 排序。当前代码已统一为
+`estimated_comm_s + remaining_tail_s`，与动态 LTF、Lookahead 前沿排名共用固定公式；当前通信时长现在会影响 DAG LTF 选择。tail 的
+后继路径定义没有改变。此前记录的 `multi-group` 测试中前沿通信估值相同，因此其已记录选择
+恰好不变；这不代表其他 DAG 输入的静态或动态顺序不变。历史 Gloo JSON 不重写，也不视为
+新公式下的 replay；本次改动的当前代码回归另行验证。

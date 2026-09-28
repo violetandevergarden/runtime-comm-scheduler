@@ -2,6 +2,8 @@
 
 日期：2026-09-22。状态：待实施；本文不代表功能或实验已验收。
 
+**2026-09-28 后续评分合同：**本文提出在线重算 tail 的历史背景和目标仍可参考，但评分合同已更新为 `estimated_comm_s + remaining_tail_s`，且不再由逐任务版本字符串决定。本文第 2 节记录的旧 coordinator/LTF tail-only 状态及第 3 节“LTF 定义不变”只描述 2026-09-22 的代码，不代表当前实现；当前方案和结果见 [Phase 3.2 实施说明](phase3.2.md) 与[评分合同勘误](../result/phase3.2.md#2026-09-28-ltf-评分语义勘误)。
+
 依据：[设计讨论](../plan/discussion.md)、[Phase 3.1](../plan/phase3.1.md)、
 [Phase 3.2](../plan/phase3.2.md)、[结构整理验收](../result/phase3.12fix.md)。
 按本次用户要求在 process 中记录实施方案；完成后的事实另写 result/phase3.2add.md。

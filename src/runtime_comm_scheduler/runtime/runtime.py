@@ -321,8 +321,13 @@ class RankRuntime:
             raise ValueError(f"tensor dtype mismatch for {spec.task_id}")
         tensor_device = getattr(tensor, "device", None)
         if binding.device is not None and tensor_device is not None:
-            if _device_kind(binding.device) != _device_kind(tensor_device):
+            if _device_name(binding.device) != _device_name(tensor_device):
                 raise ValueError(f"tensor device mismatch for {spec.task_id}")
+        if binding.producer_event is not None:
+            event_device = getattr(binding.producer_event, "device", None)
+            expected_device = binding.device if binding.device is not None else tensor_device
+            if event_device is None or expected_device is None or _device_name(event_device) != _device_name(expected_device):
+                raise ValueError(f"producer event device mismatch for {spec.task_id}")
         if binding.producer_event is not None and not getattr(
             self.executor, "supports_producer_dependency", False
         ):
@@ -416,7 +421,14 @@ class RankRuntime:
                 self.event_log.record("launch_start", task_id=task_id, decision_seq=decision_seq)
                 self.event_log.record("collective_call_start", task_id=task_id,
                                       decision_seq=decision_seq)
+                binding.timing_hook = lambda kind, task_id=task_id: self.event_log.record(
+                    kind, task_id=task_id, decision_seq=decision_seq
+                )
+                self.event_log.record("executor_start", task_id=task_id,
+                                      decision_seq=decision_seq)
                 work = self.executor.launch(binding)
+                self.event_log.record("executor_return", task_id=task_id,
+                                      decision_seq=decision_seq)
                 task.handle.bind(work)
                 self.event_log.record("collective_call_return", task_id=task_id,
                                       decision_seq=decision_seq)
@@ -555,5 +567,13 @@ def _dtype_name(value: Any) -> str:
     }.get(name, name)
 
 
-def _device_kind(value: Any) -> str:
-    return str(value).lower().split(":", 1)[0]
+def _device_name(value: Any) -> str:
+    """Return an exact device spelling, resolving bare CUDA to its current index."""
+    name = str(value).lower()
+    if name == "cuda":
+        try:
+            import torch
+            return str(torch.device("cuda", torch.cuda.current_device()))
+        except (ImportError, RuntimeError):
+            return name
+    return name

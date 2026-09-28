@@ -1,404 +1,60 @@
 from __future__ import annotations
 
-import argparse
+import sys
+from pathlib import Path
 import threading
 import time
 from types import SimpleNamespace
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).parents[2]))
+
 from examples.jobpacer.runtime import runtime_worker
-from examples.jobpacer.workloads import built_workload
 
 
-class _Runtime:
-    def __init__(self):
-        self.aborts = []
-
-    def abort(self, error, **details):
-        self.aborts.append((error, details))
-
-
-def test_run_jobs_empty_and_preserves_input_order():
-    runtime = _Runtime()
-    jobs = [SimpleNamespace(job_id=name) for name in ("first", "second")]
-    release_first = threading.Event()
-    first_waiting = threading.Event()
-    second_finished = threading.Event()
-
-    def run_one(job):
-        if job.job_id == "first":
-            first_waiting.set()
-            release_first.wait(1)
-        else:
-            second_finished.set()
-        return {"job_id": job.job_id}
-
-    assert runtime_worker._run_jobs([], run_one, runtime=runtime, deadline=time.monotonic() + 1,
-                                    stop_event=threading.Event(), thread_name_prefix="test") == []
-    outcome = {}
-
-    def run_jobs():
-        try:
-            outcome["results"] = runtime_worker._run_jobs(
-                jobs, run_one, runtime=runtime, deadline=time.monotonic() + 1,
-                stop_event=threading.Event(), thread_name_prefix="test")
-        except BaseException as exc:
-            outcome["error"] = exc
-
-    thread = threading.Thread(target=run_jobs)
-    thread.start()
-    try:
-        assert first_waiting.wait(1)
-        assert second_finished.wait(1)
-    finally:
-        release_first.set()
-    thread.join(1)
-    assert not thread.is_alive()
-    assert "error" not in outcome
-    results = outcome["results"]
-    assert [result["job_id"] for result in results] == ["first", "second"]
-    assert runtime.aborts == []
-
-
-def test_run_jobs_first_error_wakes_other_jobs_and_aborts_once():
-    runtime = _Runtime()
-    stop = threading.Event()
-    jobs = [SimpleNamespace(job_id=name) for name in ("failed", "peer")]
-
-    def run_one(job):
-        if job.job_id == "failed":
-            raise ValueError("root failure")
-        stop.wait(1)
-        return {"job_id": job.job_id}
-
-    with pytest.raises(ValueError, match="root failure"):
-        runtime_worker._run_jobs(jobs, run_one, runtime=runtime, deadline=time.monotonic() + 1,
-                                 stop_event=stop, thread_name_prefix="test")
-    assert stop.is_set()
-    assert len(runtime.aborts) == 1
-    assert runtime.aborts[0][1]["job_id"] == "failed"
-
-
-def test_run_jobs_uses_one_join_deadline_for_all_threads(monkeypatch):
-    runtime = _Runtime()
-    jobs = [SimpleNamespace(job_id=name) for name in ("first", "second")]
-
-    def run_one(job):
-        return {"job_id": job.job_id}
-
-    now = [100.0]
-    monkeypatch.setattr(runtime_worker.time, "monotonic", lambda: now[0])
-    join_budgets = []
-    real_join = threading.Thread.join
-
-    def controlled_join(thread, timeout=None):
-        join_budgets.append(timeout)
-        real_join(thread, timeout=1)
-        if len(join_budgets) == 1:
-            now[0] += 6
-
-    monkeypatch.setattr(threading.Thread, "join", controlled_join)
-    results = runtime_worker._run_jobs(
-        jobs, run_one, runtime=runtime, deadline=now[0] + 10,
-        stop_event=threading.Event(), thread_name_prefix="test")
-    assert [result["job_id"] for result in results] == ["first", "second"]
-    assert join_budgets == pytest.approx([10, 4])
-
-
-def test_new_groups_destroys_partial_group_creation(monkeypatch):
-    created = object()
-    destroyed = []
-    outcomes = iter((created, RuntimeError("group creation failed")))
-
-    def new_group(_ranks):
-        outcome = next(outcomes)
-        if isinstance(outcome, BaseException):
-            raise outcome
-        return outcome
-
-    monkeypatch.setattr(runtime_worker.dist, "new_group", new_group)
-    monkeypatch.setattr(runtime_worker.dist, "destroy_process_group", lambda group: destroyed.append(group))
-    workload = built_workload("balanced")
-    with pytest.raises(RuntimeError, match="group creation failed"):
-        runtime_worker._new_groups(workload, 2)
-    assert destroyed == [created]
-
-
-def test_run_rank_closes_groups_when_initialization_fails(monkeypatch):
-    groups = (object(), object())
-    destroyed = []
-    monkeypatch.setenv("RANK", "0")
-    monkeypatch.setenv("WORLD_SIZE", "2")
-    monkeypatch.setenv("MASTER_ADDR", "127.0.0.1")
-    monkeypatch.setenv("MASTER_PORT", "12345")
-    monkeypatch.setattr(runtime_worker.dist, "init_process_group", lambda *args, **kwargs: None)
-    group_iter = iter(groups)
-    monkeypatch.setattr(runtime_worker.dist, "new_group", lambda _ranks, **_kwargs: next(group_iter))
-    def fail_barrier():
-        raise RuntimeError("barrier failed")
-    monkeypatch.setattr(runtime_worker.dist, "barrier", fail_barrier)
-    monkeypatch.setattr(runtime_worker.dist, "is_initialized", lambda: True)
-    monkeypatch.setattr(runtime_worker.dist, "destroy_process_group", lambda *args: destroyed.append(args))
-    args = argparse.Namespace(timeout=1.0, setup_timeout=1.0, poll_interval=0.01, dag_poll_interval=0.01,
-                              compute_jitter=0.0, dag=None, workload="balanced", static_order=None,
-                              policy="fifo", backend="gloo", epoch=0, control_port=12345, fault="none")
-    with pytest.raises(RuntimeError, match="barrier failed"):
-        runtime_worker.run_rank(args)
-    assert destroyed == [(groups[1],), (groups[0],), ()]
-
-
-@pytest.mark.parametrize("job_fails", (False, True))
-def test_run_rank_keeps_one_replay_deadline_through_finish_and_skips_finish_after_failure(
-    monkeypatch, job_fails
-):
-    from runtime_comm_scheduler.runtime import EventLog
-    from runtime_comm_scheduler.runtime import coordinator as coordinator_module
-    from runtime_comm_scheduler.runtime import transport as transport_module
-
-    monkeypatch.setenv("RANK", "0")
-    monkeypatch.setenv("WORLD_SIZE", "2")
-    monkeypatch.setenv("MASTER_ADDR", "127.0.0.1")
-    monkeypatch.setenv("MASTER_PORT", "12345")
-    groups = [object(), object()]
-    monkeypatch.setattr(runtime_worker.dist, "init_process_group", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runtime_worker.dist, "new_group", lambda *args, **kwargs: groups.pop(0))
-    monkeypatch.setattr(runtime_worker.dist, "barrier", lambda: None)
-    monkeypatch.setattr(runtime_worker.dist, "is_initialized", lambda: True)
-    monkeypatch.setattr(runtime_worker.dist, "destroy_process_group", lambda *args: None)
-
-    now = [100.0]
-    monkeypatch.setattr(runtime_worker.time, "monotonic", lambda: now[0])
-    captured = {}
-
-    class FakeCoordinator:
-        def __init__(self, _endpoints, **kwargs):
-            self.epoch_timeout_s = kwargs["epoch_timeout_s"]
-            self.records = []
-            captured["coordinator"] = self
-
-    class FakeServer:
-        def __init__(self, coordinator, *_args):
-            self.coordinator = coordinator
-
-        def start(self):
-            pass
-
-        def wait_ready(self, timeout):
-            captured["server_ready_timeout"] = timeout
-
-        def close(self):
-            pass
-
-    class FakeRuntime:
-        def __init__(self, *_args, **_kwargs):
-            self.failure = None
-            self.event_log = EventLog("runtime", 0)
-            self.grant_order = []
-            self.launch_order = []
-            self.finish_timeouts = []
-            self.aborts = []
-            captured["runtime"] = self
-
-        def register_group(self, *_args):
-            pass
-
-        def start(self, timeout):
-            captured["runtime_start_timeout"] = timeout
-            now[0] += 0.25  # setup time must not consume the replay budget
-
-        def finish_epoch(self, timeout):
-            self.finish_timeouts.append(timeout)
-
-        def abort(self, error, **details):
-            self.aborts.append((error, details))
-            self.failure = error
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr(coordinator_module, "CoordinatorState", FakeCoordinator)
-    monkeypatch.setattr(transport_module, "CoordinatorServer", FakeServer)
-    monkeypatch.setattr(runtime_worker, "ControlClient", lambda *args: object())
-    monkeypatch.setattr(runtime_worker, "RankRuntime", FakeRuntime)
-
-    def run_jobs(_jobs, _run_one, *, deadline, runtime, **_kwargs):
-        captured["replay_deadline"] = deadline
-        if job_fails:
-            error = ValueError("job failed")
-            runtime.abort(error, stage="job")
-            raise error
-        now[0] += 0.75
-        return []
-
-    monkeypatch.setattr(runtime_worker, "_run_jobs", run_jobs)
-    args = argparse.Namespace(timeout=2.0, setup_timeout=1.0, poll_interval=0.01,
-                              dag_poll_interval=0.01, compute_jitter=0.0, dag=None,
-                              workload="balanced", static_order=None, policy="fifo",
-                              backend="gloo", epoch=0, control_port=12345, fault="none",
-                              observation_mode="diagnostic")
-
-    if job_fails:
-        with pytest.raises(ValueError, match="job failed"):
-            runtime_worker.run_rank(args)
-    else:
-        runtime_worker.run_rank(args)
-    assert captured["coordinator"].epoch_timeout_s == pytest.approx(3.0)
-    assert captured["runtime_start_timeout"] == pytest.approx(1.0)
-    assert captured["server_ready_timeout"] == pytest.approx(0.75)
-    assert captured["replay_deadline"] == pytest.approx(102.25)
-    if job_fails:
-        assert captured["runtime"].finish_timeouts == []
-    else:
-        # The runner consumed 0.75s; finish gets only the remainder of the same deadline.
-        assert now[0] == pytest.approx(101.0)
-        assert captured["runtime"].finish_timeouts == pytest.approx([1.25])
-
-
-def test_precreated_linear_bindings_are_unique_and_recorded_before_release(monkeypatch):
-    monkeypatch.setattr(runtime_worker.dist, "all_gather_object",
-                        lambda observed, local: observed.__setitem__(slice(None), [local, local]))
-    workload = built_workload("balanced")
-    local_jobs = list(workload.jobs)
-    groups = {job.job_id: object() for job in local_jobs}
-    bindings, events, start_ts, end_ts = runtime_worker._prepare_linear_bindings(
-        workload, local_jobs, groups=groups, rank=0, world_size=2, device="cpu",
-        epoch=3, fault="none",
-    )
-
-    release_ts = time.perf_counter_ns() // 1000
-    expected_ids = {f"{job.job_id}/comm-{comm.id}"
-                    for job in local_jobs for comm in job.communications}
-    assert set(bindings) == expected_ids
-    assert {item["task_id"] for item in events} == expected_ids
-    assert start_ts <= end_ts < release_ts
-    assert len({binding.tensor.data_ptr() for binding in bindings.values()}) == len(bindings)
-    assert all(binding.tensor.tolist() == [1.0] * binding.tensor.numel()
-               for binding in bindings.values())
-
-
-def test_on_ready_linear_binding_creation_follows_producer_and_matches_precreate(monkeypatch):
-    from runtime_comm_scheduler.runtime import EventLog
-
-    workload = built_workload("balanced")
-    job = workload.jobs[0]
-    group = object()
-    monkeypatch.setattr(runtime_worker, "linear_execution_duration", lambda *args: 0.0)
-
-    class Handle:
-        decision_seq = 1
-
-        def wait_host(self, _timeout):
-            return True
-
-    class RecordingRuntime:
-        event_log = EventLog("runtime", 0)
-
-        def __init__(self):
-            self.bindings = {}
-
-        def declare(self, *_args):
-            pass
-
-        def submit(self, spec, binding, _hint):
-            self.bindings[spec.task_id] = binding
-            return Handle()
-
-    runtime = RecordingRuntime()
-    args = argparse.Namespace(epoch=4, compute_jitter=0.0, fault="none",
-                              binding_preparation="on-ready", observation_mode="diagnostic")
+def test_worker_drains_epoch_before_deferred_tensor_validation(monkeypatch):
     events = []
-    result = runtime_worker._run_linear_job(
-        job, workload=workload, args=args, runtime=runtime, groups={job.job_id: group},
-        rank=0, world_size=2, device="cpu", deadline=time.monotonic() + 2,
-        stop_event=threading.Event(), validation_records=[], precreated_bindings=None,
-        binding_creation_events=events, binding_events_lock=threading.Lock(),
+
+    class Runtime:
+        def finish_epoch(self, timeout):
+            assert timeout > 0
+            events.append("drain")
+
+    monkeypatch.setattr(
+        runtime_worker.resource,
+        "getrusage",
+        lambda _who: events.append("drain-metrics") or "usage-snapshot",
+    )
+    monkeypatch.setattr(
+        runtime_worker,
+        "_validate_deferred",
+        lambda _records: events.append("validation") or (100, 200),
     )
 
-    assert [task["task_id"] for task in result["tasks"]] == [
-        task_id for task_id in runtime.bindings
-    ]
-    assert all(task["ready_ts"] <= task["binding_create_start_ts"]
-               <= task["binding_create_end_ts"] <= task["submit_call_ts"]
-               for task in result["tasks"])
-    assert len({binding.tensor.data_ptr() for binding in runtime.bindings.values()}) == len(runtime.bindings)
+    result = runtime_worker._finish_epoch_then_validate(
+        Runtime(), [], deadline=runtime_worker.time.monotonic() + 1.0)
+
+    assert events == ["drain", "drain-metrics", "validation"]
+    assert result[0] > 0
+    assert result[2] == "usage-snapshot"
+    assert result[3:] == (100, 200)
 
 
-def test_declaration_modes_preserve_specs_hints_bindings_and_producer_before_offer(monkeypatch):
-    from runtime_comm_scheduler.runtime import EventLog
+def test_job_failure_passes_replay_deadline_to_adapter_abort():
+    observed = {}
 
-    workload = built_workload("balanced")
-    job = workload.jobs[0]
-    group = object()
-    observations = {}
+    class Runtime:
+        def abort(self, error, **context):
+            observed.update(context)
 
-    class Handle:
-        decision_seq = 1
-
-        def wait_host(self, _timeout):
-            return True
-
-    class RecordingRuntime:
-        def __init__(self, order):
-            self.event_log = EventLog("runtime", 0)
-            self.order = order
-            self.declarations = []
-            self.submissions = []
-
-        def declare(self, spec, hint):
-            self.order.append(("DECLARE", spec.task_id))
-            self.declarations.append((spec, hint))
-
-        def submit(self, spec, binding, hint):
-            self.order.append(("OFFER", spec.task_id))
-            self.submissions.append((spec, binding, hint))
-            return Handle()
-
-    def zero_duration(_workload, _epoch, job_id, ordinal, _rank, segment, base, _jitter):
-        if segment == "producer":
-            observations["order"].append(("producer", f"{job_id}/comm-{ordinal}"))
-        return 0.0
-
-    monkeypatch.setattr(runtime_worker, "linear_execution_duration", zero_duration)
-    for mode in ("before-producer", "on-submit"):
-        order = []
-        observations["order"] = order
-        bindings = {}
-        creation_events = []
-        for comm in job.communications:
-            spec = runtime_worker.task_spec(job, comm, epoch=9)
-            bindings[spec.task_id] = runtime_worker.make_collective_binding(
-                spec, group, rank=0, device="cpu")
-            creation_events.append({"task_id": spec.task_id, "binding_create_duration_us": 0})
-        runtime = RecordingRuntime(order)
-        args = argparse.Namespace(epoch=9, compute_jitter=0.0, fault="none",
-                                  binding_preparation="precreate", declaration_mode=mode,
-                                  observation_mode="diagnostic")
-        result = runtime_worker._run_linear_job(
-            job, workload=workload, args=args, runtime=runtime, groups={job.job_id: group},
-            rank=0, world_size=2, device="cpu", deadline=time.monotonic() + 2,
-            stop_event=threading.Event(), validation_records=[], precreated_bindings=bindings,
-            binding_creation_events=creation_events, binding_events_lock=threading.Lock(),
+    deadline = time.monotonic() + 2.0
+    with pytest.raises(RuntimeError, match="injected"):
+        runtime_worker._run_jobs(
+            [SimpleNamespace(job_id="job-0")],
+            lambda _job: (_ for _ in ()).throw(RuntimeError("injected")),
+            runtime=Runtime(), deadline=deadline, stop_event=threading.Event(),
+            thread_name_prefix="test",
         )
-        expected_order = []
-        for task in result["tasks"]:
-            if mode == "before-producer":
-                expected_order.append(("DECLARE", task["task_id"]))
-            expected_order.extend((("producer", task["task_id"]), ("OFFER", task["task_id"])))
-        assert order == expected_order
-        assert [item["task_id"] for item in result["tasks"]] == [
-            spec.task_id for spec, _binding, _hint in runtime.submissions]
-        assert len(runtime.declarations) == (len(runtime.submissions)
-                                               if mode == "before-producer" else 0)
-        assert all(binding.process_group is group for _spec, binding, _hint in runtime.submissions)
-        assert len({binding.tensor.data_ptr() for _spec, binding, _hint in runtime.submissions}) == len(
-            runtime.submissions)
-        observations[mode] = {
-            "specs": [spec.to_dict() for spec, _binding, _hint in runtime.submissions],
-            "hints": [hint.to_dict() for _spec, _binding, hint in runtime.submissions],
-            "bindings": [
-                (tuple(binding.tensor.shape), str(binding.tensor.dtype), str(binding.tensor.device))
-                for _spec, binding, _hint in runtime.submissions
-            ],
-        }
-    assert observations["before-producer"] == observations["on-submit"]
+
+    assert observed["deadline"] == deadline

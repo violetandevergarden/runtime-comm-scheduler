@@ -8,6 +8,7 @@ from graphlib import CycleError, TopologicalSorter
 from typing import Any, Mapping
 
 from runtime_comm_scheduler.runtime import CollectiveSpec, GroupSpec, TaskHint, TaskSpec
+from runtime_comm_scheduler.runtime.policy import ltf_score
 
 
 @dataclass(frozen=True)
@@ -240,7 +241,13 @@ def build_static_order(graph: DagGraph, policy: str, *,
         else:
             comm_ready = (qid for qid in ready if isinstance(node_by_id[qid], CommNode))
             if policy == "static_ltf":
-                current = min(comm_ready, key=lambda qid: (-tails[qid], node_order[qid], qid))
+                current = min(
+                    comm_ready,
+                    key=lambda qid: (
+                        -ltf_score(node_by_id[qid].estimated_comm_s, tails[qid]),
+                        node_order[qid], qid,
+                    ),
+                )
             else:
                 current = min(comm_ready, key=lambda qid: (node_order[qid], qid))
             ready.remove(current)

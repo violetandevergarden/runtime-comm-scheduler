@@ -5,7 +5,7 @@ rank-local bindings never cross the coordinator boundary.
 """
 
 from .coordinator import CoordinatorState, CoordinatorError
-from .executor import DirectExecutor, WorkIsCompletedProbe
+from .executor import CudaCollectiveExecutor, DirectExecutor, WorkIsCompletedProbe
 from .handle import RuntimeHandle, HandleState
 from .model import (
     CollectiveSpec,
@@ -41,6 +41,7 @@ __all__ = [
     "CollectiveSpec",
     "CoordinatorError",
     "CoordinatorState",
+    "CudaCollectiveExecutor",
     "DirectExecutor",
     "Dispatch",
     "EventLog",

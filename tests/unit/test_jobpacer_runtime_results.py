@@ -82,6 +82,23 @@ def test_expected_dag_results_and_validation_cover_tasks_nodes_members_and_launc
                                 expected_nodes=expected_data["expected_nodes"], digests={"known"})["status"] == "failed"
 
 
+def test_non_coordinator_engines_validate_launch_projection_without_grant_records():
+    dag = load_dag(ROOT / "benchmark/phase3/experiments/dag-semantics/smoke/linear.json", world_size=2)
+    expected_data, results = _valid_results(dag.graph, 2)
+    for result in results:
+        result["comm_engine"] = "old"
+        result["grant_sequence"] = []
+        result["decision_records"] = []
+    validation = validate_results(
+        results, 2, expected=expected_data["expected"],
+        expected_nodes=expected_data["expected_nodes"], digests={"known"},
+    )
+    assert validation["status"] == "ok"
+    assert validation["rank_task_sequences"] == [
+        tuple(item["launch_sequence"]) for item in results
+    ]
+
+
 def test_metrics_label_coordinator_epoch_duration_and_prediction_time_anchor():
     task_id = "job/comm"
     results = [{

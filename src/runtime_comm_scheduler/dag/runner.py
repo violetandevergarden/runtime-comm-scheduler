@@ -39,6 +39,7 @@ class DagRunner:
                  make_binding: Callable[[CommNode], LocalBinding],
                  deadline: float, poll_interval: float = 0.001,
                  tails: Mapping[str, float] | None = None,
+                 submit_after: Mapping[str, tuple[str, ...]] | None = None,
                  enable_lookahead: bool = False,
                  stop_event: threading.Event | None = None,
                  event_log: EventLog | None = None) -> None:
@@ -51,6 +52,7 @@ class DagRunner:
         self.compute_fn, self.make_binding = compute_fn, make_binding
         self.deadline, self.poll_interval = deadline, poll_interval
         self.enable_lookahead = enable_lookahead
+        self.submit_after = {key: tuple(value) for key, value in (submit_after or {}).items()}
         self.stop_event = stop_event or threading.Event()
         self.event_log = event_log or EventLog("dag", rank)
         self.tails = tails if tails is not None else compute_tails(graph)
@@ -61,14 +63,17 @@ class DagRunner:
         for node in job.nodes:
             for dep in node.deps:
                 self.successors[dep].append(node.node_id)
-        self.future: concurrent.futures.Future[None] | None = None
+        self.future: concurrent.futures.Future[Any] | None = None
         self.compute_node: ComputeNode | None = None
+        self.compute_receipt: Any | None = None
+        self._compute_result_collected = False
         self.compute_started: dict[str, int] = {}
         self.handles: dict[str, Any] = {}
         self.bindings: dict[str, LocalBinding] = {}
         self.declared: set[str] = set()
         self.failed_node: str | None = None
         self._node_key = {node.node_id: index for index, node in enumerate(job.nodes)}
+        self._validate_submit_after()
 
     @property
     def completed_node_ids(self) -> tuple[str, ...]:
@@ -105,7 +110,9 @@ class DagRunner:
                     progressed = True
                 if self.future is None:
                     ready_compute = [node for node in self.job.nodes
-                                     if isinstance(node, ComputeNode) and self.states[node.node_id] is NodeState.READY]
+                                     if isinstance(node, ComputeNode)
+                                     and self.states[node.node_id] is NodeState.READY
+                                     and self._submit_gate_open(node)]
                     if ready_compute:
                         node = min(ready_compute, key=lambda item: self._node_key[item.node_id])
                         self.compute_node = node
@@ -162,10 +169,36 @@ class DagRunner:
         if future is None or node is None or not future.done():
             return False
         self.failed_node = node.node_id
-        future.result()
+        if not self._compute_result_collected:
+            receipt = future.result()
+            if receipt is not None and not callable(getattr(receipt, "is_completed", None)):
+                raise TypeError("compute result must be None or provide is_completed()")
+            self.compute_receipt = receipt
+            self._compute_result_collected = True
+            self.event_log.record(
+                "compute_submitted" if receipt is not None else "compute_callable_returned",
+                job_id=self.job.job_id, node_id=node.node_id,
+                completion_source=(getattr(receipt, "completion_source", "device_receipt")
+                                  if receipt is not None else "cpu_callable_return"),
+            )
+        receipt = self.compute_receipt
+        if receipt is not None:
+            if not bool(receipt.is_completed()):
+                self.failed_node = None
+                return False
+            is_success = getattr(receipt, "is_success", None)
+            if callable(is_success) and not bool(is_success()):
+                raise RuntimeError("device compute reported an unsuccessful completion")
         self.failed_node = None
-        self.event_log.record("compute_completed", job_id=self.job.job_id, node_id=node.node_id)
+        source = (getattr(receipt, "completion_source", "device_receipt")
+                  if receipt is not None else "cpu_callable_return")
+        elapsed = getattr(receipt, "elapsed_ms", None) if receipt is not None else None
+        self.event_log.record("compute_completed", job_id=self.job.job_id, node_id=node.node_id,
+                              completion_source=source,
+                              device_elapsed_ms=(float(elapsed()) if callable(elapsed) else None))
         self.future, self.compute_node = None, None
+        self.compute_receipt = None
+        self._compute_result_collected = False
         self._complete(node.node_id)
         return True
 
@@ -188,6 +221,28 @@ class DagRunner:
 
     def _ready_comms(self) -> list[CommNode]:
         return [node for node in self.job.nodes if isinstance(node, CommNode) and self.states[node.node_id] is NodeState.READY]
+
+    def _validate_submit_after(self) -> None:
+        node_by_id = self.node_by_id
+        for compute_id, comm_ids in self.submit_after.items():
+            compute = node_by_id.get(compute_id)
+            if not isinstance(compute, ComputeNode):
+                raise ValueError(f"submit_after key {compute_id!r} is not a compute node in {self.job.job_id}")
+            if len(comm_ids) != len(set(comm_ids)):
+                raise ValueError(f"submit_after for {compute_id} contains duplicate communication nodes")
+            for comm_id in comm_ids:
+                if not isinstance(node_by_id.get(comm_id), CommNode):
+                    raise ValueError(f"submit_after for {compute_id} references unknown comm node {comm_id!r}")
+
+    def _submit_gate_open(self, node: ComputeNode) -> bool:
+        required = self.submit_after.get(node.node_id, ())
+        missing = [comm_id for comm_id in required if comm_id not in self.handles]
+        if missing:
+            return False
+        if required:
+            self.event_log.record("compute_submit_gate_open", job_id=self.job.job_id,
+                                  node_id=node.node_id, submitted_comm_nodes=list(required))
+        return True
 
     def _declare_safe_frontier(self) -> bool:
         changed = False

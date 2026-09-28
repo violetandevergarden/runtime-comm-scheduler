@@ -46,8 +46,9 @@ def validate_results(results: list[dict[str, Any]], world_size: int, *,
         rank = int(result.get("rank", -1))
         grants = tuple(result.get("grant_sequence", ()))
         launches = tuple(result.get("launch_sequence", ()))
-        rank_task_sequences.append(grants)
-        if grants != launches:
+        engine = result.get("comm_engine", "new")
+        rank_task_sequences.append(grants if engine == "new" else launches)
+        if engine == "new" and grants != launches:
             errors.append(f"rank {rank} grant/launch projection mismatch")
         if result.get("status") != "ok":
             errors.append(f"rank {rank} status is {result.get('status')!r}")
@@ -110,6 +111,10 @@ def validate_results(results: list[dict[str, Any]], world_size: int, *,
     coordinator_records = next((result.get("decision_records", []) for result in results
                                 if result.get("decision_records")), [])
     coordinator_rank = by_rank.get(0, {})
+    engines = {result.get("comm_engine", "new") for result in results}
+    if len(engines) > 1:
+        errors.append(f"communication engine differs across ranks: {sorted(engines)}")
+    engine = next(iter(engines), "new")
     protocol_counts = coordinator_rank.get("protocol_transition_counts")
     if protocol_counts is not None:
         expected_reports = sum(
@@ -125,9 +130,9 @@ def validate_results(results: list[dict[str, Any]], world_size: int, *,
     dispatches = {item.get("task_id") for item in coordinator_records
                   if item.get("kind") == "decision" and item.get("decision") == "dispatch"}
     expected_global = set(expected.get("__all__", {}))
-    if not coordinator_records:
+    if engine == "new" and not coordinator_records:
         errors.append("coordinator decision records are missing")
-    elif dispatches != expected_global:
+    elif engine == "new" and dispatches != expected_global:
         errors.append(f"coordinator dispatch task set mismatch: missing={sorted(expected_global - dispatches)}, extra={sorted(dispatches - expected_global)}")
     if actual_task_ids != expected_global:
         errors.append(f"global task result set mismatch: missing={sorted(expected_global - actual_task_ids)}, extra={sorted(actual_task_ids - expected_global)}")

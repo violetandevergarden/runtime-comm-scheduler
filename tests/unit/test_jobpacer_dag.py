@@ -23,7 +23,8 @@ from runtime_comm_scheduler.dag import (
     validate_graph,
     validate_static_order,
 )
-from runtime_comm_scheduler.runtime import CollectiveSpec, CoordinatorState, GroupSpec, TaskHint
+from runtime_comm_scheduler.runtime import Candidate, CollectiveSpec, CoordinatorState, GroupSpec, TaskHint
+from runtime_comm_scheduler.runtime.policy import select_ltf
 from runtime_comm_scheduler.dag.model import compute_tails
 from runtime_comm_scheduler.dag import runner as runner_module
 from examples.jobpacer.runtime.runtime_adapter import load_dag, parse_dag, sample_compute_duration
@@ -97,6 +98,45 @@ def test_tail_uses_successor_duration_and_excludes_current_communication():
     assert tails["job/first"] == pytest.approx(0.014)
     assert tails["job/middle"] == pytest.approx(0.011)
     assert tails["job/last"] == 0
+
+
+def test_static_and_dynamic_dag_ltf_rank_the_same_comm_plus_tail_scores():
+    groups = [
+        {"group_id": "g-a", "ranks": [0, 1]},
+        {"group_id": "g-b", "ranks": [0, 1]},
+    ]
+    jobs = [
+        {"job_id": "job-a", "nodes": [
+            _compute("root-a"),
+            _comm("comm-a", 0, ["root-a"], group="g-a", estimated=0.001),
+            _compute("tail-a", ["comm-a"], 0.001),
+        ]},
+        {"job_id": "job-b", "nodes": [
+            _compute("root-b"),
+            _comm("comm-b", 0, ["root-b"], group="g-b", estimated=0.003),
+        ]},
+    ]
+    graph = parse_dag(_payload(
+        [], groups=groups, jobs=jobs,
+        execution={"job-a/root-a": 0.0, "job-a/tail-a": 0.001,
+                   "job-b/root-b": 0.0},
+    )).graph
+    tails = compute_tails(graph)
+    comms = {
+        f"{job.job_id}/{node.node_id}": node
+        for job in graph.jobs for node in job.nodes if isinstance(node, CommNode)
+    }
+    candidates = (
+        Candidate("job-a/comm-a", comms["job-a/comm-a"].estimated_comm_s,
+                  tails["job-a/comm-a"], 1),
+        Candidate("job-b/comm-b", comms["job-b/comm-b"].estimated_comm_s,
+                  tails["job-b/comm-b"], 2),
+    )
+
+    assert tails["job-a/comm-a"] == pytest.approx(0.001)
+    assert tails["job-b/comm-b"] == 0
+    assert select_ltf(candidates).task_id == "job-b/comm-b"
+    assert build_static_order(graph, "static_ltf", tails=tails)[0] == "job-b/comm-b"
 
 
 @pytest.mark.parametrize(("policy", "expected"), [
@@ -382,6 +422,40 @@ def test_chain_only_unblocks_after_handle_completion():
     assert runner.completed_node_ids == ("root", "first", "next", "last")
 
 
+def test_submit_after_opens_compute_after_handle_acceptance_before_comm_completion():
+    runtime = _Runtime()
+    slow_compute_started = threading.Event()
+    release_slow_compute = threading.Event()
+    independent_started = threading.Event()
+    raw = _payload([
+        _compute("producer"), _compute("slow", seconds=0.0),
+        _comm("comm", 0, ["slow"]), _compute("independent", ["producer"]),
+    ])
+
+    def compute(node, _stop):
+        if node.node_id == "slow":
+            slow_compute_started.set()
+            release_slow_compute.wait(1)
+        elif node.node_id == "independent":
+            independent_started.set()
+
+    runner = _runner(raw, runtime, compute_fn=compute, submit_after={"independent": ("comm",)})
+    thread = threading.Thread(target=runner.run)
+    thread.start()
+    assert slow_compute_started.wait(1)
+    assert not independent_started.is_set()
+    assert not runtime.submitted
+    release_slow_compute.set()
+    _wait_for(lambda: runtime.submitted == ["job/comm"], runtime)
+    assert independent_started.wait(1)
+    assert not runtime.handles["job/comm"].done
+    runtime.complete("job/comm")
+    thread.join(1)
+    assert not thread.is_alive()
+    gate = next(event for event in runner.event_log.events if event["kind"] == "compute_submit_gate_open")
+    assert gate["submitted_comm_nodes"] == ["comm"]
+
+
 def test_fork_offers_every_ready_comm_while_serial_compute_runs_independently():
     runtime = _Runtime()
     compute_started = threading.Event()
@@ -491,3 +565,48 @@ def test_compute_failure_aborts_and_does_not_submit_dependent_communication():
         _runner(raw, runtime, compute_fn=compute).run()
     assert runtime.submitted == []
     assert len(runtime.aborts) == 1
+
+
+def test_device_compute_receipt_must_complete_before_successor_unblocks():
+    runtime = _Runtime()
+    queried = threading.Event()
+    release = threading.Event()
+
+    class Receipt:
+        completion_source = "test_event_query"
+
+        def is_completed(self):
+            queried.set()
+            return release.is_set()
+
+    raw = _payload([_compute("producer"), _comm("comm", 0, ["producer"])])
+    runner = _runner(raw, runtime, compute_fn=lambda _node, _stop: Receipt())
+    thread = threading.Thread(target=runner.run)
+    thread.start()
+    assert queried.wait(1)
+    assert runtime.submitted == []
+    assert runner.states["producer"] is NodeState.RUNNING
+    release.set()
+    _wait_for(lambda: runtime.submitted == ["job/comm"], runtime)
+    runtime.complete("job/comm")
+    thread.join(1)
+    assert not thread.is_alive()
+    event = next(item for item in runner.event_log.events
+                 if item["kind"] == "compute_completed" and item.get("node_id") == "producer")
+    assert event["completion_source"] == "test_event_query"
+
+
+def test_device_compute_query_failure_aborts_without_unblocking_successor():
+    runtime = _Runtime()
+
+    class BrokenReceipt:
+        def is_completed(self):
+            raise RuntimeError("compute event query failed")
+
+    raw = _payload([_compute("producer"), _comm("comm", 0, ["producer"])])
+    runner = _runner(raw, runtime, compute_fn=lambda _node, _stop: BrokenReceipt())
+    with pytest.raises(RuntimeError, match="compute event query failed"):
+        runner.run()
+    assert runtime.submitted == []
+    assert len(runtime.aborts) == 1
+    assert runner.states["producer"] is NodeState.FAILED

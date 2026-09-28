@@ -41,7 +41,20 @@ ARM_SPECS = {
     "new-ltf-poll-0.2ms": ("new", "ltf", False, False),
     "new-static_fifo-minimal": ("new", "static_fifo", False, False),
     "new-static_fifo-diagnostic": ("new", "static_fifo", False, False),
+    # Schema-v2 arms use the shared DAG worker. raw-ordered is an explicit
+    # reference, not the original unconstrained bare baseline.
+    "old-static-fifo": ("old", "static_fifo", True, False, "old"),
+    "old-static-ltf": ("old", "static_ltf", True, False, "old"),
+    "new-static-fifo": ("new", "static_fifo", False, False, "new"),
+    "new-static-ltf": ("new", "static_ltf", False, False, "new"),
+    "new-dynamic-fifo": ("new", "fifo", False, False, "new"),
+    "new-dynamic-ltf": ("new", "ltf", False, False, "new"),
+    "raw-ordered-static-fifo": ("raw-ordered", "static_fifo", False, False, "raw-ordered"),
 }
+DAG_SUPPORTED_ARMS = (
+    "old-static-fifo", "old-static-ltf",
+    "new-static-fifo", "new-static-ltf", "new-dynamic-fifo", "new-dynamic-ltf",
+)
 ARM_BINDING_PREPARATION = {
     "new-ltf-on-ready": "on-ready",
     "new-ltf-precreate": "precreate",
@@ -68,6 +81,11 @@ SOURCE_SNAPSHOT_ROOTS = (
     ROOT / "examples/jobpacer/analysis/runtime_results.py",
     ROOT / "examples/jobpacer/analysis/visualize_phase3.py",
     ROOT / "examples/jobpacer/runtime/runtime_adapter.py",
+    ROOT / "examples/jobpacer/runtime/gpu_workload.py",
+    ROOT / "examples/jobpacer/runtime/gpu_compute.py",
+    ROOT / "examples/jobpacer/runtime/gpu_compute_profile.py",
+    ROOT / "examples/jobpacer/runtime/gpu_dag_resources.py",
+    ROOT / "examples/jobpacer/runtime/dag_comm_adapters.py",
     ROOT / "examples/jobpacer/workloads.py",
     ROOT / "examples/jobpacer/comm_profile.py",
     ROOT / "examples/jobpacer/scripts/run_experiments.py",
@@ -111,10 +129,11 @@ def _command(args: argparse.Namespace, policy: str, epoch: int, output: Path, *,
              poll_interval: float | None = None,
              observation_mode: str = "full",
              completion_wakeup: bool = False,
-             declaration_mode: str | None = None) -> list[str]:
+             declaration_mode: str | None = None,
+             comm_engine: str = "new") -> list[str]:
     source = ("--dag", str(args.dag)) if args.dag else ("--workload", args.workload)
     poll_interval = getattr(args, "poll_interval", 0.001) if poll_interval is None else poll_interval
-    if old:
+    if old and not args.dag:
         command = [sys.executable, str(PHASE1_REPLAY if old_bare else OLD_REPLAY)]
         if not old_bare:
             command.extend(("--mode", "scheduler"))
@@ -140,6 +159,7 @@ def _command(args: argparse.Namespace, policy: str, epoch: int, output: Path, *,
             getattr(args, "binding_preparation", "precreate"),
             "--observation-mode", observation_mode,
             "--output", str(output),
+            "--comm-engine", comm_engine,
         ]
         if declaration_mode is not None:
             command.extend(("--declaration-mode", declaration_mode))
@@ -147,6 +167,8 @@ def _command(args: argparse.Namespace, policy: str, epoch: int, output: Path, *,
             command.append("--wake-completion-on-submit")
     if args.comm_profile:
         command.extend(("--comm-profile", str(args.comm_profile)))
+    if getattr(args, "compute_profile", None):
+        command.extend(("--compute-profile", str(args.compute_profile)))
     if policy == "static_ltf" and args.static_ltf_order:
         command.extend(("--static-order", str(args.static_ltf_order)))
     return command
@@ -470,7 +492,7 @@ def _percentile(values: list[float], fraction: float) -> float:
 
 def _paired_rows(rows: list[dict[str, Any]], *, baseline: str, tie_threshold: float,
                  bootstrap_samples: int, bootstrap_seed: int) -> list[dict[str, Any]]:
-    """Median repeats within seed, then compare policies using paired seed blocks."""
+    """Summarize paired repeats within seed, retaining the legacy summary aliases."""
     successful = [row for row in rows if row["status"] == "ok" and row["makespan_s"] is not None]
     by_arm_block: dict[tuple[str, int, int], float] = {}
     for row in successful:
@@ -479,44 +501,109 @@ def _paired_rows(rows: list[dict[str, Any]], *, baseline: str, tie_threshold: fl
         if key in by_arm_block:
             raise ValueError(f"duplicate performance block {key}")
         by_arm_block[key] = float(row["makespan_s"])
-    arms = sorted({arm for arm, _seed, _repeat in by_arm_block})
+    arms = sorted({row.get("arm") or f"{row['group']}-{row['policy']}" for row in rows})
     all_seeds = sorted({int(row["epoch"]) for row in rows})
+    arm_medians = {}
+    for arm in arms:
+        values = [value for (row_arm, _seed, _repeat), value in by_arm_block.items()
+                  if row_arm == arm]
+        arm_medians[arm] = statistics.median(values) if values else None
     output = []
     for arm in arms:
         if arm == baseline:
             continue
         paired = []
+        paired_repeat_rows: list[dict[str, Any]] = []
         for seed in all_seeds:
             repeats = sorted({repeat for candidate_arm, candidate_seed, repeat in by_arm_block
                               if candidate_seed == seed and candidate_arm in {baseline, arm}})
             common = [repeat for repeat in repeats
                       if (baseline, seed, repeat) in by_arm_block and (arm, seed, repeat) in by_arm_block]
             if common:
+                deltas = [by_arm_block[(arm, seed, repeat)] - by_arm_block[(baseline, seed, repeat)]
+                          for repeat in common]
+                ratios_for_seed = [by_arm_block[(baseline, seed, repeat)] / by_arm_block[(arm, seed, repeat)]
+                                   for repeat in common]
+                paired_repeat_rows.extend({
+                    "seed": seed, "repeat": repeat,
+                    "baseline_s": by_arm_block[(baseline, seed, repeat)],
+                    "candidate_s": by_arm_block[(arm, seed, repeat)],
+                    "delta_s": by_arm_block[(arm, seed, repeat)] - by_arm_block[(baseline, seed, repeat)],
+                    "baseline_over_candidate": by_arm_block[(baseline, seed, repeat)] / by_arm_block[(arm, seed, repeat)],
+                } for repeat in common)
                 paired.append((
                     seed,
                     statistics.median(by_arm_block[(baseline, seed, repeat)] for repeat in common),
                     statistics.median(by_arm_block[(arm, seed, repeat)] for repeat in common),
+                    statistics.median(deltas),
+                    statistics.median(ratios_for_seed),
                 ))
-        ratios = [base / candidate for _seed, base, candidate in paired]
-        differences = [candidate - base for _seed, base, candidate in paired]
-        bootstrap = []
+        # Preserve the historical arm-median difference separately; it is not
+        # the median of paired repeat deltas.
+        legacy_ratios = [base / candidate for _seed, base, candidate, _delta, _ratio in paired]
+        legacy_differences = [candidate - base for _seed, base, candidate, _delta, _ratio in paired]
+        seed_deltas = [delta for _seed, _base, _candidate, delta, _ratio in paired]
+        ratios = [ratio for _seed, _base, _candidate, _delta, ratio in paired]
+        legacy_bootstrap = []
         if paired and bootstrap_samples:
             rng = random.Random(f"{bootstrap_seed}:{baseline}:{arm}")
             for _ in range(bootstrap_samples):
+                sample = [legacy_ratios[rng.randrange(len(legacy_ratios))]
+                          for _index in range(len(legacy_ratios))]
+                legacy_bootstrap.append(statistics.median(sample))
+        paired_ratio_bootstrap = []
+        if paired and bootstrap_samples:
+            rng = random.Random(f"paired-ratio:{bootstrap_seed}:{baseline}:{arm}")
+            for _ in range(bootstrap_samples):
                 sample = [ratios[rng.randrange(len(ratios))] for _index in range(len(ratios))]
-                bootstrap.append(statistics.median(sample))
+                paired_ratio_bootstrap.append(statistics.median(sample))
         output.append({
             "baseline": baseline, "candidate": arm, "paired_seeds": len(paired),
             "missing_seed_blocks": len(all_seeds) - len(paired),
-            "median_difference_s": statistics.median(differences) if differences else None,
-            "median_speedup": statistics.median(ratios) if ratios else None,
-            "p10_speedup": _percentile(ratios, 0.1) if ratios else None,
-            "p90_speedup": _percentile(ratios, 0.9) if ratios else None,
-            "wins": sum(ratio > 1 + tie_threshold for ratio in ratios),
-            "ties": sum(abs(ratio - 1) <= tie_threshold for ratio in ratios),
-            "losses": sum(ratio < 1 - tie_threshold for ratio in ratios),
-            "bootstrap_speedup_low": _percentile(bootstrap, 0.025) if bootstrap else None,
-            "bootstrap_speedup_high": _percentile(bootstrap, 0.975) if bootstrap else None,
+            "successful_repeat_pairs": len(paired_repeat_rows),
+            "baseline_failed_rows": sum(1 for row in rows if row.get("status") != "ok"
+                                         and (row.get("arm") or f"{row['group']}-{row['policy']}") == baseline),
+            "candidate_failed_rows": sum(1 for row in rows if row.get("status") != "ok"
+                                          and (row.get("arm") or f"{row['group']}-{row['policy']}") == arm),
+            "baseline_arm_median": arm_medians.get(baseline),
+            "candidate_arm_median": arm_medians.get(arm),
+            "arm_median_difference": (arm_medians[arm] - arm_medians[baseline]
+                                       if arm_medians.get(arm) is not None
+                                       and arm_medians.get(baseline) is not None else None),
+            "baseline_arm_median_s": arm_medians.get(baseline),
+            "candidate_arm_median_s": arm_medians.get(arm),
+            "arm_median_difference_s": (arm_medians[arm] - arm_medians[baseline]
+                                        if arm_medians.get(arm) is not None
+                                        and arm_medians.get(baseline) is not None else None),
+            "paired_repeat_deltas": paired_repeat_rows,
+            "paired_delta_median_within_seed": [
+                {"seed": seed, "median_delta_s": delta}
+                for seed, _base, _candidate, delta, _ratio in paired
+            ],
+            "seed_block_median_delta_s": statistics.median(seed_deltas) if seed_deltas else None,
+            "seed_block_median_delta": statistics.median(seed_deltas) if seed_deltas else None,
+            "paired_ratio_median_by_seed": [
+                {"seed": seed, "median_baseline_over_candidate": ratio}
+                for seed, _base, _candidate, _delta, ratio in paired
+            ],
+            "paired_ratio": statistics.median(ratios) if ratios else None,
+            "paired_ratio_p10": _percentile(ratios, 0.1) if ratios else None,
+            "paired_ratio_p90": _percentile(ratios, 0.9) if ratios else None,
+            "paired_ratio_bootstrap_ci_low": _percentile(paired_ratio_bootstrap, 0.025)
+                if paired_ratio_bootstrap else None,
+            "paired_ratio_bootstrap_ci_high": _percentile(paired_ratio_bootstrap, 0.975)
+                if paired_ratio_bootstrap else None,
+            # Historical fields retain their old estimator and are aliases only.
+            "median_difference_s": statistics.median(legacy_differences) if legacy_differences else None,
+            "median_speedup": statistics.median(legacy_ratios) if legacy_ratios else None,
+            "legacy_median_difference_s": statistics.median(legacy_differences) if legacy_differences else None,
+            "p10_speedup": _percentile(legacy_ratios, 0.1) if legacy_ratios else None,
+            "p90_speedup": _percentile(legacy_ratios, 0.9) if legacy_ratios else None,
+            "wins": sum(ratio > 1 + tie_threshold for ratio in legacy_ratios),
+            "ties": sum(abs(ratio - 1) <= tie_threshold for ratio in legacy_ratios),
+            "losses": sum(ratio < 1 - tie_threshold for ratio in legacy_ratios),
+            "bootstrap_speedup_low": _percentile(legacy_bootstrap, 0.025) if legacy_bootstrap else None,
+            "bootstrap_speedup_high": _percentile(legacy_bootstrap, 0.975) if legacy_bootstrap else None,
         })
     return output
 
@@ -535,7 +622,8 @@ def _mechanism_row(record: dict[str, Any], result: dict[str, Any] | None) -> dic
         if item.get("kind") == "offer":
             offers.setdefault(item["task_id"], []).append(float(item["now"]))
     max_offer_spread = max((max(times) - min(times) for times in offers.values() if len(times) > 1), default=0.0)
-    workload_name = Path(str(record["config"]["workload"])).stem
+    workload_name = Path(str(record["config"].get("workload")
+                             or record["config"].get("dag") or "unknown")).stem
     policy = record["config"]["policy"]
     max_eligible = max((len(item.get("eligible", [])) for item in snapshots), default=0)
     waits = sum(item.get("decision") == "wait" for item in decisions)
@@ -666,12 +754,26 @@ def _selected_arms(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
             parser.error("--arms and --include-old cannot be combined")
         names = tuple(part.strip() for part in args.arms.split(","))
     else:
-        names = tuple(ARM_SPECS) if args.include_old else tuple(
-            name for name in ARM_SPECS if name.startswith("new-"))
+        if args.dag:
+            names = DAG_SUPPORTED_ARMS
+        else:
+            names = tuple(ARM_SPECS) if args.include_old else tuple(
+                name for name in ARM_SPECS if name.startswith("new-")
+                and name not in {"new-static-fifo", "new-static-ltf", "new-dynamic-fifo", "new-dynamic-ltf"})
     if not names or any(name not in ARM_SPECS for name in names) or len(names) != len(set(names)):
         parser.error("--arms must be unique comma-separated names from: " + ", ".join(ARM_SPECS))
-    if args.dag and any(name.startswith("old-") for name in names):
-        parser.error("old Phase 1/2 arms require a linear workload")
+    if args.dag:
+        invalid = [name for name in names if name not in DAG_SUPPORTED_ARMS
+                   and name != "raw-ordered-static-fifo"]
+        if invalid:
+            parser.error("schema-v2 DAG batches support: " + ", ".join(DAG_SUPPORTED_ARMS)
+                         + "; raw-ordered-static-fifo is an explicit non-bare reference")
+        if args.backend != "nccl":
+            parser.error("schema-v2 GPU DAG batches require --backend nccl")
+    baseline = args.baseline
+    if args.dag and baseline == "new-static_fifo" and baseline not in names:
+        baseline = "new-static-fifo"
+    args.baseline = baseline
     if args.baseline not in names or any(name not in names for name in args.secondary_baseline):
         parser.error("baseline and secondary baselines must be selected arms")
     return names
@@ -686,14 +788,18 @@ def _plan(epochs: tuple[int, ...], repeats: int, arms: tuple[str, ...], order_se
             ordered = list(arms)
             random.Random(order_seed + epoch * 1_000_003 + repeat).shuffle(ordered)
             for arm in ordered:
-                group, policy, old, old_bare = ARM_SPECS[arm]
-                effective_binding = ("legacy_tensor_precreated" if old else
+                spec = ARM_SPECS[arm]
+                group, policy, old, old_bare = spec[:4]
+                comm_engine = spec[4] if len(spec) > 4 else ("old" if old else "new")
+                effective_binding = (binding_preparation if len(spec) > 4 else
+                                     "legacy_tensor_precreated" if old else
                                      ARM_BINDING_PREPARATION.get(arm, binding_preparation))
                 effective_poll = ARM_POLL_INTERVAL.get(arm, poll_interval)
                 effective_observation = ARM_OBSERVATION_MODE.get(arm, observation_mode)
                 plan.append({"run_id": f"{len(plan) + 1:04d}-{arm}-e{epoch}-r{repeat}",
                              "arm": arm, "group": group, "policy": policy,
                              "old": old, "old_bare": old_bare,
+                             "comm_engine": comm_engine,
                              "binding_preparation": effective_binding,
                              "observation_mode": effective_observation,
                              "poll_interval": effective_poll,
@@ -742,6 +848,8 @@ def _successful_record(record: dict[str, Any] | None, planned: dict[str, Any]) -
             or (planned.get("arm") is not None and record.get("arm") != planned["arm"])
             or record.get("group") != planned["group"]
             or config.get("policy") != planned["policy"] or config.get("epoch") != planned["epoch"]
+            or config.get("comm_engine", "old" if planned.get("old") else "new")
+            != planned.get("comm_engine", "old" if planned.get("old") else "new")
             or config.get("repeat") != planned["repeat"]
             or (planned.get("binding_preparation") is not None
                 and config.get("binding_preparation") != planned["binding_preparation"])
@@ -762,6 +870,8 @@ def _successful_record(record: dict[str, Any] | None, planned: dict[str, Any]) -
     return bool(result and result.get("validation", {}).get("status") == "ok"
                 and result_config.get("policy") == planned["policy"]
                 and result_config.get("epoch") == planned["epoch"]
+                and result_config.get("comm_engine", "old" if planned.get("old") else "new")
+                == planned.get("comm_engine", "old" if planned.get("old") else "new")
                 and (planned.get("old", False)
                      or planned.get("binding_preparation") is None
                      or result_config.get("binding_preparation") == planned["binding_preparation"])
@@ -826,10 +936,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--warmup-iterations", type=int, default=1)
     parser.add_argument("--comm-profile", type=Path)
+    parser.add_argument("--compute-profile", type=Path,
+                        help="shared GPU DAG compute profile required by LTF arms")
     parser.add_argument("--static-ltf-order", type=Path,
                         help="explicit DAG order for the static_ltf arm; static_fifo remains unchanged")
     parser.add_argument("--include-old", action="store_true")
-    parser.add_argument("--arms", help="comma-separated arm names; overrides the legacy five/eight-arm default")
+    parser.add_argument("--arms", help=(
+        "comma-separated arm names; schema-v2 DAG defaults to six supported configurations; "
+        "raw-ordered-static-fifo is an explicit non-bare reference"
+    ))
     parser.add_argument("--preview", action="store_true", help="show count and estimated wall time without writing")
     parser.add_argument("--resume", action="store_true", help="continue an identical batch in its output directory")
     parser.add_argument("--history-summary", type=Path, action="append", default=[],
@@ -865,6 +980,8 @@ def main(argv: list[str] | None = None) -> int:
         args.static_ltf_order = resolve_migrated_path(repository_path(args.static_ltf_order), MIGRATION_MAP)
     if args.comm_profile:
         args.comm_profile = resolve_migrated_path(repository_path(args.comm_profile), MIGRATION_MAP)
+    if args.compute_profile:
+        args.compute_profile = repository_path(args.compute_profile).resolve(strict=True)
     args.output_dir = repository_path(args.output_dir)
     args.history_summary = [repository_path(path) for path in args.history_summary]
     if (source_path.exists() and is_formal_experiment_input(source_path, FORMAL_INPUT_ROOT)
@@ -876,7 +993,8 @@ def main(argv: list[str] | None = None) -> int:
         from examples.jobpacer.runtime.runtime_adapter import load_dag, load_static_order
         try:
             args.static_ltf_order = args.static_ltf_order.resolve(strict=True)
-            load_static_order(args.static_ltf_order, load_dag(args.dag, world_size=args.world_size).graph)
+            loaded_dag = load_dag(args.dag, world_size=args.world_size)
+            load_static_order(args.static_ltf_order, loaded_dag.graph)
         except (OSError, ValueError) as exc:
             parser.error(str(exc))
     args.isolated_jobs = [resolve_migrated_path(repository_path(path), MIGRATION_MAP)
@@ -887,6 +1005,18 @@ def main(argv: list[str] | None = None) -> int:
     if len(set(epochs)) != len(epochs):
         parser.error("--seeds must not contain duplicates")
     arms = _selected_arms(args, parser)
+    if args.dag:
+        from examples.jobpacer.runtime.runtime_adapter import load_dag
+        try:
+            dag_input = load_dag(args.dag, world_size=args.world_size)
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+        if dag_input.execution.schema_version != 2:
+            parser.error("common DAG batch arms require schema_version=2")
+        if any(ARM_SPECS[name][1] in {"static_ltf", "ltf"} for name in arms) and not args.compute_profile:
+            parser.error("schema-v2 LTF arms require --compute-profile")
+        if args.compute_profile and not args.compute_profile.is_file():
+            parser.error(f"compute profile does not exist: {args.compute_profile}")
     plan = _plan(epochs, args.repeats, arms, args.order_seed,
                  args.binding_preparation, args.poll_interval, args.observation_mode)
 
@@ -911,6 +1041,7 @@ def main(argv: list[str] | None = None) -> int:
         } for item in plan[:len(arms)]},
         "baseline": args.baseline, "secondary_baselines": args.secondary_baseline,
         "timeout": args.timeout, "comm_profile": str(args.comm_profile) if args.comm_profile else None,
+        "compute_profile": str(args.compute_profile) if args.compute_profile else None,
         "warmup_iterations": args.warmup_iterations,
         "static_ltf_order": str(args.static_ltf_order) if args.static_ltf_order else None,
         "isolated_jobs": [str(path) for path in args.isolated_jobs],
@@ -936,6 +1067,8 @@ def main(argv: list[str] | None = None) -> int:
         "config": config_snapshot,
         "profile_digest": hashlib.sha256(args.comm_profile.read_bytes()).hexdigest()
         if args.comm_profile else None,
+        "compute_profile_digest": hashlib.sha256(args.compute_profile.read_bytes()).hexdigest()
+        if args.compute_profile else None,
         "workload_digest": hashlib.sha256(source_path.read_bytes()).hexdigest()
         if source_path.is_file() else None,
         "static_order_digest": hashlib.sha256(args.static_ltf_order.read_bytes()).hexdigest()
@@ -948,7 +1081,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.resume and output_dir.exists():
         if not existing_manifest or existing_manifest.get("schema_version") != 5:
             parser.error("resume requires a schema-5 batch manifest")
-        for key in ("config", "profile_digest", "workload_digest", "static_order_digest",
+        for key in ("config", "profile_digest", "compute_profile_digest", "workload_digest", "static_order_digest",
                     "environment", "git_head", "source_snapshot"):
             if json.dumps(existing_manifest.get(key), sort_keys=True) != json.dumps(manifest.get(key), sort_keys=True):
                 parser.error(f"resume rejected: {key} changed")
@@ -959,6 +1092,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("resume rejected: saved batch configuration changed")
         snapshots = [
             ("comm-profile.json", manifest["profile_digest"]) if args.comm_profile else None,
+            ("compute-profile.json", manifest["compute_profile_digest"]) if args.compute_profile else None,
             (source_path.name, manifest["workload_digest"]) if source_path.is_file() else None,
             (args.static_ltf_order.name, manifest["static_order_digest"]) if args.static_ltf_order else None,
         ]
@@ -1003,6 +1137,8 @@ def main(argv: list[str] | None = None) -> int:
         (output_dir / "inputs" / "batch-config.json").write_text(json.dumps(config_snapshot, indent=2) + "\n")
         if args.comm_profile:
             (output_dir / "inputs" / "comm-profile.json").write_bytes(args.comm_profile.read_bytes())
+        if args.compute_profile:
+            (output_dir / "inputs" / "compute-profile.json").write_bytes(args.compute_profile.read_bytes())
         if source_path.is_file():
             (output_dir / "inputs" / source_path.name).write_bytes(source_path.read_bytes())
         if args.static_ltf_order:
@@ -1029,7 +1165,8 @@ def main(argv: list[str] | None = None) -> int:
                                old=item["old"], old_bare=item["old_bare"],
                                binding_preparation=item["binding_preparation"],
                                poll_interval=item["poll_interval"],
-                               observation_mode=item["observation_mode"])
+                               observation_mode=item["observation_mode"],
+                               comm_engine=item["comm_engine"])
             started = time.time()
             started_at = datetime.fromtimestamp(started, timezone.utc).isoformat()
             try:
@@ -1055,6 +1192,8 @@ def main(argv: list[str] | None = None) -> int:
                            "observation_mode": item["observation_mode"],
                            "poll_interval_s": item["poll_interval"],
                            "workload": args.workload or str(args.dag),
+                           "dag": str(args.dag) if args.dag else None,
+                           "comm_engine": item["comm_engine"],
                            "epoch": item["epoch"], "repeat": item["repeat"],
                            "compute_jitter": args.compute_jitter, "order_seed": args.order_seed,
                            "block_order": item["block_order"]},

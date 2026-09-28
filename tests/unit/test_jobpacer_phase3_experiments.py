@@ -115,8 +115,27 @@ def test_seed_pairing_uses_repeat_medians_and_reports_missing_blocks():
     assert len(paired) == 1
     assert paired[0]["paired_seeds"] == 2
     assert paired[0]["median_difference_s"] == pytest.approx(-2.0)
+    assert paired[0]["seed_block_median_delta_s"] == pytest.approx(-2.0)
+    assert paired[0]["paired_ratio"] == pytest.approx(1.1652777777777779)
     assert paired[0]["wins"] == 2
     assert paired[0]["missing_seed_blocks"] == 0
+
+
+def test_primary_estimator_is_median_of_paired_repeat_deltas_not_arm_medians():
+    rows = []
+    for policy, values in {"static_fifo": (1.0, 100.0, 101.0),
+                           "fifo": (2.0, 3.0, 102.0)}.items():
+        for repeat, value in enumerate(values):
+            rows.append({"group": "new", "policy": policy, "epoch": 1,
+                         "repeat": repeat, "status": "ok", "makespan_s": value})
+    paired = _paired_rows(rows, baseline="new-static_fifo", tie_threshold=0.01,
+                          bootstrap_samples=0, bootstrap_seed=7)[0]
+    assert paired["arm_median_difference_s"] == pytest.approx(-97.0)
+    assert paired["median_difference_s"] == pytest.approx(-97.0)  # retained historical alias
+    assert paired["paired_delta_median_within_seed"] == [
+        {"seed": 1, "median_delta_s": 1.0},
+    ]
+    assert paired["seed_block_median_delta_s"] == pytest.approx(1.0)
 
 
 def test_seed_pairing_never_combines_different_successful_repeats():
@@ -163,6 +182,30 @@ def test_binding_and_poll_arms_are_paired_inside_randomized_blocks():
         assert {item["observation_mode"] for item in block} == {"minimal", "diagnostic"}
         assert len({tuple(item["block_order"]) for item in block}) == 1
         assert {item["binding_preparation"] for item in block} == {"precreate"}
+
+
+def test_schema_v2_dag_arms_share_runtime_worker_and_keep_raw_ordered_explicit():
+    arms = experiment_batch.DAG_SUPPORTED_ARMS
+    planned = experiment_batch._plan((91,), 1, arms, 13)
+    assert {item["comm_engine"] for item in planned} == {"old", "new"}
+    assert len(planned) == 6
+    raw = experiment_batch._plan((91,), 1, ("raw-ordered-static-fifo",), 13)[0]
+    assert raw["comm_engine"] == "raw-ordered"
+    assert raw["arm"] not in arms
+
+    args = Namespace(
+        dag="fork-join.json", workload=None, backend="nccl", world_size=2,
+        compute_jitter=0.0, wait_budget_s=0.02, poll_interval=0.001,
+        timeout=45, warmup_iterations=1, binding_preparation="precreate",
+        comm_profile="comm.json", compute_profile="compute.json",
+        static_ltf_order=None,
+    )
+    command = _command(args, "static_fifo", 91, Path("old.json"), old=True,
+                       comm_engine="old")
+    assert str(experiment_batch.RUNTIME_REPLAY) in command
+    assert command[command.index("--comm-engine") + 1] == "old"
+    assert command[command.index("--dag") + 1] == "fork-join.json"
+    assert command[command.index("--compute-profile") + 1] == "compute.json"
 
     workloads = {"4KiB-32x": Path("4k.json"), "1MiB-32x": Path("1m.json")}
     control = control_path_batch._plan(6200, 5, 91, workloads)

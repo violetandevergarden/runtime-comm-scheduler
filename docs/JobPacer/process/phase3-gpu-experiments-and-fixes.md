@@ -1,10 +1,10 @@
 # Phase 3 GPU 实验与现有问题修复：详细实施方案
 
-日期：2026-09-26。状态：**待实施，本文不是修复完成或 GPU 验收记录。**
+初稿日期：2026-09-26。执行状态更新：2026-09-27。实际结果见[GPU 实验执行报告](../result/phase3-gpu-20260927.md)。当前仍有部分 gate 未完成，详见第 14 节。
 
 依据：[Phase 1–3 总结与 GPU 准备](../result/phase1-3-summary-and-gpu-readiness-20260926.md)、[设计讨论](../plan/discussion.md)、[Phase 3.1 协议与验收要求](../plan/phase3.1.md)、[Phase 3.2 DAG 计划](../plan/phase3.2.md)、[CPU A–F 结果](../result/phase3-runtime-overhead-20260924.md)。按本次要求将修复和实验的执行细节集中放在 `process/`；不改写历史结果。
 
-本文中的新类、CLI 参数、测试文件、输入和阶段命令均为**拟实现接口**，除明确标注的现有命令外，不表示已存在。后续实施必须更新完成清单并记录实际接口、命令、环境和结果路径。
+本文初稿中标为拟实现的接口已在本轮陆续实现。哪些实现和实验已验收、哪些仍缺项，以第 14 节及执行报告为准；初稿中的范围和设计约束继续适用。
 
 ## 1. 目标、范围与执行顺序
 
@@ -210,6 +210,10 @@ tail_v2(i) = max(u_i - c_i, 0)
 5. 输出 estimator version、逐 task c/u/tail 和静态序列；Lookahead 使用新 tail 后重跑确定性选择/截止测试。
 
 测试至少覆盖 u<c、u=c、u>c、多后继、零时长、不同 payload、固定 tie-break、静态/动态相同候选 tail 一致，以及构造一个旧公式/新公式顺序不同的样例。历史 LTF 数据不回写；修复后 CPU 小回归和 GPU 新批次分开标版本。
+
+#### 2026-09-28 评分合同修正
+
+上面的初始 R6 建议把 `linear-postcompletion-tail-v2` 作为评分版本，并允许 DAG 继续仅按 tail 排序；该区别已由后续统一合同取代。DAG 的 `remaining_tail_s` 明确定义为当前节点完成后的后继路径，因此它不含当前通信；线性和 DAG 的 LTF、Lookahead 前沿及 Static LTF 现统一评分为 `estimated_comm_s + remaining_tail_s`。公式固定在策略实现中，不作为 TaskHint、Candidate 或 Anticipated 的字段。此前批次仍按各自源码中的评分解释，历史 JSON 与 LTF 顺序不重写。
 
 ### 3.7 R7：统计与报告修复
 
@@ -508,22 +512,22 @@ benchmark/phase3/
 
 ## 12. 执行完成清单
 
-- [ ] R0：环境、源码快照与 H/S/ready 合同冻结。
-- [ ] R1：新 CUDA executor 与本地执行回执。
-- [ ] R2：wait_on 目标 stream、超时、失败及完成后调用语义。
-- [ ] R3：物理完成、SUBMITTED 边界、生命周期与有界失败。
-- [ ] R4：precreate/init/warmup、旧新 H/S 计时与 deferred validation。
-- [ ] R5：设备映射、profile 同步修复、多 group/raw 资格判定。
-- [ ] R6：新 LTF tail v2 统一，旧历史评分不变。
-- [ ] R7：统计字段、block 配对、失败样本及报告勘误。
-- [ ] C0：CPU 全仓和真实 Gloo 回归，记录 skipped。
-- [ ] G0：双 GPU/NCCL 全套适用语义/故障项通过。
-- [ ] G1：目标 profile、观测扰动、噪声。
-- [ ] G2：30 次最小通信链及结果解释。
-- [ ] G3：L0/L1 pilot 与 gate 后主矩阵。
-- [ ] R8/G4：真实 GPU compute 与 S lane 探索。
-- [ ] R9/G5：GPU DAG 完成契约与 bridge/diamond。
-- [ ] 结果、源码、输入、原始数据可恢复归档；未验收边界明确。
+- [x] R0：远程环境、设备 UUID、H/S/ready 合同和当前源码归档已记录。
+- [x] R1：新 CUDA executor 与本地执行回执；双卡路径通过语义测试。
+- [x] R2：wait_on 目标 stream、超时、失败及完成后调用语义通过专项测试。
+- [x] R3：物理完成探测、SUBMITTED 顺序、生命周期和故障边界已实现并覆盖主要路径。
+- [ ] R4：precreate/init/warmup、H/S 终点和 deferred validation 已实现；旧 runtime S lane 已加入并通过双卡对照，同一进程重复 epoch 尚缺。
+- [ ] R5：获准设备映射、profile 与多 group 路径已修复；原始 bare 多 job/multi-group 顺序未验收。
+- [x] R6：新线性 LTF tail v2 已统一，旧历史评分未改写。
+- [x] R7：paired delta/ratio/block 字段、失败保留及当前报告估计量已验证。
+- [ ] C0：真实 Gloo 47/47；全仓 240 passed、48 skipped，另有 3 项缺失历史 fixture 的失败。
+- [ ] G0：双卡 NCCL 语义套件 4/4，主要故障注入通过；断连与同进程重复 epoch 尚未覆盖。
+- [ ] G1：profile 和两组对照已完成；噪声样本未按原设计交错 A/B。
+- [x] G2：三种消息大小各 5 配对，共 30 replay；结果与单 seed 限制已报告。
+- [x] G3：L0/L1 pilot 18 replay、主矩阵 90 replay；机制与净效果分别报告。
+- [x] R8/G4：三臂 S lane 54 个有效 replay 已完成；PyTorch Kineto 诊断捕获每臂双卡 CUDA kernel 时间线。未观察到 new runtime 的可观重叠或相对旧路径的净收益，结论仅为探索性。
+- [x] R9/G5：linear/DAG bridge 6 replay、diamond 6 replay，另有 completion-source diagnostic。
+- [x] 结果、当前源码、patch、profile、原始数据和日志已归档在报告所列远程路径；结果目录被 Git 忽略。
 
 ## 13. 参考语义与本次编写检查范围
 
@@ -531,4 +535,9 @@ benchmark/phase3/
 
 上述官方页面已在前一份总结编写时查阅；本次再次访问网络失败，未据此宣称获得新的版本确认。实施时应保存目标版本信息及相关文档/源码依据。
 
-本次仅新增方案，复核当前 executor、handle、launch/completion、设备启动/profile 和旧 GPU 测试代码；没有修复 R1–R9、没有运行测试或 GPU 实验。特别是 NCCL event completion 路径属于拟实施方案，必须通过 G0 后才成为已支持能力。
+上述文字记录的是 2026-09-26 初稿时的审阅范围和状态。2026-09-27 的实现、命令、实验数据及未完成边界见[Phase 3 GPU 实验执行报告](../result/phase3-gpu-20260927.md)。
+## 14. 2026-09-27 实施执行状态
+
+执行更新以[Phase 3 GPU 实验执行报告](../result/phase3-gpu-20260927.md)为准。R/C0/G0 和性能阶段的具体命令、环境、指标及原始数据目录均在该报告中。复现包、最终 patch 和 SHA-256 清单保存在 benchmark/phase3/results/gpu-readiness/preflight-20260927-c1d5008/inputs。
+
+重要限制：结果目录被 Git 忽略；三项历史路径测试因起始 HEAD 缺少 fixture 而失败；G0 的断连与同进程重复 epoch 仍缺。G1–G3 完成不代表观察到性能提升；G4 的 54 个样本和 PyTorch Kineto overlap 诊断已完成，但没有证明 new runtime 有效重叠或净收益。G5 bridge/diamond 语义批次完成。

@@ -163,6 +163,10 @@ tail(sink) = 0
 
 当前通信自身耗时不计入 tail；并行分支取最大值，不求和。估计固定于本轮输入，不读取本轮未来实际 sleep 或测量完成时间。
 
+LTF 分数为 `estimated_comm_s + remaining_tail_s`，表示从该通信开始的估计剩余关键路径。
+动态 LTF、Lookahead 对 anticipated 前沿的排名和 Static LTF 生成顺序都使用这一固定公式；
+任务 hint 只携带 ready、communication 与 tail 估计。
+
 这是关键路径优先级，不宣称等于精确剩余 JCT：汇合的其他分支可能仍未完成，串行计算通道存在排队，其他 job 会竞争通信。首版不做在线最优剩余时间求解，也不把旧线性 remaining_tail 与新指标混合比较；输出记录 tail 的定义与数值。
 
 ### 6.3 Lookahead 的安全前沿

@@ -1,10 +1,14 @@
-"""Deterministic hand-written workloads used by the JobPacer replay.
+"""Legacy sleep-schema workloads used by the JobPacer replay.
 
 The manifest is deliberately small.  A job is a linear sequence of
 ``CommunicationSpec`` objects.  ``producer_compute_s`` runs before the
 collective is submitted and ``consumer_compute_s`` runs between submission and
 the consumer's ``wait``.  This preserves a useful compute/communication
 overlap window while keeping the dependency graph explicit.
+
+``consumer_compute_s`` is independent post-submit work in this historical
+schema. New fixed CUDA programs use ``runtime.gpu_workload`` and do not map
+these seconds to device work.
 """
 
 from __future__ import annotations

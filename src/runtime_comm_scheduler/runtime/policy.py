@@ -94,8 +94,14 @@ def select_fifo(tasks: tuple[Candidate, ...]) -> Candidate:
 def select_ltf(tasks: tuple[Candidate, ...]) -> Candidate:
     return min(
         tasks,
-        key=lambda task: (-task.remaining_tail_s, task.eligible_seq, task.task_id),
+        key=lambda task: (-ltf_score(task.estimated_comm_s, task.remaining_tail_s),
+                          task.eligible_seq, task.task_id),
     )
+
+
+def ltf_score(estimated_comm_s: float, remaining_tail_s: float) -> float:
+    """Estimate the remaining path from a communication task, including itself."""
+    return estimated_comm_s + remaining_tail_s
 
 
 class StaticPolicy:
@@ -157,15 +163,20 @@ class BoundedLookaheadPolicy:
         anticipated = tuple(task for task in snapshot.anticipated if task.task_id != selected.task_id)
         if not anticipated:
             return Dispatch(selected.task_id, "dynamic_ltf")
-        target = max(anticipated, key=lambda task: (task.remaining_tail_s, task.task_id))
+        target = max(anticipated, key=lambda task: (
+            ltf_score(task.estimated_comm_s, task.remaining_tail_s),
+            task.task_id,
+        ))
         wait_s = max(0.0, target.predicted_ready_at - snapshot.now)
+        selected_score = ltf_score(selected.estimated_comm_s, selected.remaining_tail_s)
+        target_score = ltf_score(target.estimated_comm_s, target.remaining_tail_s)
         dispatch_score = max(
-            selected.estimated_comm_s + selected.remaining_tail_s,
-            selected.estimated_comm_s + target.estimated_comm_s + target.remaining_tail_s,
+            selected_score,
+            selected.estimated_comm_s + target_score,
         )
         wait_score = max(
-            wait_s + target.estimated_comm_s + target.remaining_tail_s,
-            wait_s + target.estimated_comm_s + selected.estimated_comm_s + selected.remaining_tail_s,
+            wait_s + target_score,
+            wait_s + target.estimated_comm_s + selected_score,
         )
         if 0.0 < wait_s <= self._wait_budget_s and wait_score < dispatch_score:
             return Wait(target.task_id, snapshot.now + wait_s)

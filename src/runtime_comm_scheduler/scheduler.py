@@ -224,8 +224,10 @@ class AdmissionScheduler:
                     )
                 self._condition.wait(remaining)
 
-    def close(self) -> None:
+    def close(self, timeout: Optional[float] = 5.0) -> None:
         """Stop admission, fail unbound work, and join the launch worker."""
+        if timeout is not None and timeout < 0:
+            raise ValueError("timeout must be non-negative or None")
         stranded: list[_PendingTask] = []
         with self._condition:
             if self._state is _SchedulerState.CLOSED:
@@ -246,9 +248,9 @@ class AdmissionScheduler:
             self._fail_task(task, closed_error, "shutdown")
 
         if threading.current_thread() is not self._thread:
-            self._thread.join(timeout=5.0)
+            self._thread.join(timeout=timeout)
         if self._thread.is_alive():
-            raise SchedulerError("scheduler worker did not stop within 5 seconds")
+            raise SchedulerError("scheduler worker did not stop within the close timeout")
 
         with self._condition:
             self._state = _SchedulerState.CLOSED

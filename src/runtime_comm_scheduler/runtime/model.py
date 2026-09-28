@@ -157,7 +157,8 @@ class TaskHint:
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "TaskHint":
-        return cls(value.get("ready_after_s"), float(value["estimated_comm_s"]), float(value["remaining_tail_s"]))
+        return cls(value.get("ready_after_s"), float(value["estimated_comm_s"]),
+                   float(value["remaining_tail_s"]))
 
 
 @dataclass
@@ -169,3 +170,4 @@ class LocalBinding:
     producer_event: Any = None
     device: Any = None
     keepalive: tuple[Any, ...] = ()
+    timing_hook: Callable[[str], None] | None = None

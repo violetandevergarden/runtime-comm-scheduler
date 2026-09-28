@@ -408,13 +408,13 @@ Coordinator 使用可注入的 `Clock.monotonic()` 生成 `now`，单元测试�
 
 ### 7.3 DynamicLTF
 
-选择 `(-remaining_tail_s, eligible_seq, task_id)` 最小的候选。remaining tail 的统一定义
+选择 `(-(estimated_comm_s + remaining_tail_s), eligible_seq, task_id)` 最小的候选。remaining tail 的统一定义
 为“当前 collective 完成以后，job 尚余的预计时间”，不包含已经完成的 producer 和
-当前通信。各成员 hint 不一致时使用注册时确定的规范值；首轮实验不在线学习更新。
+当前通信，因此 LTF 分数显式加回当前通信。各成员 hint 不一致时使用注册时确定的规范值；首轮实验不在线学习更新。
 
 ### 7.4 BoundedLookahead
 
-先用 DynamicLTF 得到当前候选 `c`，再从 anticipated frontier 中选 tail 最大且预计在
+先用 DynamicLTF 得到当前候选 `c`，再从 anticipated frontier 中选 `estimated_comm_s + remaining_tail_s` 最大且预计在
 `wait_budget_s` 内到达的目标 `t`。令：
 
 ```text
