@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "name": "phase3-mechanism-pilot",
-  "repeats": 5,
-  "seeds": [0],
-  "linear": ["L0-balanced", "L1-head-misalignment", "L2-tail-asymmetry", "L3-lookahead", "L4-late-prediction", "L5-member-skew"],
-  "dag": ["G0-linear-bridge", "G1-diamond", "G2-multi-frontier", "G3-group-order", "G4-prediction-frontier"],
-  "required": {"backend": "gloo", "world_size": 2, "strict_profile": true, "warmup_iterations": 1}
-}
