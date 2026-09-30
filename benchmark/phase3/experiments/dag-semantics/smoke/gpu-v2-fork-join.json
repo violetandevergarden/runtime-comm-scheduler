@@ -183,6 +183,14 @@
       "job-1/independent": [
         "job-1/comm-input"
       ]
+    },
+    "application_terminals": {
+      "job-0": [
+        "comm-finish"
+      ],
+      "job-1": [
+        "comm-finish"
+      ]
     }
   },
   "groups": [

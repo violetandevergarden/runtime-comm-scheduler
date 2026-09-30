@@ -150,6 +150,13 @@ class _DagBuilder:
                         seqs[group] += 1
                     else:
                         node["group_seq"] = explicit
+        application_terminals = {}
+        for job in self.jobs:
+            referenced = {dependency for node in job["nodes"] for dependency in node["deps"]}
+            application_terminals[job["job_id"]] = sorted(
+                node["node_id"] for node in job["nodes"]
+                if node["node_id"] not in referenced
+            )
         return {
             "schema_version": 2,
             "name": f"gpu-seven-arm-{self.scenario}-{self.sample_id}",
@@ -161,6 +168,7 @@ class _DagBuilder:
                 "compute_model": "one-active-compute-per-job",
                 "buffers": self.buffers, "compute_programs": self.programs,
                 "comm_bindings": self.comm_bindings, "submit_after": self.submit_after,
+                "application_terminals": application_terminals,
                 "profiles": {},
             },
         }
@@ -246,18 +254,12 @@ def make_template(scenario: str) -> dict[str, Any]:
                 builder.fill(job, "sink-a", [previous], output="sink-a-buffer")
                 builder.fill(job, "sink-b", ["join-s0"], output="sink-b-buffer")
     document = builder.document()
-    document["execution"]["profiles"] = {
-        "nominal_compute_repeats": {key: (8 if "producer" in key else program["repeats"])
-                                    for key, program in builder.programs.items()
-                                    if program["op"] == "matmul"},
-        "parameters": params, "design_revision": 0,
-    }
     for job in document["jobs"]:
         for node in job["nodes"]:
             key = f"{job['job_id']}/{node['node_id']}"
-            nominal = document["execution"]["profiles"]["nominal_compute_repeats"].get(key)
-            if nominal is not None:
-                node["estimated_duration_s"] = nominal * 0.00025
+            program = builder.programs.get(key)
+            if program is not None and program["op"] == "matmul":
+                node["estimated_duration_s"] = program["repeats"] * 0.00025
     return document
 
 
@@ -278,6 +280,7 @@ def _execution_hash(document: Mapping[str, Any]) -> str:
         "compute_model": execution["compute_model"], "buffers": execution["buffers"],
         "compute_programs": execution["compute_programs"],
         "comm_bindings": execution["comm_bindings"], "submit_after": execution["submit_after"],
+        "application_terminals": execution["application_terminals"],
         "seed": document["seed"],
     }
     return _sha256(_json_bytes(payload))
@@ -301,7 +304,8 @@ def topology_hash(document: Mapping[str, Any]) -> str:
                       "buffers": document["execution"]["buffers"],
                       "compute_programs": programs,
                       "comm_bindings": document["execution"]["comm_bindings"],
-                      "submit_after": document["execution"]["submit_after"]},
+                      "submit_after": document["execution"]["submit_after"],
+                      "application_terminals": document["execution"]["application_terminals"]},
     }
     return _sha256(_json_bytes(payload))
 
@@ -400,7 +404,6 @@ def prepare_suite(output_dir: Path, *, seeds: tuple[int, ...] = FORMAL_WORKLOAD_
                 "actual_matmul_repeats": {key: program["repeats"] for key, program
                                            in sample["execution"]["compute_programs"].items()
                                            if program["op"] == "matmul"},
-                "nominal_matmul_repeats": sample["execution"]["profiles"]["nominal_compute_repeats"],
             })
         if len(set(sample_hashes)) != len(seeds):
             raise ValueError(f"{scenario} generated duplicate execution samples")
@@ -499,7 +502,7 @@ def freeze_suite(input_dir: Path, compute_profile_path: Path, comm_profile_path:
     compute_sha = _copy_profile(compute_profile_path, compute_path)
     comm_sha = _copy_profile(comm_profile_path, comm_path)
     from examples.jobpacer.gpu.gpu_compute_profile import load_gpu_compute_profile
-    from examples.jobpacer.comm_profile import load_profile
+    from examples.jobpacer.runtime.comm_profile import load_profile
     compute_profile = load_gpu_compute_profile(compute_path)
     comm_profile = load_profile(comm_path)
     if int(comm_profile.environment.get("world_size", -1)) != world_size:
@@ -693,7 +696,7 @@ def make_estimate_view(dag_path: Path, compute_profile_path: Path, comm_profile_
                        *, world_size: int = 2):
     """Load a sample with the same strict profile path used by the replay runner."""
     from examples.jobpacer.gpu.gpu_compute_profile import load_gpu_compute_profile
-    from examples.jobpacer.comm_profile import load_profile
+    from examples.jobpacer.runtime.comm_profile import load_profile
 
     dag = load_dag(dag_path, world_size=world_size)
     comm_profile = load_profile(comm_profile_path)

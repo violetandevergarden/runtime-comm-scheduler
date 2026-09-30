@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from examples.jobpacer.scripts import run_gpu_seven_arm
-from examples.jobpacer.experiments.seven_arm import batch, checks
+from examples.jobpacer.scripts import run_phase3
+from examples.jobpacer.experiments.phase3 import batch, checks
 
 
 def test_unified_cli_advertises_all_six_workflow_commands():
-    help_text = run_gpu_seven_arm.build_parser().format_help()
+    help_text = run_phase3.build_parser().format_help()
     for command in ("prepare", "qualify", "check", "run", "analyze", "finalize"):
         assert command in help_text
 
@@ -31,7 +31,7 @@ def test_check_status_reads_evidence_without_starting_diagnostics(tmp_path, monk
     monkeypatch.setattr(checks, "run_measurement_check", must_not_run)
     monkeypatch.setattr(checks, "run_recovery_check", must_not_run)
     monkeypatch.setattr(checks, "run_mechanism_check", must_not_run)
-    assert run_gpu_seven_arm.main([
+    assert run_phase3.main([
         "check", "--status", "--suite-manifest", str(suite_path),
     ]) == 0
     result = json.loads(capsys.readouterr().out)
@@ -57,7 +57,7 @@ def test_run_plan_only_creates_a_plan_and_never_calls_batch_executor(tmp_path, m
 
     monkeypatch.setattr(batch, "create_batch", create)
     monkeypatch.setattr(batch, "run_batch", must_not_run)
-    assert run_gpu_seven_arm.main([
+    assert run_phase3.main([
         "run", "--plan-only", "--suite-manifest", str(suite_path),
         "--batch-dir", str(batch_dir), "--arms", "a,b", "--repeats", "1",
     ]) == 0
@@ -70,7 +70,8 @@ def test_run_plan_only_creates_a_plan_and_never_calls_batch_executor(tmp_path, m
 
 def test_analyze_dispatch_never_calls_batch_executor(monkeypatch, capsys, tmp_path):
     batch_dir = tmp_path / "existing-batch"
-    monkeypatch.setattr(batch, "analyze_batch", lambda *_args, **_kwargs: {
+    from examples.jobpacer.analysis import phase3 as analysis_module
+    monkeypatch.setattr(analysis_module, "analyze_batch", lambda *_args, **_kwargs: {
         "accepted_complete_blocks": 2, "planned_blocks": 3,
         "complete_formal_matrix": False, "validation_errors": [],
     })
@@ -79,17 +80,19 @@ def test_analyze_dispatch_never_calls_batch_executor(monkeypatch, capsys, tmp_pa
         raise AssertionError("analyze must not start replay")
 
     monkeypatch.setattr(batch, "run_batch", must_not_run)
-    assert run_gpu_seven_arm.main(["analyze", "--batch-dir", str(batch_dir)]) == 0
+    assert run_phase3.main(["analyze", "--batch-dir", str(batch_dir)]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result == {"accepted_blocks": 2, "planned_blocks": 3,
                       "complete_formal_matrix": False, "validation_errors": 0}
 
 
 def test_source_snapshot_hashes_new_implementation_and_entrypoint_only():
-    paths = {row["path"] for row in batch.source_snapshot()["files"]}
-    assert "examples/jobpacer/experiments/seven_arm/batch.py" in paths
-    assert "examples/jobpacer/experiments/seven_arm/checks.py" in paths
-    assert "examples/jobpacer/experiments/seven_arm/suite.py" in paths
+    rows = batch.source_snapshot()["files"]
+    paths = {row["path"] for row in rows}
+    assert len(paths) == len(rows)
+    assert "examples/jobpacer/experiments/phase3/batch.py" in paths
+    assert "examples/jobpacer/experiments/phase3/checks.py" in paths
+    assert "examples/jobpacer/experiments/phase3/suite.py" in paths
     assert "examples/jobpacer/diagnostics/bare_nccl_mechanism.py" in paths
     assert "examples/jobpacer/diagnostics/gpu_measurement.py" in paths
     assert "examples/jobpacer/diagnostics/gpu_recovery.py" in paths
@@ -97,6 +100,6 @@ def test_source_snapshot_hashes_new_implementation_and_entrypoint_only():
     assert "examples/jobpacer/diagnostics/interleaved_isolated.py" in paths
     assert "examples/jobpacer/experiments/__init__.py" in paths
     assert "examples/jobpacer/gpu/gpu_dag_resources.py" in paths
-    assert "examples/jobpacer/scripts/run_gpu_seven_arm.py" in paths
-    seven_arm_scripts = {path.name for path in Path("examples/jobpacer/scripts").glob("*seven_arm*.py")}
-    assert seven_arm_scripts == {"run_gpu_seven_arm.py"}
+    assert "examples/jobpacer/scripts/run_phase3.py" in paths
+    phase3_scripts = {path.name for path in Path("examples/jobpacer/scripts").glob("run_phase3.py")}
+    assert phase3_scripts == {"run_phase3.py"}

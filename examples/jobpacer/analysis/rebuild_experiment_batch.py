@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from examples.jobpacer.scripts import run_experiments as batch
+from examples.jobpacer.experiments import gloo_phase3_batch as batch
 
 
 def _digest(path: Path) -> str:

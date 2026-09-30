@@ -8,7 +8,7 @@ import pytest
 
 from examples.jobpacer.scripts import run_phase1
 from examples.jobpacer.scripts.run_phase2 import _summarize_performance
-from examples.jobpacer.workloads import built_workload
+from examples.jobpacer.gloo.workloads import built_workload
 
 
 def _args(**overrides):

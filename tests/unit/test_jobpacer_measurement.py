@@ -23,7 +23,7 @@ from examples.jobpacer.analysis.visualize import (
     trace_paths,
     validate_trace,
 )
-from examples.jobpacer.workloads import CollectiveComm, Job, Workload
+from examples.jobpacer.gloo.workloads import CollectiveComm, Job, Workload
 from runtime_comm_scheduler import (
     AdmissionScheduler,
     CommIntent,

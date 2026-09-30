@@ -20,7 +20,7 @@ from statistics import median, quantiles
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
-from examples.jobpacer.analysis.benchmark_paths import repository_path, resolve_migrated_path
+from examples.jobpacer.paths import repository_path, resolve_migrated_path
 
 BENCHMARK_DIR = ROOT / "benchmark/phase1.2"
 WORKLOAD_DIR = BENCHMARK_DIR / "experiments/shared/workloads"
@@ -44,9 +44,10 @@ SCENARIOS = {
     "ltf_serial": {"policy": "ltf", "selection": "runtime_arrival", "max_outstanding": 1, "mode": "scheduler"},
 }
 
-from examples.jobpacer.comm_profile import apply_profile, load_profile
+from examples.jobpacer.gloo.comm_profile import apply_profile
+from examples.jobpacer.runtime.comm_profile import load_profile
 from examples.jobpacer.runtime.plan_builder import build_plan, policy_diagnostics
-from examples.jobpacer.workloads import load_workload
+from examples.jobpacer.gloo.workloads import load_workload
 
 
 def deterministic_scenario_order(
@@ -517,7 +518,7 @@ def main() -> int:
                 parser.error(f"invalid --poll-sensitivity-pair {pair!r}; expected CURRENT:BASELINE")
             pairs.append((current, baseline))
         try:
-            from examples.jobpacer.scripts.runner_batch import run_poll_sensitivity_batch
+            from examples.jobpacer.experiments.runner_batch import run_poll_sensitivity_batch
 
             batch = run_poll_sensitivity_batch(
                 source_batch=args.poll_sensitivity_source_batch,
@@ -549,7 +550,7 @@ def main() -> int:
         if not matrix_experiment:
             parser.error("--capacity-selection requires --experiment srjf")
         try:
-            from examples.jobpacer.scripts.runner_batch import run_experiment
+            from examples.jobpacer.experiments.runner_batch import run_experiment
 
             batch = run_experiment(
                 experiment=matrix_experiment,

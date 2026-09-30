@@ -11,17 +11,18 @@ import sys
 
 import pytest
 
-from examples.jobpacer.comm_profile import CommunicationProfile, ProfileRecord
-from examples.jobpacer.runtime.runtime_adapter import apply_dag_profile, load_dag, make_replay_compute
-from examples.jobpacer.scripts.run_experiments import _attach_isolated, _command, _mechanism_row, _paired_rows
-from examples.jobpacer.scripts import run_experiments as experiment_batch
-from examples.jobpacer.scripts import run_phase3 as phase3_replay
+from examples.jobpacer.runtime.comm_profile import CommunicationProfile, ProfileRecord
+from examples.jobpacer.runtime.runtime_adapter import apply_dag_profile, load_dag
+from examples.jobpacer.gloo.runtime_adapter import make_gloo_dag_compute
+from examples.jobpacer.experiments.gloo_phase3_batch import _attach_isolated, _command, _mechanism_row, _paired_rows
+from examples.jobpacer.experiments import gloo_phase3_batch as experiment_batch
+from examples.jobpacer.runtime import replay_launcher as phase3_replay
 from examples.jobpacer.diagnostics import interleaved_isolated as isolated_batch
-from examples.jobpacer.scripts import run_compact_suite as compact_suite
-from examples.jobpacer.scripts.run_compact_suite import (
+from examples.jobpacer.experiments import compact_suite as compact_suite
+from examples.jobpacer.experiments.compact_suite import (
     _check_lookahead_evidence, _check_mechanism_evidence, _suite, _validate_profile,
 )
-from examples.jobpacer.workloads import linear_execution_duration, load_workload
+from examples.jobpacer.gloo.workloads import linear_execution_duration, load_workload
 from runtime_comm_scheduler.dag.model import compute_tails
 from runtime_comm_scheduler.runtime.policy import Candidate, select_fifo, select_ltf
 
@@ -147,7 +148,7 @@ def test_replay_entry_rejects_formal_input_without_profile_before_opening_socket
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "src"), str(ROOT)))
     completed = subprocess.run([
-        sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+        sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
         "--policy", "fifo", "--workload", str(EXPERIMENTS / "baseline/L0-balanced.json"),
         "--output", str(tmp_path / "result.json"),
     ], cwd=ROOT, env=env, capture_output=True, text=True, timeout=10)
@@ -383,8 +384,9 @@ def test_g0_bridge_reuses_linear_compute_samples():
             self.duration = duration
     for job in dag.graph.jobs:
         samples = {}
-        compute = make_replay_compute(job, dag.execution, seed=dag.seed, epoch=201,
-                                      rank=1, jitter=0.3, samples=samples, event_log=Recorder())
+        compute = make_gloo_dag_compute(job, dag.execution, seed=dag.seed, epoch=201,
+                                        rank=1, jitter=0.3, samples=samples,
+                                        event_log=Recorder())
         for index in range(2):
             node = next(node for node in job.nodes if node.node_id == f"c{index}")
             stop = Stop()

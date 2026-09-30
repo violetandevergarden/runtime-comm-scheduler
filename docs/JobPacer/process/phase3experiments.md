@@ -10,12 +10,12 @@
 [Phase 3.2 结果](../result/phase3.2.md) 和 [最近结构回归](../result/phase3.12fix.md)。
 历史通过记录不代表本方案已执行，也不证明策略性能收益。
 
-> 目录迁移说明：当前实验入口位于 `examples/jobpacer/scripts/`，因此下面的
-> `run_phase1.py`、`run_replay.py`、`run_runtime_replay.py`、`profile_communication.py`
-> 和 `run_phase3_experiments.py` 分别对应 `run_phase1.py`、`run_phase2.py`、
-> `run_phase3.py`、`run_comm_profile.py` 和 `run_experiments.py`；推荐以
-> `PYTHONPATH=src:. python -m examples.jobpacer.scripts.<entry>` 启动。文中的历史命令仅用于
-> 说明既有批次，不改写历史产物。
+> 目录迁移说明：本文中的脚本名和命令记录实验当时的入口。当前 Phase 3 replay CLI 为
+> `python -m examples.jobpacer.runtime.replay_launcher`，批次与 compact suite 分别为
+> `python -m examples.jobpacer.experiments.gloo_phase3_batch` 和
+> `python -m examples.jobpacer.experiments.compact_suite`；原 `scripts/run_phase3.py`、
+> `scripts/run_experiments.py`、`scripts/run_compact_suite.py` 薄 wrapper 已于 2026-09-30 删除。
+> 历史命令仅用于说明既有批次，不改写历史产物。
 
 > 目录索引补充（2026-09-24）：旧 smoke 输入现位于
 > `benchmark/phase3/experiments/dag-semantics/smoke/`；结果按场景写入
@@ -348,13 +348,13 @@ PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase2 \
   --output /tmp/jobpacer-phase3-old-static.json
 
 # 新线性路径；替换 policy 为 static_ltf/fifo/ltf/lookahead 覆盖其他组
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy static_fifo --workload balanced --backend gloo --world-size 2 \
   --poll-interval 0.001 --timeout 20 \
   --output /tmp/jobpacer-phase3-new-static.json
 
 # DAG 路径及已有扰动功能
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy ltf --dag benchmark/phase3/multi-group.json \
   --backend gloo --world-size 2 --epoch 0 --compute-jitter 0.3 \
   --comm-profile /tmp/jobpacer-phase3-profile.json \
@@ -362,7 +362,7 @@ PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
   --output /tmp/jobpacer-phase3-dag-ltf.json
 
 # 线性 8 组（含旧 bare/旧 FIFO/LTF 与新 runtime 五策略）
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_experiments \
+PYTHONPATH=src:. python -m examples.jobpacer.experiments.gloo_phase3_batch \
   --output-dir /tmp/jobpacer-phase3-batch-final-20260922 \
   --workload balanced --backend gloo --world-size 2 --seeds 0 --repeats 1 \
   --compute-jitter 0.3 --wait-budget-s 0.02 --comm-profile /tmp/jobpacer-phase3-profile.json \
@@ -461,7 +461,7 @@ PYTHONPATH=src:. pytest -q tests/unit/runtime tests/unit/test_jobpacer_runtime_w
 真实双 rank 复测命令：
 
 ```text
-env PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+env PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy ltf --workload balanced --backend gloo --world-size 2 \
   --timeout 20 --compute-jitter 0.3 \
   --comm-profile /tmp/jobpacer-phase3-profile.json \
@@ -484,7 +484,7 @@ makespan 为 23.018 ms，communication drain makespan 为 23.943 ms。原始结�
 共 20 条真实 CPU/Gloo replay：
 
 ```text
-env PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_experiments \
+env PYTHONPATH=src:. python -m examples.jobpacer.experiments.gloo_phase3_batch \
   --output-dir /tmp/jobpacer-phase3-followup-small-20260922 \
   --workload balanced --backend gloo --world-size 2 --seeds 0,1 --repeats 2 \
   --compute-jitter 0.3 --wait-budget-s 0.02 --poll-interval 0.001 --timeout 20 \
@@ -665,11 +665,11 @@ isolated 诊断将 L0 shared 和两个单 job 输入随机交错，共 30 次。
 只有 L3 准时到达与 L4 超时回退通过 pilot 后，才分别追加两组 × 10 seed ×
 3 repeat，共可选 120 次。G4 仍在机制层验证 DAG 安全预测，不先加入大矩阵。
 
-`run_experiments.py` 新增 `--arms`、`--preview`、`--resume`、`--history-summary`。
+批次实现 `examples.jobpacer.experiments.gloo_phase3_batch` 支持 `--arms`、`--preview`、`--resume`、`--history-summary`。
 每个 `(seed, repeat)` block 随机化所选组顺序，结果按同 seed repeat 中位数和
 seed-block bootstrap 分析。成功运行的同配置结果安全跳过；失败重试有独立 attempt
 路径，旧记录留在 `runs.jsonl`。续跑先比对输入、profile、静态顺序、源码、git HEAD、
-环境和批次参数摘要。套件入口 `run_compact_suite.py` 默认预览；只有显式 `--execute`
+环境和批次参数摘要。套件入口 `examples.jobpacer.experiments.compact_suite` 默认预览；只有显式 `--execute`
 才启动串行 replay。其主阶段在 L2/G2 的每策略 pilot 中要求至少 3/5 严格触发；
 Lookahead 可选阶段要求 L3/L4 的 Lookahead pilot 各至少 4/5。门槛写入清单，
 未达标则停止扩批。门槛用于决定是否扩大场景，不用于筛掉主矩阵的自然到达样本。

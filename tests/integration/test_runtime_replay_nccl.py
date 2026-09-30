@@ -19,12 +19,28 @@ def test_phase3_cli_rejects_gpu_linear_workload_before_launch(tmp_path):
     env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "src"), str(ROOT), env.get("PYTHONPATH", "")))
     output_path = tmp_path / "must-not-be-created.json"
     result = subprocess.run(
-        [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+        [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
          "--backend", "nccl", "--workload", "balanced", "--output", str(output_path)],
         cwd=ROOT, env=env, capture_output=True, text=True, timeout=15, check=False,
     )
     assert result.returncode == 2
     assert "GPU/NCCL Phase 3 replay accepts DAG inputs only" in result.stderr
+    assert not output_path.exists()
+
+
+def test_phase3_cli_rejects_schema1_dag_for_nccl_before_device_probe(tmp_path):
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "src"), str(ROOT), env.get("PYTHONPATH", "")))
+    output_path = tmp_path / "schema1-must-not-be-created.json"
+    result = subprocess.run(
+        [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
+         "--backend", "nccl", "--dag",
+         str(ROOT / "benchmark/phase3/experiments/dag-semantics/smoke/linear.json"),
+         "--output", str(output_path)],
+        cwd=ROOT, env=env, capture_output=True, text=True, timeout=15, check=False,
+    )
+    assert result.returncode == 2
+    assert "schema-v2 cuda-program DAG" in result.stderr
     assert not output_path.exists()
 
 
@@ -59,8 +75,8 @@ def test_two_rank_phase3_collectives_have_matching_group_order(policy, tmp_path)
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "src"), str(ROOT), env.get("PYTHONPATH", "")))
     output_path = tmp_path / f"phase3-{policy}.json"
-    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
-               "--dag", str(ROOT / "benchmark/phase3/experiments/dag-semantics/smoke/linear.json"),
+    command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
+               "--dag", str(ROOT / "benchmark/phase3/experiments/dag-semantics/smoke/gpu-v2-multi-group.json"),
                "--backend", "nccl", "--world-size", "2", "--policy", policy,
                "--warmup-iterations", "1", "--setup-timeout", "60", "--timeout", "30",
                "--observation-mode", "diagnostic", "--output", str(output_path)]
@@ -85,8 +101,8 @@ def test_two_rank_bare_uses_common_layered_order_and_correct_collectives(tmp_pat
     env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "src"), str(ROOT), env.get("PYTHONPATH", "")))
     env["NCCL_LAUNCH_ORDER_IMPLICIT"] = "1"
     output_path = tmp_path / "phase3-bare-multi-group.json"
-    dag_path = ROOT / "benchmark/phase3/experiments/dag-semantics/smoke/multi-group.json"
-    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+    dag_path = ROOT / "benchmark/phase3/experiments/dag-semantics/smoke/gpu-v2-multi-group.json"
+    command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
                "--dag", str(dag_path), "--comm-engine", "bare", "--policy", "bare",
                "--backend", "nccl", "--world-size", "2", "--warmup-iterations", "1",
                "--setup-timeout", "60", "--timeout", "30", "--output", str(output_path)]
@@ -116,11 +132,10 @@ def test_two_rank_gpu_dag_waits_for_compute_event_before_dependent_comm(tmp_path
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "src"), str(ROOT), env.get("PYTHONPATH", "")))
     output_path = tmp_path / "phase3-cuda-compute.json"
-    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
-               "--dag", str(ROOT / "benchmark/phase3/experiments/dag-semantics/smoke/linear.json"),
+    command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
+               "--dag", str(ROOT / "benchmark/phase3/experiments/dag-semantics/smoke/gpu-v2-fork-join.json"),
                "--backend", "nccl", "--world-size", "2", "--policy", "fifo",
-               "--compute-mode", "cuda-matmul", "--compute-matrix-size", "128",
-               "--compute-repeats", "1", "--warmup-iterations", "1",
+               "--warmup-iterations", "1",
                "--setup-timeout", "60", "--timeout", "30",
                "--observation-mode", "diagnostic", "--output", str(output_path)]
     result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True,
@@ -132,9 +147,17 @@ def test_two_rank_gpu_dag_waits_for_compute_event_before_dependent_comm(tmp_path
     payload = json.loads(output_path.read_text())
     assert payload["validation"]["all_collectives_correct"] is True
     for rank in payload["ranks"]:
-        assert rank["compute_mode"] == "cuda-matmul"
-        assert rank["gpu_compute_program_count"] == 4
+        assert rank["gpu_compute_program_count"] == 8
+        assert rank["execution_contract"]["application_terminals"] == {
+            "job-0": ["comm-finish"], "job-1": ["comm-finish"]}
         completed = [event for event in rank["dag_events"] if event.get("kind") == "compute_completed"]
-        assert len(completed) == 4
-        assert all(event["completion_source"] == "cuda_compute_event_query" for event in completed)
+        assert len(completed) == 8
+        assert all(event["completion_source"] == "cuda_event_query" for event in completed)
         assert all(event["device_elapsed_ms"] > 0 for event in completed)
+        for job_id in ("job-0", "job-1"):
+            producer_done = next(event["time_us"] for event in completed
+                                 if event.get("job_id") == job_id and event.get("node_id") == "producer")
+            comm_submit = next(event["time_us"] for event in rank["dag_events"]
+                               if event.get("kind") == "comm_submit_call"
+                               and event.get("task_id") == f"{job_id}/comm-input")
+            assert producer_done < comm_submit

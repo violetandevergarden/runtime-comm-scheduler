@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import resource
@@ -29,21 +28,21 @@ from examples.jobpacer.runtime.runtime_adapter import (
     apply_dag_compute_profile,
     DagInput,
     apply_dag_profile,
-    group_spec,
-    linear_static_order,
     load_dag,
     load_static_order,
-    linear_ltf_estimates,
     make_collective_binding,
     make_replay_compute,
-    task_hint,
-    task_spec,
+    require_gpu_dag_contract,
+)
+from examples.jobpacer.gloo.runtime_adapter import (
+    group_spec, linear_ltf_estimates, linear_static_order, make_gloo_dag_compute,
+    task_hint, task_spec,
 )
 from examples.jobpacer.gpu.gpu_dag_resources import GpuDagResources
 from examples.jobpacer.gpu.cuda_devices import compute_profile_software, visible_cuda_uuids
-from examples.jobpacer.workloads import Job, Workload, linear_execution_duration, load_workload, ranks_for_job
-from examples.jobpacer.comm_profile import apply_profile, load_profile
-from examples.jobpacer.gpu.gpu_compute import CudaMatmulProgram
+from examples.jobpacer.gloo.workloads import Job, Workload, linear_execution_duration, load_workload, ranks_for_job
+from examples.jobpacer.gloo.comm_profile import apply_profile
+from examples.jobpacer.runtime.comm_profile import load_profile
 
 
 class _FailingProbe:
@@ -219,39 +218,6 @@ def _local_dag_jobs(dag: DagInput, rank: int) -> list[DagJob]:
     return [job for job in dag.graph.jobs
             if rank in group_ranks[next(node.group_id for node in job.nodes if isinstance(node, CommNode))]]
 
-
-
-def _prepare_dag_gpu_compute(dag: DagInput, local_jobs: list[DagJob], *, device: str,
-                             rank: int, world_size: int, matrix_size: int,
-                             repeats: int, epoch: int, warmup_iterations: int
-                             ) -> tuple[dict[str, CudaMatmulProgram], int, int]:
-    """Allocate and warm fixed CUDA compute programs before the release barrier."""
-    started = time.perf_counter_ns() // 1000
-    programs: dict[str, CudaMatmulProgram] = {}
-    local_error: BaseException | None = None
-    try:
-        for job in local_jobs:
-            for node in job.nodes:
-                if not isinstance(node, ComputeNode):
-                    continue
-                key = f"{dag.seed}:{epoch}:{job.job_id}:{node.node_id}:{rank}:compute"
-                seed = int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], "big")
-                program = CudaMatmulProgram(device, matrix_size=matrix_size,
-                                            repeats=repeats, seed=seed)
-                program.warmup(warmup_iterations)
-                programs[f"{job.job_id}/{node.node_id}"] = program
-    except BaseException as exc:
-        local_error = exc
-    errors: list[str | None] = [None] * world_size
-    dist.all_gather_object(errors, None if local_error is None else
-                           f"{type(local_error).__name__}: {local_error}")
-    ended = time.perf_counter_ns() // 1000
-    failures = [(endpoint, error) for endpoint, error in enumerate(errors) if error]
-    if failures:
-        if local_error is not None:
-            raise local_error
-        raise RuntimeError(f"GPU compute preparation failed on another rank: {failures}")
-    return programs, started, ended
 
 
 def _prepare_dag_gpu_resources(dag: DagInput, local_jobs: list[DagJob], *, device: str,
@@ -466,7 +432,6 @@ def _run_dag_job(job: DagJob, *, dag: DagInput, args, runtime, groups, rank: int
                  dag_events: EventLog, group_ranks: dict[str, tuple[int, ...]],
                  missing_id: str, tails: dict[str, float],
                  validation_records: list[tuple[dict[str, Any], torch.Tensor, Any]],
-                 gpu_compute_programs: dict[str, Any] | None = None,
                  gpu_dag_resources: Mapping[str, GpuDagResources] | None = None) -> dict[str, Any]:
     result: dict[str, Any] = {"job_id": job.job_id, "status": "ok", "tasks": [],
                               "job_start_ts": time.perf_counter_ns() // 1000}
@@ -495,17 +460,21 @@ def _run_dag_job(job: DagJob, *, dag: DagInput, args, runtime, groups, rank: int
         return binding
 
     samples: dict[str, float] = {}
-    job_gpu_programs = {
-        node.node_id: gpu_compute_programs[f"{job.job_id}/{node.node_id}"]
-        for node in job.nodes
-        if gpu_compute_programs is not None and f"{job.job_id}/{node.node_id}" in gpu_compute_programs
-    }
+    job_gpu_programs = {}
     resources = (gpu_dag_resources or {}).get(job.job_id)
     if resources is not None:
         job_gpu_programs.update(resources.node_programs)
-    compute = make_replay_compute(job, dag.execution, seed=dag.seed, epoch=args.epoch,
-                                  rank=rank, jitter=args.compute_jitter, samples=samples,
-                                  event_log=dag_events, gpu_programs=job_gpu_programs)
+    if dag.execution.schema_version == 1:
+        compute = make_gloo_dag_compute(
+            job, dag.execution, seed=dag.seed, epoch=args.epoch, rank=rank,
+            jitter=args.compute_jitter, samples=samples, event_log=dag_events,
+        )
+    else:
+        compute = make_replay_compute(
+            job, dag.execution, seed=dag.seed, epoch=args.epoch, rank=rank,
+            jitter=args.compute_jitter, samples=samples, event_log=dag_events,
+            gpu_programs=job_gpu_programs,
+        )
     first_compute = next((node.node_id for node in job.nodes if isinstance(node, ComputeNode)), None)
     def run_compute(node, cancellation):
         if args.fault == "compute_failure" and rank == 0 and node.node_id == first_compute:
@@ -540,6 +509,9 @@ def _run_dag_job(job: DagJob, *, dag: DagInput, args, runtime, groups, rank: int
                            if resources is not None else expected)
         validation_records.append((task_result, binding.tensor, expected_result))
     result["gpu_resource_job_id"] = job.job_id if resources is not None else None
+    result["application_terminal_node_ids"] = list(
+        dag.execution.application_terminals[job.job_id]
+    ) if dag.execution.application_terminals is not None else None
     result["completed_node_ids"] = [f"{job.job_id}/{node_id}" for node_id in runner.completed_node_ids]
     result["job_end_ts"] = result["physical_completion_observed_ts"]
     return result
@@ -553,20 +525,9 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(f"unsupported communication engine {comm_engine!r}")
     if args.timeout <= 0 or args.setup_timeout <= 0 or args.poll_interval <= 0 or args.dag_poll_interval <= 0:
         raise ValueError("setup/replay timeouts and poll intervals must be positive")
-    compute_mode = getattr(args, "compute_mode", "host-sleep")
-    compute_matrix_size = getattr(args, "compute_matrix_size", 256)
-    compute_repeats = getattr(args, "compute_repeats", 1)
     binding_preparation = getattr(args, "binding_preparation", "on-ready")
-    if compute_mode not in {"host-sleep", "cuda-matmul"}:
-        raise ValueError(f"unsupported compute mode: {compute_mode!r}")
-    if compute_matrix_size < 16 or compute_repeats <= 0:
-        raise ValueError("compute matrix size must be >= 16 and repeats must be positive")
-    if compute_mode == "cuda-matmul" and args.backend != "nccl":
-        raise ValueError("cuda-matmul compute requires NCCL")
     if args.backend == "nccl" and args.dag is None:
         raise ValueError("GPU/NCCL Phase 3 replay accepts DAG inputs only; linear workloads require Gloo")
-    if compute_mode == "cuda-matmul" and args.dag is None:
-        raise ValueError("cuda-matmul is supported only for DAG inputs")
     if not 0 <= args.compute_jitter < 1:
         raise ValueError("compute_jitter must be in [0, 1)")
     comm_profile = getattr(args, "comm_profile", None)
@@ -578,10 +539,11 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     setup_deadline = time.monotonic() + args.setup_timeout
     replay_deadline = setup_deadline
     dag = load_dag(args.dag, epoch=args.epoch, world_size=world_size) if args.dag else None
-    gpu_program_dag = bool(dag is not None and dag.execution.schema_version == 2
-                           and dag.execution.mode == "cuda-program")
-    if gpu_program_dag and args.backend != "nccl":
+    if args.backend == "nccl":
+        require_gpu_dag_contract(dag)
+    elif dag is not None and dag.execution.schema_version == 2:
         raise ValueError("DAG schema-v2 cuda-program execution requires --backend nccl")
+    gpu_program_dag = bool(dag is not None and dag.execution.schema_version == 2)
     if comm_engine != "new" and (not gpu_program_dag or args.backend != "nccl"):
         raise ValueError("old and bare adapters require a schema-v2 CUDA DAG on NCCL")
     if comm_engine == "old" and args.policy not in {"static_fifo", "static_ltf"}:
@@ -659,7 +621,6 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     runtime = None
     failure_signal = None
     groups: dict[str, Any] = {}
-    gpu_compute_programs: dict[str, CudaMatmulProgram] = {}
     gpu_dag_resources: dict[str, GpuDagResources] = {}
     gpu_compute_preparation_start_ts = gpu_compute_preparation_end_ts = None
     try:
@@ -703,12 +664,6 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 warmup_iterations=getattr(args, "warmup_iterations", 0),
                 matmul_precision=getattr(args, "matmul_precision", "highest"),
             )
-        elif dag is not None and compute_mode == "cuda-matmul":
-            (gpu_compute_programs, gpu_compute_preparation_start_ts,
-             gpu_compute_preparation_end_ts) = _prepare_dag_gpu_compute(
-                dag, local_jobs, device=device, rank=rank, world_size=world_size,
-                matrix_size=compute_matrix_size, repeats=compute_repeats, epoch=args.epoch,
-                warmup_iterations=getattr(args, "warmup_iterations", 0))
         precreated_bindings: dict[str, LocalBinding] | None = None
         binding_creation_events: list[dict[str, Any]] = []
         preparation_start_ts = preparation_end_ts = None
@@ -821,7 +776,6 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 device=device, deadline=deadline, stop_event=stop_event,
                 dag_events=dag_events, group_ranks=group_ranks, missing_id=missing_id,
                 tails=dag_tails, validation_records=validation_records,
-                gpu_compute_programs=gpu_compute_programs,
                 gpu_dag_resources=gpu_dag_resources,
             )
             jobs = _run_jobs(local_jobs, run_one, runtime=runtime, deadline=deadline,
@@ -875,17 +829,16 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             "nccl_launch_order_implicit": (
                 os.environ.get("NCCL_LAUNCH_ORDER_IMPLICIT") if comm_engine == "bare" else None),
             "offer_readiness_mode": "physical_ready",
-            "compute_mode": compute_mode,
-            "compute_matrix_size": compute_matrix_size if compute_mode == "cuda-matmul" else None,
-            "compute_repeats": compute_repeats if compute_mode == "cuda-matmul" else None,
-            "gpu_compute_program_count": len(gpu_compute_programs)
-            + sum(len(item.node_programs) for item in gpu_dag_resources.values()),
+            "gpu_compute_program_count": sum(len(item.node_programs)
+                                              for item in gpu_dag_resources.values()),
             "gpu_compute_preparation_start_ts": gpu_compute_preparation_start_ts,
             "gpu_compute_preparation_end_ts": gpu_compute_preparation_end_ts,
             "gpu_compute_preparation_total_us": (
                 gpu_compute_preparation_end_ts - gpu_compute_preparation_start_ts
                 if gpu_compute_preparation_start_ts is not None else None),
             "application_end_definition": (
+                "all declared application terminal nodes have physical completion evidence"
+                if gpu_program_dag else
                 "all local DAG nodes have physical completion evidence" if dag is not None else
                 "all local host waits returned"),
             "epoch": args.epoch, "world_size": world_size,
@@ -938,6 +891,10 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             "execution_contract": ({
                 "dependency_mode": "physical-completion",
                 "compute_model": dag.execution.compute_model,
+                "application_terminals": {
+                    job_id: list(nodes)
+                    for job_id, nodes in (dag.execution.application_terminals or {}).items()
+                },
                 "max_inflight": None if comm_engine == "bare" else 1,
                 "communication_capacity": "not_admission_limited" if comm_engine == "bare" else 1,
                 "communication_order": ("layered_topological_job_round_robin_projection"
@@ -1078,9 +1035,6 @@ def main() -> int:
                         help="wake the periodic completion probe when new work becomes probeable")
     parser.add_argument("--dag-poll-interval", type=float, default=0.001)
     parser.add_argument("--compute-jitter", type=float, default=0.0)
-    parser.add_argument("--compute-mode", choices=("host-sleep", "cuda-matmul"), default="host-sleep")
-    parser.add_argument("--compute-matrix-size", type=int, default=256)
-    parser.add_argument("--compute-repeats", type=int, default=1)
     parser.add_argument("--matmul-precision", choices=("highest", "high", "medium"), default="highest")
     parser.add_argument("--wait-budget-s", type=float, default=0.02)
     parser.add_argument("--warmup-iterations", type=int, default=1)

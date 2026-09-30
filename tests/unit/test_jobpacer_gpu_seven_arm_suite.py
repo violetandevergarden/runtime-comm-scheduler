@@ -14,7 +14,7 @@ import pytest
 
 from examples.jobpacer.runtime.runtime_adapter import load_dag
 from examples.jobpacer.runtime.dag_comm_adapters import build_bare_order
-from examples.jobpacer.experiments.seven_arm.suite import (
+from examples.jobpacer.experiments.phase3.suite import (
     ARMS,
     CONTRACT_VERSION,
     BARE_ARM,
@@ -33,25 +33,26 @@ from examples.jobpacer.experiments.seven_arm.suite import (
     verify_order_table,
 )
 from examples.jobpacer.scripts.run_gpu_compute_profile import collect_calibration_cases
-from examples.jobpacer.experiments.seven_arm.batch import (
+from examples.jobpacer.experiments.phase3.batch import (
     _accepted_blocks,
     _classify_failure,
-    _dynamic_fifo_bypass,
-    _formal_matrix_checks,
-    _ltf_frontier_choice,
     _limit_order_table,
     _recover_orphaned_attempts,
     _reserve_run_attempt,
     _start_replay_process,
-    _static_head_hol,
     _verify_frozen_inputs,
     _run_command,
-    analyze_batch,
     create_batch,
     run_batch,
     source_snapshot,
 )
-from examples.jobpacer.experiments.seven_arm.prepare import _preview
+from examples.jobpacer.analysis.phase3 import (
+    _dynamic_fifo_bypass,
+    _formal_matrix_checks,
+    _ltf_frontier_choice,
+    _static_head_hol,
+)
+from examples.jobpacer.experiments.phase3.prepare import _preview
 from runtime_comm_scheduler.dag import (
     CommNode, build_layered_fifo_order, build_static_order, validate_static_order,
 )
@@ -388,7 +389,7 @@ def test_formal_complete_requires_exact_formal_grid_and_bare_evidence():
 
 
 def _controlled_runner_batch(tmp_path, monkeypatch):
-    import examples.jobpacer.experiments.seven_arm.batch as runner
+    import examples.jobpacer.experiments.phase3.batch as runner
 
     batch_dir = tmp_path / "controlled-batch"
     for directory in ("inputs", "logs/reservations", "raw", "source/repository", "tables", "figures"):
@@ -577,9 +578,9 @@ def test_compute_profile_provenance_must_match_every_formal_sample_hash(tmp_path
 
 
 def test_pilot_profile_freeze_uses_the_verified_formal_calibration_suite(tmp_path, monkeypatch):
-    import examples.jobpacer.comm_profile as comm_profile_module
+    import examples.jobpacer.runtime.comm_profile as comm_profile_module
     import examples.jobpacer.gpu.gpu_compute_profile as compute_profile_module
-    import examples.jobpacer.experiments.seven_arm.suite as suite_module
+    import examples.jobpacer.experiments.phase3.suite as suite_module
 
     formal_dir = tmp_path / "formal"
     pilot_dir = tmp_path / "pilot"
@@ -643,7 +644,7 @@ def test_source_snapshot_covers_legacy_static_scheduler_modules():
 def test_plan_interruption_recovery_and_analysis_use_whole_paired_attempts(tmp_path, monkeypatch):
     import examples.jobpacer.analysis.runtime_results as runtime_results
     import examples.jobpacer.runtime.runtime_adapter as runtime_adapter
-    import examples.jobpacer.experiments.seven_arm.batch as runner
+    import examples.jobpacer.experiments.phase3.batch as runner
 
     suite_root = tmp_path / "suite"
     (suite_root / "inputs/L0-balanced").mkdir(parents=True)
@@ -784,6 +785,7 @@ def test_plan_interruption_recovery_and_analysis_use_whole_paired_attempts(tmp_p
         "expected": {}, "expected_nodes": []})
     monkeypatch.setattr(runtime_results, "validate_results", lambda *args, **kwargs: {
         "status": "ok", "errors": []})
+    from examples.jobpacer.analysis.phase3 import analyze_batch
     analysis = analyze_batch(batch_dir, bootstrap_samples=0)
     assert analysis["accepted_complete_blocks"] == 1
     assert analysis["attempted_runs"] == 8

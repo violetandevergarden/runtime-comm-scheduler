@@ -1,4 +1,4 @@
-"""Prepare, profile-freeze, and order the Phase 3 GPU seven-arm input suite."""
+"""Prepare, profile-freeze, and order inputs for the Phase 3 GPU experiment."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import statistics
 from pathlib import Path
 from typing import Any
 
-from examples.jobpacer.experiments.seven_arm.suite import (
+from examples.jobpacer.experiments.phase3.suite import (
     ARMS,
     FORMAL_WORKLOAD_SEEDS,
     ORDER_SEED,

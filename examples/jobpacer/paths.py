@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
 def repository_path(path: str | Path) -> Path:

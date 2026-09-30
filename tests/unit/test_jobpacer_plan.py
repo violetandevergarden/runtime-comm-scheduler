@@ -13,7 +13,7 @@ from examples.jobpacer.runtime.plan_builder import (
     policy_diagnostics,
     policy_names,
 )
-from examples.jobpacer.workloads import (
+from examples.jobpacer.gloo.workloads import (
     CollectiveComm,
     Job,
     Workload,

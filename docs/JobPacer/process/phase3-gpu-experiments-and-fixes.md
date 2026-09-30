@@ -472,7 +472,7 @@ G1–G3 默认最小为 **178 replay**（10+30+30+18+90），不含 profile、G0
 拟新增阶段接口（只有实现并通过测试后才可执行）：
 
 ```text
-python -m examples.jobpacer.scripts.run_phase3_gpu_experiments
+python -m examples.jobpacer.runtime.replay_launcher_gpu_experiments
     --stage G1|G2|G3-pilot|G3-main|G4|G5
     --config <冻结的阶段 JSON>
     --output <新的 batch 目录>

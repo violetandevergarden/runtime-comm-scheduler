@@ -14,13 +14,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from examples.jobpacer.analysis.benchmark_paths import repository_path, resolve_migrated_path
-from examples.jobpacer.scripts import run_experiments as batch
-from examples.jobpacer.workloads import load_workload
+from examples.jobpacer.paths import repository_path, resolve_migrated_path
+from examples.jobpacer.experiments import gloo_phase3_batch as batch
+from examples.jobpacer.gloo.workloads import load_workload
 
 
 ROOT = Path(__file__).resolve().parents[3]
-REPLAY = ROOT / "examples/jobpacer/scripts/run_phase3.py"
+REPLAY = ROOT / "examples/jobpacer/runtime/replay_launcher.py"
 SEEDS = (0,)
 REPEATS = 5
 POLICIES = ("fifo", "ltf")
@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
         os.environ[key] = "1"
-    from examples.jobpacer.scripts.run_compact_suite import _validate_profile
+    from examples.jobpacer.experiments.compact_suite import _validate_profile
     _validate_profile(profile, [{"workload": path.relative_to(ROOT / "benchmark/phase3/experiments").as_posix()}
                                 for path in CONDITIONS.values()],
                       set(os.sched_getaffinity(0)),

@@ -20,9 +20,12 @@
 
 - `src/runtime_comm_scheduler/runtime/`：新 runtime 核心，包括模型、coordinator、policy、本地执行、控制通道和观测。
 - `src/runtime_comm_scheduler/dag/`：runtime 上层的图模型、校验和节点推进；不把计算调度塞入 coordinator。
-- `examples/jobpacer/runtime/runtime_adapter.py`：workload 到新模型的映射。
-- `examples/jobpacer/gpu/`：GPU DAG 的 CUDA compute/resources、compute profile 与可见设备辅助；GPU 工作量由 DAG execution schema 描述。
-- `examples/jobpacer/runtime/runtime_worker.py`、`examples/jobpacer/scripts/run_phase3.py`：新 runtime 的 rank harness 与启动、汇总入口。
+- `examples/jobpacer/runtime/runtime_adapter.py`：通用 DAG 输入、profile 映射与 collective binding。
+- `examples/jobpacer/gloo/`：Gloo 线性 workload、workload builder、profile 应用层和线性 runtime adapter。
+- `examples/jobpacer/runtime/`：DAG runtime 适配和 rank worker，以及 Phase 2 Plan builder 与 replay worker。
+- `examples/jobpacer/gpu/`：GPU DAG 的 CUDA compute/resources、compute profile 与可见设备辅助；GPU 工作量只由 schema-v2 DAG execution 描述。
+- `examples/jobpacer/runtime/runtime_worker.py`：Phase 3 rank harness；`runtime/replay_launcher.py` 提供启动实现和 CLI。
+- `examples/jobpacer/experiments/`、`analysis/`、`diagnostics/`：分别负责批次/输入编排、结果读取统计、可重复机制和测量诊断。内部实现不能导入 `scripts/`。
 - `tests/unit/runtime/`、`tests/integration/test_runtime_replay.py`、`tests/integration/test_runtime_replay_nccl.py`：新 runtime 的单元、Gloo 与 opt-in 双卡 NCCL 检查。
 - 包根目录的 `plan.py`、`scheduler.py`、`work.py` 等及旧 replay 属于历史路径，仍可用于基线和回归。
 
@@ -79,7 +82,7 @@ env PYTHONPATH=src RUN_JOBPACER_RUNTIME_NCCL=1 \
   python -m pytest -q tests/integration/test_runtime_replay_nccl.py
 
 # 单次 replay，输出存放在临时目录
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy fifo --workload balanced --backend gloo \
   --world-size 2 --timeout 20 --output /tmp/jobpacer-runtime-review.json
 

@@ -6,8 +6,8 @@
 > 之后的模块迁移和重新验收见 [Phase 3.1/3.2 结构整理](phase3.12fix.md) 与
 > [结构整理验收](../result/phase3.12fix.md)。当前 DAG 库位于 `src/runtime_comm_scheduler/dag/`；
 > 当前目录整理后，replay schema、采样和绑定位于
-> `examples/jobpacer/runtime/runtime_adapter.py`；本文保留的旧命令用于历史记录，当前入口见
-> `examples/jobpacer/scripts/run_phase3.py`。
+> `examples/jobpacer/runtime/runtime_adapter.py`；本文保留的旧命令用于历史记录，当前 replay CLI 为
+> `examples/jobpacer/runtime/replay_launcher.py`（2026-09-30 删除原薄 wrapper）。
 
 本文把 [Phase 3.2 计划](../plan/phase3.2.md) 落到当前代码结构上，给出数据格式、
 校验算法、本地推进状态机、策略衔接、文件改动、测试矩阵和验收顺序。设计基础是当前
@@ -812,31 +812,31 @@ PYTHONPATH=src pytest -q tests/unit/runtime tests/unit/test_jobpacer_dag.py
 RUN_JOBPACER_RUNTIME_REPLAY=1 PYTHONPATH=src \
   pytest -q tests/integration/test_runtime_replay.py
 
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy fifo \
   --dag benchmark/phase3/diamond.json \
   --backend gloo --world-size 2 --timeout 20 \
   --output /tmp/jobpacer-phase3.2-diamond-fifo.json
 
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy ltf \
   --dag benchmark/phase3/multi-group.json \
   --backend gloo --world-size 2 --timeout 20 \
   --output /tmp/jobpacer-phase3.2-multigroup-ltf.json
 
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy lookahead \
   --dag benchmark/phase3/multi-group.json \
   --backend gloo --world-size 2 --timeout 20 \
   --output /tmp/jobpacer-phase3.2-multigroup-lookahead.json
 
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy static_fifo \
   --dag benchmark/phase3/multi-group.json \
   --backend gloo --world-size 2 --timeout 20 \
   --output /tmp/jobpacer-phase3.2-multigroup-static.json
 
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy static_ltf \
   --dag benchmark/phase3/multi-group.json \
   --static-order docs/JobPacer/result/phase3.2-validation/static-ltf-order.json \
@@ -847,10 +847,10 @@ PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
 还需重新运行原线性四例，证明默认 CLI 和 Phase 3.1 入口未改变：
 
 ```bash
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 --policy fifo --workload balanced --backend gloo --timeout 20
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 --policy static_fifo --workload delayed --backend gloo --timeout 20
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 --policy ltf --workload tail --backend gloo --timeout 20
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 --policy lookahead --workload delayed --backend gloo --timeout 20
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher --policy fifo --workload balanced --backend gloo --timeout 20
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher --policy static_fifo --workload delayed --backend gloo --timeout 20
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher --policy ltf --workload tail --backend gloo --timeout 20
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher --policy lookahead --workload delayed --backend gloo --timeout 20
 ```
 
 ## 16. 最终验收清单

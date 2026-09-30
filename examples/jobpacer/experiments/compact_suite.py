@@ -12,11 +12,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from examples.jobpacer.comm_profile import apply_profile, load_profile
-from examples.jobpacer.analysis.benchmark_paths import resolve_migrated_path
+from examples.jobpacer.gloo.comm_profile import apply_profile
+from examples.jobpacer.runtime.comm_profile import load_profile
+from examples.jobpacer.paths import resolve_migrated_path
 from examples.jobpacer.runtime.runtime_adapter import apply_dag_profile, load_dag
-from examples.jobpacer.scripts import run_experiments as batch
-from examples.jobpacer.workloads import load_workload
+from examples.jobpacer.experiments import gloo_phase3_batch as batch
+from examples.jobpacer.gloo.workloads import load_workload
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -135,7 +136,7 @@ def _validate_profile(profile_path: Path, cases: list[dict[str, Any]], affinity:
 
 def _case_command(case: dict[str, Any], section: dict[str, Any], common: dict[str, Any],
                   output: Path, profile: Path, tie_threshold: float) -> list[str]:
-    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_experiments",
+    command = [sys.executable, "-m", "examples.jobpacer.experiments.gloo_phase3_batch",
                "--output-dir", str(output),
                "--seeds", ",".join(map(str, section["seeds"])),
                "--repeats", str(section["repeats"]),

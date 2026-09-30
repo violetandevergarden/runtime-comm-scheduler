@@ -2,7 +2,7 @@
 
 import pytest
 
-from examples.jobpacer.scripts import runner_batch as batch_runner
+from examples.jobpacer.experiments import runner_batch as batch_runner
 
 scenario_matrix = batch_runner.scenario_matrix
 

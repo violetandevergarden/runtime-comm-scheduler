@@ -22,9 +22,10 @@ from runtime_comm_scheduler import (
     WorkIsCompletedProbe,
 )
 
-from examples.jobpacer.comm_profile import apply_profile, load_profile, workload_digest
+from examples.jobpacer.gloo.comm_profile import apply_profile, workload_digest
+from examples.jobpacer.runtime.comm_profile import load_profile
 from examples.jobpacer.runtime.plan_builder import build_plan, planned_tasks, policy_diagnostics, policy_names
-from examples.jobpacer.workloads import Workload, linear_execution_duration, load_workload, ranks_for_job
+from examples.jobpacer.gloo.workloads import Workload, linear_execution_duration, load_workload, ranks_for_job
 
 
 def _now_us() -> int:

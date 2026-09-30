@@ -9,15 +9,15 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from examples.jobpacer.comm_profile import (
+from examples.jobpacer.runtime.comm_profile import (
     CommSignature,
     CommunicationProfile,
     ProfileRecord,
-    apply_profile,
     load_profile,
 )
+from examples.jobpacer.gloo.comm_profile import apply_profile
 from examples.jobpacer.runtime.plan_builder import build_plan, key_labels
-from examples.jobpacer.workloads import CollectiveComm, Job, Workload, sample_linear_duration
+from examples.jobpacer.gloo.workloads import CollectiveComm, Job, Workload, sample_linear_duration
 
 
 ENVIRONMENT = {

@@ -40,7 +40,7 @@ def test_completion_serial_preserves_first_a_completion_observation(monkeypatch)
 
 
 def test_late_observation_alone_does_not_qualify_multi_inflight():
-    from examples.jobpacer.experiments.seven_arm.qualify import _mechanism_checks
+    from examples.jobpacer.experiments.phase3.qualify import _mechanism_checks
     sample = {"mode": "multi-inflight", "api_calls": [
         {"collective": "A", "api_start_ns": 1, "physical_complete_observed_ns": 10},
         {"collective": "B", "api_start_ns": 5, "prior_pending_at_launch_probe": []},

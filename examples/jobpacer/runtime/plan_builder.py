@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from runtime_comm_scheduler import Plan, TaskKey
-from examples.jobpacer.workloads import CollectiveComm, Job, Workload
+from examples.jobpacer.gloo.workloads import CollectiveComm, Job, Workload
 
 
 @dataclass(frozen=True)

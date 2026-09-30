@@ -66,8 +66,22 @@ def test_runtime_worker_rejects_direct_nccl_linear_replay_before_setup(monkeypat
     args = SimpleNamespace(
         comm_engine="new", timeout=1.0, setup_timeout=1.0,
         poll_interval=0.001, dag_poll_interval=0.001,
-        compute_mode="host-sleep", compute_matrix_size=256,
-        compute_repeats=1, backend="nccl", dag=None,
+        backend="nccl", dag=None,
     )
     with pytest.raises(ValueError, match="accepts DAG inputs only"):
+        runtime_worker.run_rank(args)
+
+
+def test_runtime_worker_rejects_direct_nccl_schema1_dag_before_setup(monkeypatch):
+    monkeypatch.setenv("RANK", "0")
+    monkeypatch.setenv("WORLD_SIZE", "2")
+    root = Path(__file__).parents[2]
+    args = SimpleNamespace(
+        comm_engine="new", timeout=1.0, setup_timeout=1.0,
+        poll_interval=0.001, dag_poll_interval=0.001,
+        backend="nccl", dag=root / "benchmark/phase3/experiments/dag-semantics/smoke/linear.json",
+        epoch=0, compute_jitter=0.0, comm_profile=None, compute_profile=None,
+        profile_strict=True, wait_budget_s=0.02, policy="fifo",
+    )
+    with pytest.raises(ValueError, match="schema-v2 cuda-program DAG"):
         runtime_worker.run_rank(args)

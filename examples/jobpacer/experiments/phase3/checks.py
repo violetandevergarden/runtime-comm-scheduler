@@ -7,8 +7,8 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-from examples.jobpacer.experiments.seven_arm.batch import source_snapshot
-from examples.jobpacer.experiments.seven_arm.gates import READINESS_GATES, REQUIRED_CHECKS
+from examples.jobpacer.experiments.phase3.batch import source_snapshot
+from examples.jobpacer.experiments.phase3.gates import READINESS_GATES, REQUIRED_CHECKS
 
 
 def check_status(suite_manifest_path: Path, *,
@@ -32,7 +32,7 @@ def check_status(suite_manifest_path: Path, *,
         try:
             raw = evidence_path.read_bytes()
             audit = json.loads(raw)
-            from examples.jobpacer.experiments.seven_arm.batch import _canonical, _sha
+            from examples.jobpacer.experiments.phase3.batch import _canonical, _sha
             from examples.jobpacer.runtime.dag_comm_adapters import BARE_CONTRACT_VERSION
             expected_profile_sha = _sha(_canonical({
                 key: value["sha256"] for key, value in sorted(suite["profiles"].items())

@@ -17,14 +17,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from examples.jobpacer.analysis.benchmark_paths import (
+from examples.jobpacer.paths import (
     is_formal_experiment_input, repository_path, resolve_migrated_path,
 )
-from examples.jobpacer.workloads import load_workload
+from examples.jobpacer.gloo.workloads import load_workload
 
 
 ROOT = Path(__file__).resolve().parents[3]
-RUNTIME_REPLAY = ROOT / "examples/jobpacer/scripts/run_phase3.py"
+RUNTIME_REPLAY = ROOT / "examples/jobpacer/runtime/replay_launcher.py"
 OLD_REPLAY = ROOT / "examples/jobpacer/scripts/run_phase2.py"
 PHASE1_REPLAY = ROOT / "examples/jobpacer/scripts/run_phase1.py"
 FORMAL_INPUT_ROOT = (ROOT / "benchmark/phase3/experiments").resolve()
@@ -72,21 +72,26 @@ SOURCE_SNAPSHOT_ROOTS = (
     ROOT / "src/runtime_comm_scheduler/work.py",
     ROOT / "examples/jobpacer/runtime/replay_worker.py",
     ROOT / "examples/jobpacer/runtime/plan_builder.py",
-    ROOT / "examples/jobpacer/scripts/run_phase3.py",
+    ROOT / "examples/jobpacer/gloo/runtime_adapter.py",
+    ROOT / "examples/jobpacer/gloo/comm_profile.py",
+    ROOT / "examples/jobpacer/runtime/comm_profile.py",
+    ROOT / "examples/jobpacer/runtime/replay_launcher.py",
     ROOT / "examples/jobpacer/scripts/run_phase2.py",
     ROOT / "examples/jobpacer/scripts/run_phase1.py",
     ROOT / "examples/jobpacer/runtime/runtime_worker.py",
     ROOT / "examples/jobpacer/analysis/runtime_results.py",
+    ROOT / "examples/jobpacer/analysis/phase3.py",
     ROOT / "examples/jobpacer/analysis/visualize_phase3.py",
     ROOT / "examples/jobpacer/runtime/runtime_adapter.py",
-    ROOT / "examples/jobpacer/gpu/gpu_compute.py",
     ROOT / "examples/jobpacer/gpu/gpu_compute_profile.py",
     ROOT / "examples/jobpacer/gpu/gpu_dag_resources.py",
     ROOT / "examples/jobpacer/runtime/dag_comm_adapters.py",
-    ROOT / "examples/jobpacer/workloads.py",
-    ROOT / "examples/jobpacer/comm_profile.py",
-    ROOT / "examples/jobpacer/scripts/run_experiments.py",
-    ROOT / "examples/jobpacer/scripts/run_compact_suite.py",
+    ROOT / "examples/jobpacer/paths.py",
+    ROOT / "examples/jobpacer/experiments/runner_batch.py",
+    ROOT / "examples/jobpacer/gloo/workloads.py",
+    ROOT / "examples/jobpacer/runtime/comm_profile.py",
+    ROOT / "examples/jobpacer/experiments/gloo_phase3_batch.py",
+    ROOT / "examples/jobpacer/experiments/compact_suite.py",
     ROOT / "examples/jobpacer/diagnostics/interleaved_isolated.py",
 )
 
@@ -110,10 +115,14 @@ def _record_result_path(record: dict[str, Any]) -> Path:
 def _source_snapshot() -> dict[str, Any]:
     """Hash the source files that can affect a Phase 3 replay."""
     files: list[dict[str, str]] = []
+    seen_paths: set[str] = set()
     for root in SOURCE_SNAPSHOT_ROOTS:
         candidates = sorted(root.rglob("*.py")) if root.is_dir() else [root]
         for path in candidates:
             relative = path.relative_to(ROOT).as_posix()
+            if relative in seen_paths:
+                continue
+            seen_paths.add(relative)
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             files.append({"path": relative, "sha256": digest})
     canonical = "\n".join(f"{item['path']} {item['sha256']}" for item in files).encode()

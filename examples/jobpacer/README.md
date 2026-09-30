@@ -1,8 +1,8 @@
 # JobPacer replay 示例
 
-本目录保留历史 Phase 2 线性 replay/profile 工具，并提供当前 Phase 3 中心化 runtime replay。
-两条路径用途和完成语义不同：`scripts/run_phase2.py`、`runtime/replay_worker.py` 与
-`AdmissionScheduler` 是 Phase 2 基线；Phase 3 入口见后面的“Phase 3 runtime replay”。
+本目录保留历史 Phase 2 Gloo 线性 replay/profile 工具，并提供当前 Phase 3 GPU 实验流程与中心化 runtime replay。
+Phase 3 GPU 实验入口是 `scripts/run_phase3.py`；单次底层 replay CLI 位于 `runtime/replay_launcher.py`。
+`scripts/run_phase2.py`、`runtime/replay_worker.py` 与 `AdmissionScheduler` 是 Phase 2 Gloo 基线。
 Phase 2 线性 replay 只支持 Gloo；Phase 3 GPU/NCCL 只接受 DAG 输入。
 旧工具可以作为历史对照，不是新 runtime 的内部依赖。
 
@@ -172,7 +172,7 @@ PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_comm_profile \
   --warmup 10 --iterations 50 \
   --output /tmp/jobpacer-nccl-profile.json
 
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy fifo --dag benchmark/phase3/experiments/dag-semantics/smoke/gpu-v2-fork-join.json \
   --backend nccl --world-size 2 --warmup-iterations 5 \
   --comm-profile /tmp/jobpacer-nccl-profile.json \
@@ -181,7 +181,7 @@ PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
 
 NCCL run 继承外部设置的 `CUDA_VISIBLE_DEVICES`，rank 使用该可见设备空间中的 `cuda:rank`。
 GPU 线性 workload/parser、S lane 和旧 Phase 2 的 CUDA producer/consumer stream 路径已退役；
-`run_phase2.py`/`replay_worker.py` 只接受 Gloo 线性 replay。历史 GPU 线性输入与结果保留归档。
+`run_phase2.py`/`runtime/replay_worker.py` 只接受 Gloo 线性 replay。历史 GPU 线性输入与结果保留归档。
 
 ## Trace 与验收字段
 
@@ -205,14 +205,15 @@ Visualizer 只接受完整 batch manifest 列出的 schema-v2 trace，并拒绝�
 
 | 文件 | 职责 |
 | --- | --- |
-| `workloads.py` | workload 数据模型、内置 workload 和 JSON 加载 |
+| `gloo/workloads.py` | Gloo 线性 workload 数据模型、内置 workload 和 JSON 加载 |
 | `runtime/plan_builder.py` | FIFO/LTF 静态 Plan 构造和 job 内顺序校验 |
-| `comm_profile.py` | profile 数据模型、digest、严格匹配和 workload 覆盖 |
+| `runtime/comm_profile.py` | 共用通信 profile 数据模型、digest 与严格匹配 |
+| `gloo/comm_profile.py` | 将共享 profile 应用到旧 Gloo `Workload` |
 | `scripts/run_comm_profile.py` | 多进程 Gloo/NCCL 离线测量入口 |
 | `scripts/run_phase2.py` | 启动 Gloo 线性 replay ranks、回收超时进程、汇总和验证输出 |
 | `runtime/replay_worker.py` | 单 rank Gloo ProcessGroup、job 线程、scheduler 和 collective 执行 |
 | `scripts/run_phase1_2_experiments.py` | Phase 1/2 的批次编排入口（原 benchmark 下的 `run_experiments.py`） |
-| `scripts/runner_batch.py` | Phase 1/2 容量、轮询和优先级矩阵的执行与分析实现 |
+| `experiments/runner_batch.py` | Phase 1/2 容量、轮询和优先级矩阵的执行实现 |
 | `analysis/visualize.py` | Phase 1/2 历史 batch 的 trace 读取与绘图 |
 | `analysis/visualize_phase3.py` | Phase 3 两类对比图：suite 总览及各多策略批次的 makespan、时间线 SVG |
 
@@ -233,10 +234,14 @@ Phase 3 通过独立控制通道上的 coordinator 决定通信准入。Gloo 保
 GPU/NCCL 只接受 DAG 输入。DAG runner 推进 compute/communication 依赖，通信成员匹配、group 顺序、
 grant 和完成仍由 runtime 负责。CPU/Gloo 与 GPU/NCCL 的语义和性能验收分别记录。
 
+GPU/NCCL 输入必须是 schema-v2 `cuda-program` DAG，并显式声明 `application_terminals`。每个计算节点的
+操作、输入输出 buffer 和工作量都来自该 DAG；compute profile 只更新执行时长估计，不覆盖 program 工作量。
+Gloo 保留 schema-v1 DAG 和旧线性 workload。
+
 线性 workload 示例：
 
 ```bash
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy fifo --workload balanced --backend gloo --world-size 2 \
   --timeout 20 --output /tmp/jobpacer-runtime-linear.json
 ```
@@ -244,7 +249,7 @@ PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
 DAG 示例：
 
 ```bash
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy ltf --dag benchmark/phase3/experiments/dag-semantics/smoke/multi-group.json \
   --backend gloo --world-size 2 --timeout 20 \
   --output /tmp/jobpacer-runtime-dag.json
@@ -261,24 +266,26 @@ PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
 
 | 文件 | 用途 |
 | --- | --- |
-| `runtime/runtime_adapter.py` | DAG 输入 schema/digest、Gloo 线性 workload 映射、计算采样、tensor/collective 绑定 |
+| `runtime/runtime_adapter.py` | 共用 DAG 输入 schema/digest、profile 映射和 tensor/collective binding |
+| `gloo/runtime_adapter.py` | 旧 Gloo `Workload` 到 runtime 通信任务的线性映射 |
 | `runtime/runtime_worker.py` | rank 生命周期、共享 job 线程 harness、故障注入和结果装配 |
+| `scripts/run_phase3.py` | Phase 3 GPU 实验统一入口：prepare、qualify、check、run、analyze、finalize |
 | `analysis/runtime_results.py` | 预期 DAG 任务集、结果校验与指标；不启动进程、不导入 torch |
-| `scripts/run_phase3.py` | CLI、输入预检、rank 子进程启动/回收 |
-| `scripts/run_experiments.py` | 串行运行线性/DAG pilot，保存 manifest、原始 JSON 和 summary CSV |
-| `scripts/run_compact_suite.py` | compact suite 预览、分阶段编排和语义分类归档 |
-| `workloads.py`、`runtime/plan_builder.py` | Phase 2 线性输入和静态 Plan；新 runtime 的静态线性桥接只在 adapter 中使用 |
+| `runtime/replay_launcher.py` | Phase 3 replay CLI、输入预检、rank 子进程启动/回收和结果汇总 |
+| `experiments/gloo_phase3_batch.py` | CPU/Gloo Phase 3 compact suite 的批次创建、续跑和数据采集实现 |
+| `experiments/compact_suite.py` | compact suite 预览、分阶段编排和语义分类归档 |
+| `analysis/phase3.py` | Phase 3 GPU 批次校验、机制证据和配对统计；只读取已有 replay 结果 |
 
 Phase 1/2 批次入口现位于 `scripts/run_phase1_2_experiments.py`，内部矩阵执行器为
-`scripts/runner_batch.py`；实验输入和结果索引见 [`benchmark/phase1.2`](../../benchmark/phase1.2/README.md)。
+`experiments/runner_batch.py`；实验输入和结果索引见 [`benchmark/phase1.2`](../../benchmark/phase1.2/README.md)。
 Phase 3 的 compact suite 输出必须放在 `benchmark/phase3/results/suites/<suite-id>/`，并由入口按语义类别写入
 相应场景结果目录；suite 执行说明见 [`benchmark/phase3/experiments/suites/README.md`](../../benchmark/phase3/experiments/suites/README.md)。
 
 ## 可重复诊断
 
 诊断脚本保存在 `diagnostics/`，用于采集机制、设备干扰、顺序敏感性、shared/isolated 干扰和恢复彩排证据；它们不属于性能矩阵
-的实验臂。固定不变量由 `tests/` 覆盖。七臂测量、恢复和机制诊断仍通过统一入口选择，由诊断模块产出独立
-证据，再由七臂 readiness 检查决定是否满足实验合同。
+的实验臂。固定不变量由 `tests/` 覆盖。Phase 3 的测量、恢复和机制诊断通过统一入口选择，由诊断模块产出独立
+证据，再由 Phase 3 readiness 检查决定是否满足实验合同。
 
 ```bash
 # NCCL bare 机制证据；要求两张可见 CUDA GPU
@@ -296,7 +303,9 @@ PYTHONPATH=src:. python -m examples.jobpacer.diagnostics.interleaved_isolated --
 PYTHONPATH=src:. python -m examples.jobpacer.diagnostics.layered_fifo_pilot --help
 ```
 
-`python -m examples.jobpacer.scripts.run_gpu_seven_arm check --kind measurement|recovery|mechanism` 显式启动对应诊断；`check --status` 只读取已有
+Phase 3 GPU 实验统一使用 `python -m examples.jobpacer.scripts.run_phase3`。例如，
+`python -m examples.jobpacer.scripts.run_phase3 check --kind measurement|recovery|mechanism` 显式启动对应诊断；
+`python -m examples.jobpacer.scripts.run_phase3 check --status` 只读取已有
 证据。历史 CPU/Gloo 控制路径诊断入口已退役，其源代码快照保存在 [`JobPacer 历史归档`](../../docs/JobPacer/archive/phase3-control-path-diagnostic-20260925/README.md)。
 
 正式库入口分别为 `runtime_comm_scheduler.runtime` 和 `runtime_comm_scheduler.dag`；包根

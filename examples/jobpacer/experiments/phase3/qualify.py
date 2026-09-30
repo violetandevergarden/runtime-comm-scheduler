@@ -11,14 +11,13 @@ import time
 from pathlib import Path
 from typing import Any
 
-from examples.jobpacer.experiments.seven_arm.batch import (
+from examples.jobpacer.experiments.phase3.batch import (
     source_snapshot, _reserve_run_attempt, _run_child, _verify_frozen_inputs,
 )
-from examples.jobpacer.experiments.seven_arm.suite import BARE_ARM, SCENARIOS
+from examples.jobpacer.experiments.phase3.suite import BARE_ARM, SCENARIOS
 
 
 ROOT = Path(__file__).resolve().parents[4]
-RUNNER = ROOT / "examples/jobpacer/scripts/run_phase3.py"
 CONTRACT_VERSION = "bare-ordered-v2-layered-round-robin"
 
 
@@ -214,7 +213,7 @@ def qualify_g1(suite_manifest_path: Path, output_dir: Path, *, timeout_s: float 
         stdout_path = output_dir / reservation["stdout_path"]
         stderr_path = output_dir / reservation["stderr_path"]
         command = [
-            sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+            sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
             "--policy", "bare", "--comm-engine", "bare", "--startup-attempts", "1",
             "--static-order", str(suite_root / sample["fifo_order_path"]),
             "--dag", str(suite_root / sample["path"]), "--backend", "nccl",

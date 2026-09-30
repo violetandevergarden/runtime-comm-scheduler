@@ -1,6 +1,6 @@
 # GPU 七臂 v2 实验前准备
 
-2026-09-30 入口整理：七臂用户操作统一使用 `python -m examples.jobpacer.scripts.run_gpu_seven_arm` 的 `prepare`、`qualify`、`check`、`run`、`analyze`、`finalize` 子命令。随后诊断模块归位到 `examples/jobpacer/diagnostics/`，旧 CPU/Gloo 控制路径诊断退役并以不可执行源码快照归档；相关源码快照变化后，历史放行结果仍是当时验证事实，但旧资格和 readiness 证据不能放行当前代码，正式批次前须按当前源码重新审计。
+2026-09-30 入口整理：七臂用户操作统一使用 `python -m examples.jobpacer.scripts.run_phase3` 的 `prepare`、`qualify`、`check`、`run`、`analyze`、`finalize` 子命令。随后诊断模块归位到 `examples/jobpacer/diagnostics/`，旧 CPU/Gloo 控制路径诊断退役并以不可执行源码快照归档；相关源码快照变化后，历史放行结果仍是当时验证事实，但旧资格和 readiness 证据不能放行当前代码，正式批次前须按当前源码重新审计。
 
 2026-09-29。本记录落实[执行要求](phase3-gpu-seven-arm-implementation-20260928.md)，保留进入工作时已有未提交实现；起始 tracked patch 和七臂脚本副本暂存 `/tmp/jobpacer-seven-arm-preparation-start/`。未提交 commit，未删除历史输入/结果，未启动正式矩阵。
 

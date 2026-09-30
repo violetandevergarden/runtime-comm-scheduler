@@ -17,7 +17,7 @@ Phase 2: scheduler.submit(CommIntent(...))
 
 ## Job 定义格式
 
-定义位于 `examples/jobpacer/workloads.py`，层级为：
+当前定义位于 `examples/jobpacer/gloo/workloads.py`（早期路径为 `examples/jobpacer/workloads.py`），层级为：
 
 ```text
 Workload

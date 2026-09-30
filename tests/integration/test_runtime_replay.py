@@ -30,7 +30,7 @@ def _run_dag_replay(root, policy, dag_name, output, *, compute_jitter=0.0, stati
     env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
     command = [
         sys.executable,
-        "-m", "examples.jobpacer.scripts.run_phase3",
+        "-m", "examples.jobpacer.runtime.replay_launcher",
         "--policy", policy,
         "--backend", "gloo",
         "--world-size", "2",
@@ -71,7 +71,7 @@ def test_two_rank_runtime_replay(policy, workload, dag_name, compute_jitter, tmp
     else:
         env = dict(os.environ)
         env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
-        command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+        command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
                    "--policy", policy, "--workload", workload, "--backend", "gloo",
                    "--world-size", "2", "--timeout", "20", "--epoch", "7",
                    "--compute-jitter", str(compute_jitter), "--output", str(output)]
@@ -147,7 +147,7 @@ def test_linear_metadata_mismatch_fails_before_launch(declaration_mode, tmp_path
     output = tmp_path / f"metadata-mismatch-{declaration_mode}.json"
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root), env.get("PYTHONPATH", "")))
-    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+    command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
                "--policy", "fifo", "--workload", "balanced", "--backend", "gloo",
                "--world-size", "2", "--timeout", "3", "--declaration-mode", declaration_mode,
                "--fault", "metadata_mismatch", "--output", str(output)]
@@ -168,7 +168,7 @@ def test_linear_missing_task_is_bounded_without_declaration(declaration_mode, tm
     output = tmp_path / f"missing-task-{declaration_mode}.json"
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root), env.get("PYTHONPATH", "")))
-    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+    command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
                "--policy", "static_fifo", "--workload", "balanced", "--backend", "gloo",
                "--world-size", "2", "--setup-timeout", "5", "--timeout", "3",
                "--declaration-mode", declaration_mode, "--fault", "missing_task",
@@ -191,7 +191,7 @@ def test_linear_launch_and_probe_failures_are_bounded(fault, declaration_mode, t
     output = tmp_path / f"linear-{fault}.json"
     env = dict(os.environ)
     env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
-    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+    command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
                "--policy", "fifo", "--workload", "balanced", "--backend", "gloo",
                "--world-size", "2", "--setup-timeout", "5", "--timeout", "3",
                "--declaration-mode", declaration_mode, "--fault", fault,
@@ -214,7 +214,7 @@ def test_declaration_modes_preserve_linear_specs_hints_order_and_readiness(tmp_p
     payloads = {}
     for declaration_mode in ("before-producer", "on-submit"):
         output = tmp_path / f"declaration-{declaration_mode}.json"
-        command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+        command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
                    "--policy", "static_fifo", "--workload", "delayed", "--backend", "gloo",
                    "--world-size", "2", "--epoch", "85", "--binding-preparation", "precreate",
                    "--declaration-mode", declaration_mode, "--observation-mode", "diagnostic",
@@ -263,7 +263,7 @@ def test_on_submit_declaration_mode_rejects_lookahead_and_dag_before_launch(tmp_
     root = Path(__file__).resolve().parents[2]
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root), env.get("PYTHONPATH", "")))
-    common = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+    common = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
               "--declaration-mode", "on-submit", "--backend", "gloo"]
     commands = [common + ["--policy", "lookahead", "--workload", "balanced"],
                 common + ["--policy", "fifo", "--dag",
@@ -287,7 +287,7 @@ def test_linear_binding_preparation_preserves_readiness_and_collective_semantics
     output = tmp_path / f"linear-{policy}-{binding_preparation}.json"
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root), env.get("PYTHONPATH", "")))
-    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+    command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
                "--policy", policy, "--workload", "balanced", "--backend", "gloo",
                "--world-size", "2", "--epoch", "83", "--compute-jitter", "0.3",
                "--binding-preparation", binding_preparation, "--timeout", "20",
@@ -326,7 +326,7 @@ def test_linear_observation_modes_preserve_collective_semantics(observation_mode
     output = tmp_path / f"observation-{observation_mode}.json"
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root), env.get("PYTHONPATH", "")))
-    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+    command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
                "--policy", "static_fifo", "--workload", "balanced", "--backend", "gloo",
                "--world-size", "2", "--epoch", "84", "--binding-preparation", "precreate",
                "--observation-mode", observation_mode, "--timeout", "20", "--output", str(output)]
@@ -369,7 +369,7 @@ def test_linear_binding_preparation_failures_exit_bounded(binding_preparation, t
     output = tmp_path / f"binding-failure-{binding_preparation}.json"
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root), env.get("PYTHONPATH", "")))
-    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+    command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
                "--policy", "ltf", "--workload", "balanced", "--backend", "gloo",
                "--world-size", "2", "--binding-preparation", binding_preparation,
                "--setup-timeout", "5", "--timeout", "3", "--fault", "binding_failure",
@@ -391,7 +391,7 @@ def test_dag_failures_are_bounded(fault, tmp_path):
     output = tmp_path / f"failure-{fault}.json"
     env = dict(os.environ)
     env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
-    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+    command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
                "--policy", "fifo", "--dag", str(root / "benchmark/phase3/experiments/dag-semantics/smoke/diamond.json"),
                "--backend", "gloo", "--world-size", "2", "--timeout", "3",
                "--fault", fault, "--output", str(output)]
@@ -408,7 +408,7 @@ def test_invalid_dag_manifest_is_rejected_before_rank_workers(tmp_path):
     data = json.loads((root / "benchmark/phase3/experiments/dag-semantics/smoke/linear.json").read_text())
     data["schema_version"] = 99
     invalid.write_text(json.dumps(data))
-    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+    command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
                "--dag", str(invalid), "--world-size", "2"]
     completed = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=5)
     assert completed.returncode == 2
@@ -425,7 +425,7 @@ def test_unsupported_reduction_is_rejected_before_rank_workers(tmp_path):
     output = tmp_path / "should-not-start.json"
     env = dict(os.environ)
     env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
-    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+    command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
                "--dag", str(invalid), "--world-size", "2", "--output", str(output)]
     completed = subprocess.run(command, cwd=root, env=env, capture_output=True,
                                text=True, timeout=5)

@@ -2,8 +2,8 @@
 
 日期：2026-09-20。状态：已实施；验收结果见 [Phase 3.2 结果](../result/phase3.2.md)。
 
-> 目录迁移说明（2026-09-24）：本文中的旧 JobPacer 脚本路径为历史位置。当前 Phase 3 replay 入口为
-> `examples/jobpacer/scripts/run_phase3.py`；旧 DAG smoke 输入映射见
+> 目录迁移说明（2026-09-30）：本文中的旧 JobPacer 脚本路径为历史位置。当前 Phase 3 replay CLI 位于
+> `examples/jobpacer/runtime/replay_launcher.py`；旧 DAG smoke 输入映射见
 > [`benchmark/phase3/results/migration-map.json`](../../../benchmark/phase3/results/migration-map.json)。
 
 依据：[runtime 设计讨论](discussion.md)、[Phase 3.1 计划](phase3.1.md)、[Phase 3.1 结果](../result/phase3.1.md)，以及当前 `src/runtime_comm_scheduler/runtime/` 和 `examples/jobpacer/runtime_*.py` 实现。

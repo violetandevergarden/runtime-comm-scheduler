@@ -15,7 +15,7 @@ from examples.jobpacer.gpu.gpu_compute_profile import (
     PROFILE_SCHEMA,
     dag_compute_profile_signature,
 )
-from examples.jobpacer.runtime.runtime_adapter import load_dag
+from examples.jobpacer.runtime.runtime_adapter import load_dag, require_gpu_dag_contract
 
 
 def collect_calibration_cases(dag_paths: list[Path], *, world_size: int):
@@ -24,8 +24,7 @@ def collect_calibration_cases(dag_paths: list[Path], *, world_size: int):
     cases: dict[str, dict[str, object]] = {}
     for dag_path in dag_paths:
         workload = load_dag(dag_path, world_size=world_size)
-        if workload.execution.schema_version != 2:
-            raise ValueError(f"--dag calibration requires a schema-v2 GPU DAG: {dag_path}")
+        require_gpu_dag_contract(workload)
         workloads.append((dag_path.resolve(), workload))
         for job in workload.graph.jobs:
             for node in job.nodes:
@@ -34,15 +33,10 @@ def collect_calibration_cases(dag_paths: list[Path], *, world_size: int):
                 key_id = f"{job.job_id}/{node.node_id}"
                 program = workload.execution.compute_programs[key_id]
                 buffers = workload.execution.buffers[job.job_id]
-                variants = [program]
-                nominal = workload.execution.profiles.get("nominal_compute_repeats", {})
-                if key_id in nominal:
-                    variants.append({**program, "repeats": nominal[key_id]})
-                for variant in variants:
-                    signature = dag_compute_profile_signature(variant, buffers)
-                    key = json.dumps(signature, sort_keys=True)
-                    cases.setdefault(key, {"signature": signature, "program": variant,
-                                           "buffers": buffers, "first_node": key_id})
+                signature = dag_compute_profile_signature(program, buffers)
+                key = json.dumps(signature, sort_keys=True)
+                cases.setdefault(key, {"signature": signature, "program": program,
+                                       "buffers": buffers, "first_node": key_id})
     if not workloads or not cases:
         raise ValueError("compute profile suite must contain at least one GPU compute node")
     return workloads, cases
@@ -64,6 +58,20 @@ def main() -> int:
     args = parser.parse_args()
     if args.warmup < 0 or args.iterations <= 0:
         parser.error("warmup must be non-negative and iterations positive")
+    dag_paths = list(args.dag)
+    for directory in args.suite_input_dir:
+        if not directory.is_dir():
+            parser.error(f"suite input directory does not exist: {directory}")
+        dag_paths.extend(path for path in sorted(directory.rglob("workload-*.json"))
+                         if ".fifo-order." not in path.name and ".ltf-order." not in path.name)
+    dag_paths = list(dict.fromkeys(path.resolve() for path in dag_paths))
+    if not dag_paths:
+        parser.error("provide at least one --dag or --suite-input-dir")
+    try:
+        for dag_path in dag_paths:
+            require_gpu_dag_contract(load_dag(dag_path))
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
     if not torch.cuda.is_available():
         parser.error("CUDA is unavailable")
     torch.set_float32_matmul_precision(args.matmul_precision)
@@ -81,15 +89,6 @@ def main() -> int:
                                or device.index >= torch.cuda.device_count() for device in device_list)
             or len({device.index for device in device_list}) != len(device_list)):
         parser.error("each requested device must be a unique, explicitly visible cuda:N device")
-    dag_paths = list(args.dag)
-    for directory in args.suite_input_dir:
-        if not directory.is_dir():
-            parser.error(f"suite input directory does not exist: {directory}")
-        dag_paths.extend(path for path in sorted(directory.rglob("workload-*.json"))
-                         if ".fifo-order." not in path.name and ".ltf-order." not in path.name)
-    dag_paths = list(dict.fromkeys(path.resolve() for path in dag_paths))
-    if not dag_paths:
-        parser.error("provide at least one --dag or --suite-input-dir")
     try:
         workloads, calibration_cases = collect_calibration_cases(
             dag_paths, world_size=torch.cuda.device_count())

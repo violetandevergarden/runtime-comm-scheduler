@@ -8,8 +8,8 @@ import statistics
 import sys
 from pathlib import Path
 
-from examples.jobpacer.experiments.seven_arm.suite import BARE_ARM, CONTRACT_VERSION
-from examples.jobpacer.experiments.seven_arm.batch import (
+from examples.jobpacer.experiments.phase3.suite import BARE_ARM, CONTRACT_VERSION
+from examples.jobpacer.experiments.phase3.batch import (
     ARM_CONFIG, ROOT, _canonical, _cuda_environment, _reserve_run_attempt,
     _run_child, _verify_frozen_inputs, _write_json, source_snapshot,
 )
@@ -149,7 +149,7 @@ def run(directory: Path) -> dict:
         reservation = _reserve_run_attempt(row, directory, 1)
         engine, policy, order_key = ARM_CONFIG[row["arm"]]
         sample = manifest["sample"]
-        command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3", "--comm-engine", engine,
+        command = [sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher", "--comm-engine", engine,
                    "--policy", policy, "--backend", "nccl", "--world-size", "2", "--startup-attempts", "1",
                    "--dag", str(suite_path.parent / sample["path"]), "--warmup-iterations", "5",
                    "--timeout", str(manifest["timeout"]), "--setup-timeout", str(manifest["timeout"]),

@@ -35,7 +35,7 @@ Phase 3.2 的 DAG runner 位于通信 runtime 上层，负责计算节点和完�
 
 首轮报告的全仓测试记录早于当前复核，不能作为当前工作树全通过的依据。本次使用 `.venv/bin/python` 执行 `PYTHONPATH=src python -m pytest -q`：**238 passed、48 skipped、5 failed，34.29 秒**。三项为历史 benchmark 路径/fixture 缺失；另两项为 Phase 1 Gloo bare replay 失败和 Phase 2 profile/replay 超时。
 
-代码审查确认，共用 [replay_worker.py](examples/jobpacer/runtime/replay_worker.py) 新增 S lane 后，`application_wait_start_ts` 只在 S 分支赋值，而 H 分支也读取它。Phase 1 默认 H 路径已实际触发 `UnboundLocalError`；Phase 2 H 路径也存在同一未赋值读取。应先恢复旧路径回归，再使用当前源码继续 H lane 对照；已有批次应使用各自归档源码复现。
+代码审查确认，共用 Gloo [replay_worker.py](examples/jobpacer/runtime/replay_worker.py) 新增 S lane 后，`application_wait_start_ts` 只在 S 分支赋值，而 H 分支也读取它。Phase 1 默认 H 路径已实际触发 `UnboundLocalError`；Phase 2 H 路径也存在同一未赋值读取。应先恢复旧路径回归，再使用当前源码继续 H lane 对照；已有批次应使用各自归档源码复现。该模块曾于 2026-09-30 移入 `gloo/`，后按职责归入 `runtime/`；此处记录的是当时的代码审查结果。
 
 G5 的 bridge 批次成功执行，但尚不能认定为等价迁移：所选 [DAG 输入](benchmark/phase3/experiments/bridge/G0-linear-bridge.json) 是 `matmul → comm` 串行链，线性 S lane 则在 producer fill 完成后启动独立 matmul 与通信，并在 consumer 汇合。两者依赖、consumer 工作和应用终点不同；相同 matmul 尺寸和通信集合不足以验收 bridge。diamond 的单独语义证据应与此区分。
 
@@ -54,8 +54,8 @@ G5 的 bridge 批次成功执行，但尚不能认定为等价迁移：所选 [D
 | `src/runtime_comm_scheduler/dag/` | 图模型、校验、计算与通信节点推进 |
 | `examples/jobpacer/runtime/` | workload 映射、rank harness |
 | `examples/jobpacer/gpu/` | GPU DAG 的 CUDA compute/resources、compute profile 与设备信息 |
-| `examples/jobpacer/scripts/` | replay/profile 工具及七臂唯一用户入口 `run_gpu_seven_arm.py` |
-| `examples/jobpacer/experiments/seven_arm/` | 七臂输入、资格、检查、批次、分析和封存实现 |
+| `examples/jobpacer/scripts/` | replay/profile 工具及 Phase 3 GPU 实验入口 `run_phase3.py` |
+| `examples/jobpacer/experiments/phase3/` | Phase 3 输入、资格、检查、批次和封存实现 |
 | `examples/jobpacer/analysis/` | 结果校验、汇总与可视化 |
 | `benchmark/phase3/experiments/` | 语义分类的实验输入 |
 | `benchmark/phase3/results/` | 本地产物，默认被 Git 忽略 |
@@ -86,12 +86,12 @@ PYTHONPATH=src RUN_JOBPACER_RUNTIME_NCCL=1 \
   python -m pytest -q tests/integration/test_runtime_replay_nccl.py
 
 # 新 runtime 单次 Gloo replay
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy fifo --workload balanced --backend gloo \
   --world-size 2 --timeout 20 --output /tmp/jobpacer-phase3-gloo.json
 
 # 新 runtime 双卡 NCCL DAG smoke；这不是性能矩阵
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+PYTHONPATH=src:. python -m examples.jobpacer.runtime.replay_launcher \
   --policy fifo --dag benchmark/phase3/experiments/dag-semantics/smoke/gpu-v2-fork-join.json \
   --backend nccl \
   --world-size 2 --warmup-iterations 5 --setup-timeout 60 --timeout 30 \

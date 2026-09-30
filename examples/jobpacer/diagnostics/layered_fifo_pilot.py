@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from examples.jobpacer.runtime.runtime_adapter import parse_dag
-from examples.jobpacer.experiments.seven_arm.batch import _cuda_environment, source_snapshot
+from examples.jobpacer.experiments.phase3.batch import _cuda_environment, source_snapshot
 from runtime_comm_scheduler.dag import build_layered_fifo_order, validate_static_order
 
 
@@ -151,7 +151,7 @@ def _command(arm: str, sample: dict[str, Any], paths: dict[str, Any], output: Pa
     else:
         policy, engine = "fifo", "new"
     command = [
-        sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+        sys.executable, "-m", "examples.jobpacer.runtime.replay_launcher",
         "--policy", policy, "--comm-engine", engine,
         "--dag", str(paths["root"] / sample["input_path"]),
         "--backend", "nccl", "--world-size", "2",

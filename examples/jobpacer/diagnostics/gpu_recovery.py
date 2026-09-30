@@ -5,13 +5,13 @@ import json
 import sys
 from pathlib import Path
 
-from examples.jobpacer.experiments.seven_arm import batch
-from examples.jobpacer.experiments.seven_arm.suite import MECHANISM_PILOT_ARMS, ORDER_SEED
+from examples.jobpacer.experiments.phase3 import batch
+from examples.jobpacer.experiments.phase3.suite import MECHANISM_PILOT_ARMS, ORDER_SEED
 
 # The held socket forces rank zero's real TCPStore bind to fail before any
 # communicator or application can start. Subsequent processes allocate normally.
 COLLISION_WRAPPER = '''import socket, sys
-from examples.jobpacer.scripts import run_phase3 as replay
+from examples.jobpacer.runtime import replay_launcher as replay
 held = socket.socket()
 held.bind(("127.0.0.1", 0))
 held.listen()

@@ -4,12 +4,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from examples.jobpacer.experiments.seven_arm.gates import READINESS_GATES, verify_readiness
-from examples.jobpacer.experiments.seven_arm.batch import (
+from examples.jobpacer.experiments.phase3.gates import READINESS_GATES, verify_readiness
+from examples.jobpacer.experiments.phase3.batch import (
     _canonical, _sha, _verify_bare_qualification, _verify_frozen_inputs,
-    _write_json, analyze_batch, source_snapshot,
+    _write_json, source_snapshot,
 )
-from examples.jobpacer.experiments.seven_arm.suite import ARMS, MECHANISM_PILOT_ARMS
+from examples.jobpacer.analysis.phase3 import analyze_batch
+from examples.jobpacer.experiments.phase3.suite import ARMS, MECHANISM_PILOT_ARMS
 
 
 def seal_formal_inputs(suite_dir: Path, pilot_batch_dir: Path) -> dict:

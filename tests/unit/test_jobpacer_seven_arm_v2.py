@@ -6,12 +6,13 @@ from types import SimpleNamespace
 import pytest
 
 from examples.jobpacer.runtime.runtime_adapter import parse_dag, apply_dag_compute_profile
-from examples.jobpacer.experiments.seven_arm.suite import (
+from examples.jobpacer.experiments.phase3.suite import (
     ARMS, BARE_ARM, EXECUTION_CONTRACT, PILOT_WORKLOAD_SEEDS,
     expand_sample, make_template, prepare_suite, topology_hash,
 )
-from examples.jobpacer.experiments.seven_arm.gates import decision_evidence, mechanism_gates, verify_readiness
-from examples.jobpacer.experiments.seven_arm.batch import _verified_pre_task_port_conflict
+from examples.jobpacer.experiments.phase3.gates import decision_evidence, mechanism_gates, verify_readiness
+from examples.jobpacer.experiments.phase3.batch import _verified_pre_task_port_conflict
+from runtime_comm_scheduler.dag import ComputeNode
 
 
 def test_v2_has_distinct_six_graphs_two_real_chains_and_explicit_capacities():
@@ -30,7 +31,7 @@ def test_v2_has_distinct_six_graphs_two_real_chains_and_explicit_capacities():
     assert occupancy["kind"] == "comm" and occupancy["collective"]["num_bytes"] == 64 * 1024 * 1024
 
 
-def test_profile_estimates_do_not_leak_execution_perturbations():
+def test_profile_only_updates_estimates_and_preserves_each_input_program():
     template = make_template("L1-skew-tail")
     first = parse_dag(expand_sample(template, "L1-skew-tail", 8101, 0), world_size=2)
     second = parse_dag(expand_sample(template, "L1-skew-tail", 8102, 4), world_size=2)
@@ -41,9 +42,22 @@ def test_profile_estimates_do_not_leak_execution_perturbations():
             return SimpleNamespace(device_event_p50_s=spec.get("repeats", 1) * 0.001)
     profiled = [apply_dag_compute_profile(dag, Profile(), device_uuids=("a", "b"), software={})
                 for dag in (first, second)]
-    assert profiled[0].estimate_view_hash == profiled[1].estimate_view_hash
-    nominal = first.execution.profiles["nominal_compute_repeats"]
-    assert nominal["job-0/producer-s0"] == nominal["job-1/producer-s0"] == 8
+    assert profiled[0].execution.compute_programs == first.execution.compute_programs
+    assert profiled[1].execution.compute_programs == second.execution.compute_programs
+    assert profiled[0].execution.profiles == first.execution.profiles == {}
+    assert profiled[1].execution.profiles == second.execution.profiles == {}
+    assert profiled[0].estimate_view_hash != profiled[1].estimate_view_hash
+    for dag, profiled_dag in zip((first, second), profiled):
+        for job in dag.graph.jobs:
+            for node in job.nodes:
+                if not isinstance(node, ComputeNode):
+                    continue
+                program = dag.execution.compute_programs[f"{job.job_id}/{node.node_id}"]
+                expected = program.get("repeats", 1) * 0.001
+                actual_job = next(item for item in profiled_dag.graph.jobs
+                                  if item.job_id == job.job_id)
+                actual_node = next(item for item in actual_job.nodes if item.node_id == node.node_id)
+                assert actual_node.estimated_duration_s == pytest.approx(expected)
 
 
 def _records(selected="long", *, same_winner=False):
@@ -119,13 +133,12 @@ def test_port_conflict_is_not_retryable_without_pre_task_startup_proof(overrides
         raw, returncode=1, timed_out=True, process_group_exited=True)
 
 
-def test_generated_manifest_discloses_actual_and_nominal_work(tmp_path):
+def test_generated_manifest_discloses_program_work_without_profile_override(tmp_path):
     suite = prepare_suite(tmp_path, seeds=PILOT_WORKLOAD_SEEDS)
     for scenario in suite["scenarios"].values():
         assert len({json.dumps(sample["actual_matmul_repeats"], sort_keys=True)
                     for sample in scenario["samples"]}) == 3
-        assert len({json.dumps(sample["nominal_matmul_repeats"], sort_keys=True)
-                    for sample in scenario["samples"]}) == 1
+        assert all("nominal_matmul_repeats" not in sample for sample in scenario["samples"])
 
 
 @pytest.mark.parametrize("overrides", [

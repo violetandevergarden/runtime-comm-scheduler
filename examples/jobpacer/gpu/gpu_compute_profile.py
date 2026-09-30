@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 PROFILE_SCHEMA = "jobpacer-gpu-compute-profile"
-PROFILE_VERSION = 2
 DAG_PROFILE_VERSION = 3
+PROFILE_VERSION = DAG_PROFILE_VERSION
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,6 @@ class GpuComputeProfile:
 
     def record(self, *, device_uuid: str, stage: str,
                spec: Mapping[str, Any],
-               tensor_shape: tuple[int, ...] | None = None,
                software: Mapping[str, Any] | None = None) -> ComputeProfileRecord:
         mismatches = []
         for key, expected in self.software.items():
@@ -58,7 +57,7 @@ class GpuComputeProfile:
         records = self.devices.get(device_uuid)
         if records is None:
             raise ValueError(f"GPU compute profile has no records for device UUID {device_uuid!r}")
-        target = compute_profile_signature(spec, tensor_shape=tensor_shape)
+        target = compute_profile_signature(spec)
         found = [row for row in records if row.stage == stage and dict(row.signature) == target]
         if len(found) != 1:
             raise ValueError(f"GPU compute profile signature missing or duplicated: {stage} {target}")
@@ -75,9 +74,8 @@ def load_gpu_compute_profile(path: str | Path) -> GpuComputeProfile:
         raise ValueError("GPU compute profile root fields must be schema, schema_version, software, devices")
     if (raw["schema"] != PROFILE_SCHEMA or isinstance(raw["schema_version"], bool)
             or not isinstance(raw["schema_version"], int)
-            or raw["schema_version"] not in {PROFILE_VERSION, DAG_PROFILE_VERSION}):
+            or raw["schema_version"] != PROFILE_VERSION):
         raise ValueError("unsupported GPU compute profile schema/version")
-    version = raw["schema_version"]
     software = _object(raw["software"], "software", {"pytorch_version", "cuda_version",
                                                         "matmul_precision", "allow_tf32"})
     if software["matmul_precision"] not in {"highest", "high", "medium"} or software["allow_tf32"] is not False:
@@ -96,7 +94,7 @@ def load_gpu_compute_profile(path: str | Path) -> GpuComputeProfile:
             raise ValueError(f"devices[{index}].device_uuid must be unique and non-empty")
         if not isinstance(row["records"], list) or not row["records"]:
             raise ValueError(f"devices[{index}].records must be non-empty")
-        records = tuple(_record(record, f"devices[{index}].records[{record_index}]", version=version)
+        records = tuple(_record(record, f"devices[{index}].records[{record_index}]")
                         for record_index, record in enumerate(row["records"]))
         signatures = [(record.stage, json.dumps(record.signature, sort_keys=True)) for record in records]
         if len(signatures) != len(set(signatures)):
@@ -105,65 +103,15 @@ def load_gpu_compute_profile(path: str | Path) -> GpuComputeProfile:
     return GpuComputeProfile(dict(software), devices, raw)
 
 
-def _record(raw: Any, where: str, *, version: int = PROFILE_VERSION) -> ComputeProfileRecord:
+def _record(raw: Any, where: str) -> ComputeProfileRecord:
     value = _object(raw, where, {"stage", "signature", "device_event_ms_samples",
                                  "host_enqueue_us_samples", "preparation_us"})
-    supported_stages = ({"compute"} if version == DAG_PROFILE_VERSION
-                        else {"producer", "independent", "dependent"})
-    if value["stage"] not in supported_stages:
-        raise ValueError(f"{where}.stage is unsupported")
+    if value["stage"] != "compute":
+        raise ValueError(f"{where}.stage must be 'compute' for a schema-v2 DAG program")
     signature = value["signature"]
-    if not isinstance(signature, dict) or signature.get("op") not in {"fill", "matmul", "sum_join"}:
+    if not isinstance(signature, dict):
         raise ValueError(f"{where}.signature is invalid")
-    op = signature.get("op")
-    if version == DAG_PROFILE_VERSION:
-        _validate_dag_signature(signature, where)
-        device_samples = _samples(value["device_event_ms_samples"], f"{where}.device_event_ms_samples")
-        host_samples = _samples(value["host_enqueue_us_samples"], f"{where}.host_enqueue_us_samples")
-        if len(device_samples) != len(host_samples):
-            raise ValueError(f"{where} device and host sample counts differ")
-        prep = _finite_nonnegative(value["preparation_us"], f"{where}.preparation_us")
-        return ComputeProfileRecord(value["stage"], dict(signature), device_samples, host_samples, prep)
-    if ((value["stage"] == "dependent") != (op == "sum_join")
-            or (value["stage"] == "independent" and op != "matmul")):
-        raise ValueError(f"{where}.signature op does not match its stage")
-    if op == "matmul":
-        expected_fields = {"op", "m", "n", "k", "dtype", "layout", "repeats", "output_role"}
-        if value["stage"] == "independent":
-            expected_fields.add("input_role")
-    elif op == "fill":
-        expected_fields = {"op", "output_role", "shape", "dtype", "layout"}
-    else:
-        expected_fields = {"op", "inputs", "shape", "dtype", "layout"}
-    if set(signature) != expected_fields:
-        raise ValueError(f"{where}.signature fields are invalid for its stage")
-    if op == "matmul":
-        dims = (signature.get("m"), signature.get("n"), signature.get("k"), signature.get("repeats"))
-        if any(not isinstance(item, int) or isinstance(item, bool) or item <= 0 for item in dims):
-            raise ValueError(f"{where}.signature matmul dimensions/repeats must be positive integers")
-        if signature.get("dtype") != "float32" or signature.get("layout") != "contiguous":
-            raise ValueError(f"{where}.signature supports only contiguous float32 matmul")
-        expected_roles = ((None, "independent_output") if value["stage"] == "independent"
-                          else (None, "collective_input"))
-        if signature.get("output_role") != expected_roles[1]:
-            raise ValueError(f"{where}.signature output_role is invalid")
-        if value["stage"] == "independent" and signature.get("input_role") != "private_inputs":
-            raise ValueError(f"{where}.signature input_role is invalid")
-    elif op == "fill" and signature.get("output_role") != "collective_input":
-        raise ValueError(f"{where}.signature output_role is invalid")
-    elif op == "sum_join":
-        inputs = signature.get("inputs")
-        if (not isinstance(inputs, list) or "collective_output" not in inputs
-                or len(inputs) != len(set(inputs))
-                or any(item not in {"collective_output", "independent_output"} for item in inputs)):
-            raise ValueError(f"{where}.signature inputs are invalid")
-    if op in {"fill", "sum_join"}:
-        shape = signature.get("shape")
-        if (not isinstance(shape, list) or not shape
-                or any(not isinstance(dim, int) or isinstance(dim, bool) or dim <= 0 for dim in shape)):
-            raise ValueError(f"{where}.signature shape must contain positive integers")
-        if signature.get("dtype") != "float32" or signature.get("layout") != "contiguous":
-            raise ValueError(f"{where}.signature supports only contiguous float32 tensors")
+    _validate_dag_signature(signature, where)
     device_samples = _samples(value["device_event_ms_samples"], f"{where}.device_event_ms_samples")
     host_samples = _samples(value["host_enqueue_us_samples"], f"{where}.host_enqueue_us_samples")
     if len(device_samples) != len(host_samples):
@@ -172,19 +120,11 @@ def _record(raw: Any, where: str, *, version: int = PROFILE_VERSION) -> ComputeP
     return ComputeProfileRecord(value["stage"], dict(signature), device_samples, host_samples, prep)
 
 
-def compute_profile_signature(spec: Mapping[str, Any], *,
-                              tensor_shape: tuple[int, ...] | None = None) -> dict[str, Any]:
+def compute_profile_signature(spec: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(spec, Mapping):
         raise TypeError("compute profile signature must be a mapping")
     signature = dict(spec)
-    if "input_shapes" in signature:
-        return signature
-    if signature.get("op") in {"fill", "sum_join"}:
-        if (tensor_shape is None or not tensor_shape
-                or any(not isinstance(dim, int) or isinstance(dim, bool) or dim <= 0
-                       for dim in tensor_shape)):
-            raise ValueError("fill and sum_join profile signatures require a positive tensor_shape")
-        signature.update({"shape": list(tensor_shape), "dtype": "float32", "layout": "contiguous"})
+    _validate_dag_signature(signature, "compute profile signature")
     return signature
 
 

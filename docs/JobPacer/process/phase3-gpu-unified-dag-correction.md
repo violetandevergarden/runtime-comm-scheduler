@@ -356,3 +356,39 @@ old 和 raw-ordered 各注入一次 `binding_failure`。首次 old 故障复现�
 - 双卡 NCCL 的 `test_two_rank_gpu_dag_waits_for_compute_event_before_dependent_comm`：1 passed，5 deselected，6.71 秒。RTX 4090 ×2、PyTorch 2.13.0+cu126、CUDA 12.6、NCCL 2.29.3；保留的 DAG `cuda-matmul` 计算回执检查通过。
 - 另以 schema-v2 `gpu-v2-fork-join.json` 执行一次 `run_phase3 --policy fifo --dag ... --backend nccl` smoke：validation `ok`、2 ranks、collective 数值正确；结果 `/tmp/jobpacer-gpu-dag-retirement-smoke.json`。该次是语义检查，不作性能结论。
 - 完整 `tests/unit`：310 passed、3 failed，7.27 秒。3 个失败仍是 `tests/unit/test_benchmark_paths.py` 依赖的历史迁移映射/结果 fixture 缺失（Phase 3 旧路径、Phase 1.2 旧批次目录），不涉及本次 GPU 路线修改；未补造或改写历史产物。
+
+## 21. 2026-09-30 schema-v2 GPU 合同与模块归位
+
+本轮按“GPU/NCCL 只接受 schema-v2 `cuda-program` DAG；Gloo 保留线性与 DAG”执行整理。
+
+- Phase 3 父入口、直接 rank worker、NCCL 通信 profiling 和 GPU compute profiling 均检查 schema-v2 GPU DAG 合同；该合同要求输入显式列出每个 job 的 `application_terminals`。旧输入不转换成新语义。NCCL 集成继续覆盖旧线性/schema-v1 输入的前置拒绝。
+- 退役 `gpu_compute.py`、`CudaMatmulProgram` 和 `_prepare_dag_gpu_compute()`。所有 GPU DAG 计算仅通过 `GpuDagResources` 的输入绑定执行。compute profile 按输入 `compute_programs` 的精确签名匹配，只更新估计时长；移除了旧 `nominal_compute_repeats` 对 program repeats 的运行时覆盖。七臂生成器将每个 matmul 的 repeats 保存在该节点 program 中。
+- `workloads.py`、`workload_builder.py`、`plan_builder.py`、`replay_worker.py` 分别移入 `gloo/`。旧 Gloo `Workload` 映射和线性采样绑定移入 `gloo/runtime_adapter.py`；通用通信 profile 数据模型移入 `runtime/comm_profile.py`，Gloo Workload 应用层留在 `gloo/comm_profile.py`。
+- 共享路径工具移入 `examples/jobpacer/paths.py`。Phase 3 replay launcher 实现位于 `runtime/replay_launcher.py`；旧 Phase 3 与 compact-suite 批次实现移入 `experiments/`，GPU Phase 3 统计和证据校验位于 `analysis/phase3.py`，Phase 1.2 批次实现移入 `experiments/runner_batch.py`。`analysis/` 和 `diagnostics/` 不再导入 `scripts/`。
+- 为保留 NCCL 多 communicator 的真实检查，新建 `gpu-v2-multi-group.json` schema-v2 DAG smoke。历史 GPU-linear 输入、旧报告和既有结果未改写。源码目录与源码快照清单已同步；旧 source digest 的资格不能用于当前树。本轮没有创建/执行正式采集矩阵。
+
+本轮验证：针对性回归 107 passed；完整单元测试 315 passed、3 skipped（checkout 不包含历史迁移 map/结果夹具）；Gloo 双 rank runtime 集成 47 passed；双卡 RTX 4090 NCCL 语义套件 7 passed；六个七臂子命令、公开 Phase 3/Phase 1–3 命令的 `--help` 检查通过。初次全量 `pytest -q` 曾递归收集 `benchmark/phase3/results/**/source_snapshot/tests` 下的历史源码副本并触发重复模块名；`pyproject.toml` 现将默认 `testpaths` 限定为 `tests/`，历史快照保持原样。最终 `PYTHONPATH=src:. .venv/bin/python -m pytest -q` 为 327 passed、52 skipped，33.82 秒。没有执行正式实验矩阵；最终 `git diff --check` 与源码扫描通过。
+
+## 22. 2026-09-30 删除薄入口
+
+删除了 `scripts/run_phase3.py`、`scripts/run_experiments.py` 和 `scripts/run_compact_suite.py` 三个只转调内部 `main()` 的 wrapper。Phase 3 replay 直接通过 `python -m examples.jobpacer.runtime.replay_launcher` 启动；批次和 compact suite 分别通过 `examples.jobpacer.experiments.gloo_phase3_batch` 与 `examples.jobpacer.experiments.compact_suite` 调用。诊断、资格检查、批次执行及 Gloo/NCCL 集成测试均更新为直接调用这些实现，Phase 3 源码快照不再列入已删除的 wrapper。根 README、JobPacer README、协作指南和当前命令示例已同步。
+
+删除后验证：三个内部 CLI 的 `--help` 和 `compileall` 通过；`PYTHONPATH=src:. .venv/bin/python -m pytest -q` 为 327 passed、52 skipped（36.30 秒）；双 rank Gloo runtime 集成为 47 passed（129.37 秒）；双卡 RTX 4090 NCCL 集成为 7 passed（33.00 秒）。`git diff --check` 通过，Python 源码和测试不再引用被删除的模块或路径。没有启动实验批次。
+
+## 23. 2026-09-30 将 Gloo runtime 实现归位
+
+按职责将 `gloo/plan_builder.py` 和 `gloo/replay_worker.py` 移入 `runtime/`，将线性 workload 映射适配器移为 `runtime/gloo_runtime_adapter.py`，避免与已有的通用 DAG `runtime_adapter.py` 重名。Gloo workload 数据模型、builder 和 profile 应用代码仍留在 `gloo/`。更新了 Phase 2 CLI、Phase 1/2 批次实现、Phase 3 线性/DAG 适配调用、测试导入和源码快照清单。
+
+## 24. 2026-09-30 将七臂 GPU study 命名为 Phase 3 实验
+
+用户入口由 `scripts/run_gpu_seven_arm.py` 改为 `scripts/run_phase3.py`；原六个子命令及各自执行语义保持不变。实现包从 `experiments/seven_arm/` 移至 `experiments/phase3/`，批次分析从 `analysis/seven_arm.py` 移至 `analysis/phase3.py`。`runtime/replay_launcher.py` 继续负责单次底层 replay，因此顶层 Phase 3 实验命令与 replay CLI 含义分开。原 CPU/Gloo Phase 3 批次模块另改名为 `experiments/gloo_phase3_batch.py`，与 GPU Phase 3 study 区分。七臂作为当前 Phase 3 study 的 arm 设计保留在 schema、manifest 和历史结果术语中。源码快照和当前操作说明已同步。
+
+验证：`PYTHONPATH=src:. .venv/bin/python -m examples.jobpacer.scripts.run_phase3 --help` 显示六个实验子命令；`gloo_phase3_batch --help`、`compileall` 和 `git diff --check` 通过；`PYTHONPATH=src:. .venv/bin/python -m pytest -q` 为 327 passed、52 skipped（36.05 秒）。当前 Python 源码、测试与操作说明不再调用旧入口名或旧包路径；历史过程记录保留旧名称作为当时状态。
+
+## 25. 2026-09-30 将 Gloo adapter 放回 Gloo 模块
+
+应用户要求，将 `runtime/gloo_runtime_adapter.py` 移回 `gloo/runtime_adapter.py` 并恢复原模块名。通用 DAG 适配器仍为 `runtime/runtime_adapter.py`；两者分别负责旧 Gloo workload 映射与 DAG schema/runtime 绑定。Phase 3 worker、replay launcher、测试和源码快照均引用新的 Gloo 路径。
+
+验证：完整测试为 327 passed、52 skipped（38.35 秒）；`compileall` 与 `git diff --check` 通过，代码和测试不再引用 `runtime.gloo_runtime_adapter`。
+
+验证：`PYTHONPATH=src:. .venv/bin/python -m pytest -q` 为 327 passed、52 skipped（34.65 秒）；最终 `compileall`、Phase 2 `--help`、Python 调用路径扫描与 `git diff --check` 通过。全仓初次收集发现两个单元测试仍从旧 `gloo` 包导入 `replay_worker`；已更新为 `runtime.replay_worker`，随后完整测试通过。

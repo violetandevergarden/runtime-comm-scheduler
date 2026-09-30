@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from examples.jobpacer.analysis.benchmark_paths import REPOSITORY_ROOT, repository_path
+from examples.jobpacer.paths import REPOSITORY_ROOT, repository_path
 
 
 RESULTS_ROOT = REPOSITORY_ROOT / "benchmark/phase3/results"

@@ -6,8 +6,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from examples.jobpacer.workloads import Workload
-from examples.jobpacer.workload_builder import (
+from examples.jobpacer.gloo.workloads import Workload
+from examples.jobpacer.gloo.workload_builder import (
     convert_document,
 )
 

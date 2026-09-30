@@ -11,17 +11,16 @@ import pytest
 
 from examples.jobpacer.runtime.runtime_adapter import (
     apply_dag_compute_profile,
-    linear_static_order,
-    remaining_tail,
-    task_hint,
     load_dag,
     make_collective_binding,
     make_replay_compute,
     parse_dag,
+    require_gpu_dag_contract,
     sample_compute_duration,
 )
+from examples.jobpacer.gloo.runtime_adapter import linear_static_order, remaining_tail, task_hint
 from examples.jobpacer.runtime.plan_builder import build_plan
-from examples.jobpacer.workloads import built_workload
+from examples.jobpacer.gloo.workloads import built_workload
 from runtime_comm_scheduler.dag import ComputeNode
 from runtime_comm_scheduler.runtime import CollectiveSpec, EventLog, TaskSpec
 
@@ -64,7 +63,7 @@ def test_compute_sampling_and_historical_linear_order_remain_stable():
 
 
 def test_linear_postcompletion_tail_overlap_estimate_and_hint():
-    from examples.jobpacer.workloads import CollectiveComm, Job, Workload
+    from examples.jobpacer.gloo.workloads import CollectiveComm, Job, Workload
 
     job = Job("scores", (
         CollectiveComm(0, estimated_comm_s=2.0, consumer_compute_s=5.0),
@@ -155,6 +154,7 @@ def _v2_gpu_dag():
             },
             "comm_bindings": {"job-0/c": {"buffer": "x"}},
             "submit_after": {"job-0/u": ["job-0/c"]},
+            "application_terminals": {"job-0": ["d"]},
         },
     }
 
@@ -166,9 +166,23 @@ def test_v2_gpu_dag_normalizes_program_buffers_and_submit_gate_without_epoch_ide
     assert first.execution.compute_programs["job-0/p"]["op"] == "matmul"
     assert first.execution.comm_bindings == {"job-0/c": {"buffer": "x"}}
     assert first.execution.submit_after == {"job-0/u": ("job-0/c",)}
+    assert first.execution.application_terminals == {"job-0": ("d",)}
+    require_gpu_dag_contract(first)
     assert first.manifest_digest == second.manifest_digest
     assert first.estimate_view_hash == second.estimate_view_hash
     assert parse_dag(json.loads(first.canonical_json), world_size=2).manifest_digest == first.manifest_digest
+
+
+def test_gpu_dag_contract_requires_explicit_complete_terminal_set():
+    missing = _v2_gpu_dag()
+    del missing["execution"]["application_terminals"]
+    with pytest.raises(ValueError, match="explicit execution.application_terminals"):
+        require_gpu_dag_contract(parse_dag(missing, world_size=2))
+
+    invalid = _v2_gpu_dag()
+    invalid["execution"]["application_terminals"] = {"job-0": ["c"]}
+    with pytest.raises(ValueError, match="must list every graph sink"):
+        parse_dag(invalid, world_size=2)
 
 
 def test_v2_gpu_dag_rejects_incomplete_program_mapping_and_unordered_buffer_hazard():

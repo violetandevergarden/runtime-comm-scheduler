@@ -7,7 +7,7 @@ import json
 import math
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Mapping, MutableMapping
+from typing import Any, Callable, Mapping, MutableMapping
 
 from runtime_comm_scheduler.dag import (
     CommNode,
@@ -18,7 +18,6 @@ from runtime_comm_scheduler.dag import (
     validate_static_order,
 )
 from runtime_comm_scheduler.runtime import CollectiveSpec, GroupSpec, LocalBinding, TaskHint, TaskSpec
-from examples.jobpacer.workloads import CollectiveComm, Job, Workload
 
 
 @dataclass(frozen=True)
@@ -33,6 +32,7 @@ class ReplayExecutionConfig:
     compute_programs: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     comm_bindings: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     submit_after: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    application_terminals: Mapping[str, tuple[str, ...]] | None = None
     profiles: Mapping[str, Any] = field(default_factory=dict)
     schema_version: int = 1
 
@@ -177,12 +177,20 @@ def parse_dag(raw: Any, *, epoch: int = 0, world_size: int | None = None) -> Dag
                     input_hash=digest, estimate_view_hash=_estimate_view_hash(graph))
 
 
+def require_gpu_dag_contract(dag: DagInput) -> None:
+    """Enforce the only supported GPU workload contract at execution boundaries."""
+    if dag.execution.schema_version != 2 or dag.execution.mode != "cuda-program":
+        raise ValueError("GPU/NCCL execution requires a schema-v2 cuda-program DAG")
+    if dag.execution.application_terminals is None:
+        raise ValueError("GPU/NCCL execution requires explicit execution.application_terminals")
+
+
 def _parse_dag_v2(root: Mapping[str, Any], *, name: str, seed: int, epoch: int,
                   world_size: int | None, groups: list[GroupSpec]) -> DagInput:
     execution_raw = _object(
         root["execution"], "execution",
         {"mode", "sample_id", "compute_model", "buffers", "compute_programs",
-         "comm_bindings", "submit_after", "profiles"},
+         "comm_bindings", "submit_after", "application_terminals", "profiles"},
         required={"mode", "sample_id", "compute_model", "buffers", "compute_programs", "comm_bindings"},
     )
     mode = _text(execution_raw["mode"], "execution.mode")
@@ -260,13 +268,19 @@ def _parse_dag_v2(root: Mapping[str, Any], *, name: str, seed: int, epoch: int,
     comm_bindings = _parse_comm_bindings(execution_raw["comm_bindings"], comm_nodes, buffers)
     _validate_buffer_hazards(graph, buffers, compute_programs, comm_bindings)
     submit_after = _parse_submit_after(execution_raw.get("submit_after", {}), graph)
+    application_terminals = None
+    if "application_terminals" in execution_raw:
+        application_terminals = _parse_application_terminals(
+            execution_raw["application_terminals"], graph,
+        )
     profiles_raw = execution_raw.get("profiles", {})
     profiles = _object(profiles_raw, "execution.profiles", None)
 
     config = ReplayExecutionConfig(
         mode=mode, sample_id=sample_id, compute_model=compute_model,
         buffers=buffers, compute_programs=compute_programs, comm_bindings=comm_bindings,
-        submit_after=submit_after, profiles=profiles, schema_version=2,
+        submit_after=submit_after, application_terminals=application_terminals,
+        profiles=profiles, schema_version=2,
     )
     canonical = _canonical_v2_document(name, seed, graph, config)
     canonical_json = json.dumps(canonical, sort_keys=True, separators=(",", ":"), allow_nan=False)
@@ -468,6 +482,36 @@ def _parse_submit_after(raw: Any, graph: DagGraph) -> dict[str, tuple[str, ...]]
     return result
 
 
+def _parse_application_terminals(raw: Any, graph: DagGraph) -> dict[str, tuple[str, ...]]:
+    values = _object(raw, "execution.application_terminals", None)
+    jobs = {job.job_id: job for job in graph.jobs}
+    if set(values) != set(jobs):
+        raise ValueError("execution.application_terminals must exactly cover jobs")
+    result: dict[str, tuple[str, ...]] = {}
+    for job_id, raw_nodes in values.items():
+        node_ids = _array(raw_nodes, f"execution.application_terminals.{job_id}")
+        if not node_ids or any(not isinstance(node_id, str) for node_id in node_ids):
+            raise ValueError(f"execution.application_terminals.{job_id} must be a non-empty node ID array")
+        if len(node_ids) != len(set(node_ids)):
+            raise ValueError(f"execution.application_terminals.{job_id} contains duplicate nodes")
+        job = jobs[job_id]
+        known = {node.node_id for node in job.nodes}
+        if set(node_ids) - known:
+            raise ValueError(
+                f"execution.application_terminals.{job_id} references unknown nodes: "
+                f"{sorted(set(node_ids) - known)}"
+            )
+        successors = {parent for node in job.nodes for parent in node.deps}
+        sinks = known - successors
+        if set(node_ids) != sinks:
+            raise ValueError(
+                f"execution.application_terminals.{job_id} must list every graph sink; "
+                f"expected={sorted(sinks)}, actual={sorted(node_ids)}"
+            )
+        result[job_id] = tuple(sorted(node_ids))
+    return result
+
+
 def _canonical_v2_document(name: str, seed: int, graph: DagGraph,
                            execution: ReplayExecutionConfig) -> dict[str, Any]:
     base = _canonical_graph_document(name, seed, graph)
@@ -483,6 +527,10 @@ def _canonical_v2_document(name: str, seed: int, graph: DagGraph,
         "submit_after": {key: list(value) for key, value in sorted(execution.submit_after.items())},
         "profiles": dict(execution.profiles),
     }
+    if execution.application_terminals is not None:
+        base["execution"]["application_terminals"] = {
+            job_id: list(nodes) for job_id, nodes in sorted(execution.application_terminals.items())
+        }
     return base
 
 
@@ -546,7 +594,7 @@ def _product(shape: tuple[int, ...] | list[int]) -> int:
 def apply_dag_profile(dag: DagInput, profile, environment: Mapping[str, Any], *, strict: bool = True) -> DagInput:
     """Apply a communication profile to every DAG comm node by strict signature."""
     import warnings
-    from examples.jobpacer.comm_profile import CommSignature
+    from examples.jobpacer.runtime.comm_profile import CommSignature
 
     mismatches = [
         f"{key}: profile={profile.environment.get(key)!r}, replay={environment.get(key)!r}"
@@ -627,16 +675,7 @@ def apply_dag_compute_profile(dag: DagInput, profile, *, device_uuids: tuple[str
                 nodes.append(node)
                 continue
             key = f"{job.job_id}/{node.node_id}"
-            program = dict(dag.execution.compute_programs[key])
-            nominal = dag.execution.profiles.get("nominal_compute_repeats", {})
-            if nominal:
-                expected_keys = {name for name, item in dag.execution.compute_programs.items()
-                                 if item["op"] == "matmul"}
-                if set(nominal) != expected_keys or any(
-                        not _is_int(value) or value <= 0 for value in nominal.values()):
-                    raise ValueError("nominal compute repeats must cover every matmul with positive integers")
-                if program["op"] == "matmul":
-                    program["repeats"] = nominal[key]
+            program = dag.execution.compute_programs[key]
             signature = dag_compute_profile_signature(program, dag.execution.buffers[job.job_id])
             samples = []
             for uuid in device_uuids:
@@ -685,7 +724,9 @@ def sample_compute_duration(seed: int, epoch: int, job_id: str, node_id: str, ra
 
 def make_replay_compute(job: DagJob, execution: ReplayExecutionConfig, *, seed: int, epoch: int,
                         rank: int, jitter: float, samples: MutableMapping[str, float], event_log,
-                        gpu_programs: Mapping[str, Any] | None = None):
+                        gpu_programs: Mapping[str, Any] | None = None,
+                        duration_sampler: Callable[[int, int, str, str, int, float, float], float]
+                        | None = None):
     """Bind deterministic host or preallocated CUDA compute to a DAG job."""
     gpu_programs = gpu_programs or {}
 
@@ -702,13 +743,8 @@ def make_replay_compute(job: DagJob, execution: ReplayExecutionConfig, *, seed: 
         if execution.mode == "cuda-program":
             raise RuntimeError(f"GPU compute program is not prepared for {node_key}")
         base_s = execution.compute_duration_s[node_key]
-        linear_key = (execution.linear_sample_keys or {}).get(node_key)
-        if linear_key is None:
-            duration = sample_compute_duration(seed, epoch, job.job_id, node.node_id, rank, base_s, jitter)
-        else:
-            from examples.jobpacer.workloads import sample_linear_duration
-            duration = sample_linear_duration(seed, epoch, job.job_id, linear_key[0], rank,
-                                              linear_key[1], base_s, jitter)
+        sampler = duration_sampler or sample_compute_duration
+        duration = sampler(seed, epoch, job.job_id, node.node_id, rank, base_s, jitter)
         samples[node.node_id] = duration
         event_log.record("compute_sampled", job_id=job.job_id, node_id=node.node_id,
                          base_duration_s=base_s, jitter=jitter, sampled_duration_s=duration,
@@ -738,89 +774,6 @@ def make_collective_binding(spec: TaskSpec, process_group: Any, *, rank: int, de
         return dist.all_reduce(tensor, op=dist.ReduceOp.SUM, group=process_group, async_op=True)
 
     return LocalBinding(tensor, process_group, launch, device=device, keepalive=(tensor,))
-
-
-def linear_static_order(workload: Workload, policy: str) -> tuple[str, ...]:
-    """Construct a runtime-only static order without changing Phase 2 scores."""
-    if policy == "static_fifo":
-        return tuple(
-            f"{job.job_id}/comm-{index}"
-            for index in range(max(len(job.communications) for job in workload.jobs))
-            for job in workload.jobs if index < len(job.communications)
-        )
-    if policy != "static_ltf":
-        raise ValueError("linear static order requires static_fifo or static_ltf")
-    positions = {job.job_id: 0 for job in workload.jobs}
-    order: list[str] = []
-    total = sum(len(job.communications) for job in workload.jobs)
-    while len(order) < total:
-        candidates = []
-        for job in workload.jobs:
-            index = positions[job.job_id]
-            if index >= len(job.communications):
-                continue
-            comm = job.communications[index]
-            tail = remaining_tail(job, index)
-            candidates.append((-(comm.estimated_comm_s + tail), job.job_id, index))
-        _negative_score, job_id, index = min(candidates)
-        order.append(f"{job_id}/comm-{index}")
-        positions[job_id] = index + 1
-    return tuple(order)
-
-
-def group_spec(job: Job, world_size: int, *, epoch: int = 0) -> GroupSpec:
-    ranks = tuple(range(world_size)) if job.ranks is None else tuple(job.ranks)
-    return GroupSpec(epoch, job.job_id, ranks)
-
-
-def task_spec(job: Job, comm: CollectiveComm, *, epoch: int = 0) -> TaskSpec:
-    numel = comm.num_bytes // 4
-    return TaskSpec(
-        epoch=epoch,
-        job_id=job.job_id,
-        task_id=f"{job.job_id}/comm-{comm.id}",
-        group_id=job.job_id,
-        group_seq=comm.id,
-        collective=CollectiveSpec("all_reduce", numel, comm.num_bytes, "float32", (numel,)),
-    )
-
-
-def remaining_tail(job: Job, index: int) -> float:
-    current = job.communications[index]
-    return max(current.consumer_compute_s - current.estimated_comm_s, 0.0) + sum(
-        item.producer_compute_s + max(item.estimated_comm_s, item.consumer_compute_s)
-        for item in job.communications[index + 1 :]
-    )
-
-
-def task_hint(job: Job, index: int) -> TaskHint:
-    comm = job.communications[index]
-    return TaskHint(comm.producer_compute_s, comm.estimated_comm_s,
-                    remaining_tail(job, index))
-
-
-def linear_ltf_estimates(workload: Workload) -> list[dict[str, Any]]:
-    """Expose the c/u/tail inputs and score used by new linear LTF."""
-    rows = []
-    for job in workload.jobs:
-        for index, comm in enumerate(job.communications):
-            tail = remaining_tail(job, index)
-            rows.append({
-                "task_id": f"{job.job_id}/comm-{comm.id}",
-                "estimated_comm_s": comm.estimated_comm_s,
-                "independent_consumer_s": comm.consumer_compute_s,
-                "remaining_tail_s": tail,
-                "ltf_score_s": comm.estimated_comm_s + tail,
-            })
-    return rows
-
-
-def all_specs(workload: Workload, *, epoch: int = 0) -> tuple[tuple[Job, int, TaskSpec, TaskHint], ...]:
-    return tuple(
-        (job, index, task_spec(job, comm, epoch=epoch), task_hint(job, index))
-        for job in workload.jobs
-        for index, comm in enumerate(job.communications)
-    )
 
 
 def _canonical_document(name: str, seed: int, graph: DagGraph,

@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable
 
-from examples.jobpacer.analysis.benchmark_paths import resolve_migrated_path
+from examples.jobpacer.paths import resolve_migrated_path
 
 
 SCENARIOS = (

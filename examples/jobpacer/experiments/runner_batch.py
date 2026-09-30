@@ -217,9 +217,10 @@ def _prepare_profile(workload: Path, profile_dir: Path) -> Path:
 
 
 def _plan_set(workload_path: Path, profile_path: Path, policies: list[str]) -> tuple[Any, dict[str, Any]]:
-    from examples.jobpacer.comm_profile import apply_profile, load_profile
+    from examples.jobpacer.gloo.comm_profile import apply_profile
+    from examples.jobpacer.runtime.comm_profile import load_profile
     from examples.jobpacer.runtime.plan_builder import build_plan, policy_diagnostics
-    from examples.jobpacer.workloads import load_workload
+    from examples.jobpacer.gloo.workloads import load_workload
 
     workload = apply_profile(
         load_workload(workload_path),
@@ -535,10 +536,11 @@ def _analysis(summary: dict[str, Any], manifest: dict[str, Any], plans: dict[str
 
 
 def _verify_batch(root: Path, manifest: dict[str, Any], *, repeats: int | None, seed: int | None) -> dict[str, Any]:
-    from examples.jobpacer.comm_profile import apply_profile, load_profile
+    from examples.jobpacer.gloo.comm_profile import apply_profile
+    from examples.jobpacer.runtime.comm_profile import load_profile
     from examples.jobpacer.runtime.plan_builder import build_plan
     from examples.jobpacer.analysis.visualize import validate_trace
-    from examples.jobpacer.workloads import load_workload
+    from examples.jobpacer.gloo.workloads import load_workload
 
     if repeats is not None and repeats != manifest["repetitions"]:
         raise ValueError("--repeats does not match the manifest")

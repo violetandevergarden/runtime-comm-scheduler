@@ -19,11 +19,11 @@ from typing import Any
 import torch
 import torch.distributed as dist
 
-from examples.jobpacer.comm_profile import CommSignature, CommunicationProfile, ProfileRecord
+from examples.jobpacer.runtime.comm_profile import CommSignature, CommunicationProfile, ProfileRecord
 from examples.jobpacer.gpu.cuda_devices import validate_visible_cuda_devices
-from examples.jobpacer.analysis.benchmark_paths import repository_path, resolve_migrated_path
-from examples.jobpacer.runtime.runtime_adapter import load_dag
-from examples.jobpacer.workloads import load_workload, ranks_for_job
+from examples.jobpacer.paths import repository_path, resolve_migrated_path
+from examples.jobpacer.runtime.runtime_adapter import load_dag, require_gpu_dag_contract
+from examples.jobpacer.gloo.workloads import load_workload, ranks_for_job
 from runtime_comm_scheduler.dag import CommNode
 
 
@@ -280,6 +280,13 @@ def main() -> int:
     args.output = repository_path(args.output).resolve()
     if args.world_size < 2 or args.warmup < 0 or args.iterations <= 0:
         parser.error("world-size >= 2, warmup >= 0, and iterations > 0 are required")
+    if args.backend == "nccl":
+        if args.dag is None:
+            parser.error("GPU/NCCL communication profiling requires a schema-v2 CUDA DAG input")
+        try:
+            require_gpu_dag_contract(load_dag(args.dag, world_size=args.world_size))
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
     if args.backend == "nccl" and args.rank is None:
         try:
             validate_visible_cuda_devices(args.world_size)

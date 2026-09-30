@@ -12,13 +12,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from examples.jobpacer.analysis.benchmark_paths import (
+from examples.jobpacer.paths import (
     is_formal_experiment_input, repository_path, resolve_migrated_path,
 )
 from examples.jobpacer.analysis.measurement import occupancy_metrics
 from examples.jobpacer.runtime.plan_builder import build_plan, key_labels, policy_names
-from examples.jobpacer.workloads import load_workload, ranks_for_job
-from examples.jobpacer.comm_profile import apply_profile, load_profile
+from examples.jobpacer.gloo.workloads import load_workload, ranks_for_job
+from examples.jobpacer.gloo.comm_profile import apply_profile
+from examples.jobpacer.runtime.comm_profile import load_profile
 
 
 HERE = Path(__file__).resolve().parent
