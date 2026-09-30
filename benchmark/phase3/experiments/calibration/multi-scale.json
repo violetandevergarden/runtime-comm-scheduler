@@ -1,0 +1,8 @@
+{
+  "name": "calibration-multi-scale", "seed": 3200, "execution": {"compute_duration_s": {}},
+  "jobs": [{"job_id": "job-0", "communications": [
+    {"id": 0, "num_bytes": 4096, "producer_compute_s": 0.0, "consumer_compute_s": 0.0, "estimated_comm_s": 0.001},
+    {"id": 1, "num_bytes": 1048576, "producer_compute_s": 0.0, "consumer_compute_s": 0.0, "estimated_comm_s": 0.001},
+    {"id": 2, "num_bytes": 16777216, "producer_compute_s": 0.0, "consumer_compute_s": 0.0, "estimated_comm_s": 0.001}
+  ]}]
+}

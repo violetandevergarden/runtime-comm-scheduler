@@ -1,0 +1,830 @@
+{
+  "execution": {
+    "buffers": {
+      "job-0": {
+        "join-s0-scalar": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": []
+        },
+        "join-s1-scalar": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": []
+        },
+        "join-s2-scalar": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": []
+        },
+        "producer-s0-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-s0-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-s1-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-s1-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-s2-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-s2-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s0": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s0-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s0-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s1": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s1-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s1-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s2": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s2-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s2-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "wire-s0": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "wire-s1": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "wire-s2": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        }
+      },
+      "job-1": {
+        "join-s0-scalar": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": []
+        },
+        "join-s1-scalar": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": []
+        },
+        "join-s2-scalar": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": []
+        },
+        "producer-s0-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-s0-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-s1-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-s1-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-s2-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-s2-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s0": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s0-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s0-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s1": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s1-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s1-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s2": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s2-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-s2-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "wire-s0": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "wire-s1": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "wire-s2": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        }
+      }
+    },
+    "comm_bindings": {
+      "job-0/comm-s0": {
+        "buffer": "wire-s0"
+      },
+      "job-0/comm-s1": {
+        "buffer": "wire-s1"
+      },
+      "job-0/comm-s2": {
+        "buffer": "wire-s2"
+      },
+      "job-1/comm-s0": {
+        "buffer": "wire-s0"
+      },
+      "job-1/comm-s1": {
+        "buffer": "wire-s1"
+      },
+      "job-1/comm-s2": {
+        "buffer": "wire-s2"
+      }
+    },
+    "compute_model": "one-active-compute-per-job",
+    "compute_programs": {
+      "job-0/join-s0": {
+        "inputs": [
+          "wire-s0",
+          "tail-s0"
+        ],
+        "op": "sum_join",
+        "output": "join-s0-scalar"
+      },
+      "job-0/join-s1": {
+        "inputs": [
+          "wire-s1",
+          "tail-s1"
+        ],
+        "op": "sum_join",
+        "output": "join-s1-scalar"
+      },
+      "job-0/join-s2": {
+        "inputs": [
+          "wire-s2",
+          "tail-s2"
+        ],
+        "op": "sum_join",
+        "output": "join-s2-scalar"
+      },
+      "job-0/producer-s0": {
+        "inputs": [
+          "producer-s0-left",
+          "producer-s0-right"
+        ],
+        "op": "matmul",
+        "output": "wire-s0",
+        "repeats": 10
+      },
+      "job-0/producer-s1": {
+        "inputs": [
+          "producer-s1-left",
+          "producer-s1-right"
+        ],
+        "op": "matmul",
+        "output": "wire-s1",
+        "repeats": 6
+      },
+      "job-0/producer-s2": {
+        "inputs": [
+          "producer-s2-left",
+          "producer-s2-right"
+        ],
+        "op": "matmul",
+        "output": "wire-s2",
+        "repeats": 8
+      },
+      "job-0/tail-s0": {
+        "inputs": [
+          "tail-s0-left",
+          "tail-s0-right"
+        ],
+        "op": "matmul",
+        "output": "tail-s0",
+        "repeats": 8
+      },
+      "job-0/tail-s1": {
+        "inputs": [
+          "tail-s1-left",
+          "tail-s1-right"
+        ],
+        "op": "matmul",
+        "output": "tail-s1",
+        "repeats": 10
+      },
+      "job-0/tail-s2": {
+        "inputs": [
+          "tail-s2-left",
+          "tail-s2-right"
+        ],
+        "op": "matmul",
+        "output": "tail-s2",
+        "repeats": 10
+      },
+      "job-1/join-s0": {
+        "inputs": [
+          "wire-s0",
+          "tail-s0"
+        ],
+        "op": "sum_join",
+        "output": "join-s0-scalar"
+      },
+      "job-1/join-s1": {
+        "inputs": [
+          "wire-s1",
+          "tail-s1"
+        ],
+        "op": "sum_join",
+        "output": "join-s1-scalar"
+      },
+      "job-1/join-s2": {
+        "inputs": [
+          "wire-s2",
+          "tail-s2"
+        ],
+        "op": "sum_join",
+        "output": "join-s2-scalar"
+      },
+      "job-1/producer-s0": {
+        "inputs": [
+          "producer-s0-left",
+          "producer-s0-right"
+        ],
+        "op": "matmul",
+        "output": "wire-s0",
+        "repeats": 8
+      },
+      "job-1/producer-s1": {
+        "inputs": [
+          "producer-s1-left",
+          "producer-s1-right"
+        ],
+        "op": "matmul",
+        "output": "wire-s1",
+        "repeats": 6
+      },
+      "job-1/producer-s2": {
+        "inputs": [
+          "producer-s2-left",
+          "producer-s2-right"
+        ],
+        "op": "matmul",
+        "output": "wire-s2",
+        "repeats": 10
+      },
+      "job-1/tail-s0": {
+        "inputs": [
+          "tail-s0-left",
+          "tail-s0-right"
+        ],
+        "op": "matmul",
+        "output": "tail-s0",
+        "repeats": 6
+      },
+      "job-1/tail-s1": {
+        "inputs": [
+          "tail-s1-left",
+          "tail-s1-right"
+        ],
+        "op": "matmul",
+        "output": "tail-s1",
+        "repeats": 6
+      },
+      "job-1/tail-s2": {
+        "inputs": [
+          "tail-s2-left",
+          "tail-s2-right"
+        ],
+        "op": "matmul",
+        "output": "tail-s2",
+        "repeats": 6
+      }
+    },
+    "mode": "cuda-program",
+    "profiles": {
+      "design_revision": 0,
+      "nominal_compute_repeats": {
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-0/producer-s2": 8,
+        "job-0/tail-s0": 8,
+        "job-0/tail-s1": 8,
+        "job-0/tail-s2": 8,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8,
+        "job-1/producer-s2": 8,
+        "job-1/tail-s0": 8,
+        "job-1/tail-s1": 8,
+        "job-1/tail-s2": 8
+      },
+      "parameters": {
+        "matrix": 256,
+        "producer_repeats": 8,
+        "stages": 3,
+        "tail_repeats": 8
+      }
+    },
+    "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:L0-balanced:tensor-v1",
+    "submit_after": {}
+  },
+  "groups": [
+    {
+      "group_id": "g0",
+      "ranks": [
+        0,
+        1
+      ]
+    },
+    {
+      "group_id": "g1",
+      "ranks": [
+        0,
+        1
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "job_id": "job-0",
+      "nodes": [
+        {
+          "deps": [],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "producer-s0"
+        },
+        {
+          "collective": {
+            "dtype": "float32",
+            "num_bytes": 262144,
+            "numel": 65536,
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              256,
+              256
+            ]
+          },
+          "deps": [
+            "producer-s0"
+          ],
+          "estimated_comm_s": 0.001,
+          "group_id": "g0",
+          "group_seq": 0,
+          "kind": "comm",
+          "node_id": "comm-s0"
+        },
+        {
+          "deps": [
+            "comm-s0"
+          ],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "tail-s0"
+        },
+        {
+          "deps": [
+            "tail-s0"
+          ],
+          "estimated_duration_s": 0.001,
+          "kind": "compute",
+          "node_id": "join-s0"
+        },
+        {
+          "deps": [
+            "join-s0"
+          ],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "producer-s1"
+        },
+        {
+          "collective": {
+            "dtype": "float32",
+            "num_bytes": 262144,
+            "numel": 65536,
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              256,
+              256
+            ]
+          },
+          "deps": [
+            "producer-s1"
+          ],
+          "estimated_comm_s": 0.001,
+          "group_id": "g0",
+          "group_seq": 1,
+          "kind": "comm",
+          "node_id": "comm-s1"
+        },
+        {
+          "deps": [
+            "comm-s1"
+          ],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "tail-s1"
+        },
+        {
+          "deps": [
+            "tail-s1"
+          ],
+          "estimated_duration_s": 0.001,
+          "kind": "compute",
+          "node_id": "join-s1"
+        },
+        {
+          "deps": [
+            "join-s1"
+          ],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "producer-s2"
+        },
+        {
+          "collective": {
+            "dtype": "float32",
+            "num_bytes": 262144,
+            "numel": 65536,
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              256,
+              256
+            ]
+          },
+          "deps": [
+            "producer-s2"
+          ],
+          "estimated_comm_s": 0.001,
+          "group_id": "g0",
+          "group_seq": 2,
+          "kind": "comm",
+          "node_id": "comm-s2"
+        },
+        {
+          "deps": [
+            "comm-s2"
+          ],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "tail-s2"
+        },
+        {
+          "deps": [
+            "tail-s2"
+          ],
+          "estimated_duration_s": 0.001,
+          "kind": "compute",
+          "node_id": "join-s2"
+        }
+      ]
+    },
+    {
+      "job_id": "job-1",
+      "nodes": [
+        {
+          "deps": [],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "producer-s0"
+        },
+        {
+          "collective": {
+            "dtype": "float32",
+            "num_bytes": 262144,
+            "numel": 65536,
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              256,
+              256
+            ]
+          },
+          "deps": [
+            "producer-s0"
+          ],
+          "estimated_comm_s": 0.001,
+          "group_id": "g1",
+          "group_seq": 0,
+          "kind": "comm",
+          "node_id": "comm-s0"
+        },
+        {
+          "deps": [
+            "comm-s0"
+          ],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "tail-s0"
+        },
+        {
+          "deps": [
+            "tail-s0"
+          ],
+          "estimated_duration_s": 0.001,
+          "kind": "compute",
+          "node_id": "join-s0"
+        },
+        {
+          "deps": [
+            "join-s0"
+          ],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "producer-s1"
+        },
+        {
+          "collective": {
+            "dtype": "float32",
+            "num_bytes": 262144,
+            "numel": 65536,
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              256,
+              256
+            ]
+          },
+          "deps": [
+            "producer-s1"
+          ],
+          "estimated_comm_s": 0.001,
+          "group_id": "g1",
+          "group_seq": 1,
+          "kind": "comm",
+          "node_id": "comm-s1"
+        },
+        {
+          "deps": [
+            "comm-s1"
+          ],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "tail-s1"
+        },
+        {
+          "deps": [
+            "tail-s1"
+          ],
+          "estimated_duration_s": 0.001,
+          "kind": "compute",
+          "node_id": "join-s1"
+        },
+        {
+          "deps": [
+            "join-s1"
+          ],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "producer-s2"
+        },
+        {
+          "collective": {
+            "dtype": "float32",
+            "num_bytes": 262144,
+            "numel": 65536,
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              256,
+              256
+            ]
+          },
+          "deps": [
+            "producer-s2"
+          ],
+          "estimated_comm_s": 0.001,
+          "group_id": "g1",
+          "group_seq": 2,
+          "kind": "comm",
+          "node_id": "comm-s2"
+        },
+        {
+          "deps": [
+            "comm-s2"
+          ],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "tail-s2"
+        },
+        {
+          "deps": [
+            "tail-s2"
+          ],
+          "estimated_duration_s": 0.001,
+          "kind": "compute",
+          "node_id": "join-s2"
+        }
+      ]
+    }
+  ],
+  "name": "gpu-seven-arm-L0-balanced-workload-8103",
+  "schema_version": 2,
+  "seed": 2647191870948781734
+}

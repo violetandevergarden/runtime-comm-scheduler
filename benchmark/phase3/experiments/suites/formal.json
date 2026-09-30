@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "name": "phase3-cpu-gloo-formal-20260923",
+  "interpretation": "pre-registered 30-seed x 3-repeat paired main matrix after pilot and screening",
+  "seeds": [
+    3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009,
+    3010, 3011, 3012, 3013, 3014, 3015, 3016, 3017, 3018, 3019,
+    3020, 3021, 3022, 3023, 3024, 3025, 3026, 3027, 3028, 3029
+  ],
+  "repeats": 3,
+  "linear": [
+    "L0-balanced",
+    "L0-no-overlap-bridge",
+    "L1-head-misalignment",
+    "L2-tail-asymmetry",
+    "L4-late-prediction",
+    "L5-member-skew"
+  ],
+  "dag": [
+    "G0-linear-bridge",
+    "G1-diamond",
+    "G2-multi-frontier",
+    "G3-group-order",
+    "G4-prediction-frontier"
+  ],
+  "required": {
+    "backend": "gloo",
+    "world_size": 2,
+    "strict_profile": true,
+    "profile": "/tmp/jobpacer-phase3-calibration-profile-20260922.json",
+    "profile_sha256": "9fe7de4d1c710befcef2ddadd33ad1ef910b18beec9721f98f4d0e0c647aba3f",
+    "warmup_iterations": 1,
+    "poll_interval_s": 0.001,
+    "timeout_s": 60,
+    "thread_environment": {
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1"
+    },
+    "order_seed": 20260923,
+    "bootstrap_samples": 2000,
+    "tie_threshold": 0.01,
+    "paired_by_seed": true
+  },
+  "linear_configuration": {
+    "include_phase1_phase2": true,
+    "arms": [
+      "old-bare-fifo",
+      "old-fifo",
+      "old-ltf",
+      "new-static_fifo",
+      "new-static_ltf",
+      "new-fifo",
+      "new-ltf",
+      "new-lookahead"
+    ],
+    "compute_jitter_by_scenario": {
+      "L0-balanced": 0.3,
+      "L0-no-overlap-bridge": 0.3,
+      "L1-head-misalignment": 0.3,
+      "L2-tail-asymmetry": 0.3,
+      "L4-late-prediction": 0.0,
+      "L5-member-skew": 0.3
+    },
+    "wait_budget_s_by_scenario": {
+      "L4-late-prediction": 0.004,
+      "default": 0.02
+    },
+    "baseline": "old-bare-fifo",
+    "secondary_baselines": [
+      "old-fifo",
+      "old-ltf",
+      "new-static_fifo",
+      "new-fifo",
+      "new-ltf"
+    ]
+  },
+  "dag_configuration": {
+    "arms": [
+      "new-static_fifo",
+      "new-static_ltf",
+      "new-fifo",
+      "new-ltf",
+      "new-lookahead"
+    ],
+    "compute_jitter_by_scenario": {
+      "G0-linear-bridge": 0.3,
+      "G1-diamond": 0.3,
+      "G2-multi-frontier": 0.3,
+      "G3-group-order": 0.3,
+      "G4-prediction-frontier": 0.0
+    },
+    "wait_budget_s_by_scenario": {
+      "G4-prediction-frontier": 0.004,
+      "default": 0.02
+    },
+    "static_ltf_order": {
+      "G0-linear-bridge": "benchmark/phase3/experiments/bridge/G0-interleaved-order.json"
+    },
+    "baseline": "new-static_fifo",
+    "secondary_baselines": ["new-fifo", "new-ltf"]
+  },
+  "pilot_boundary": {
+    "excluded_scenario": "L3-lookahead",
+    "reason": "Lookahead wait score favored waiting in 5/5 pilot runs, but both-member OFFER arrived after the predicted deadline in all 5; no on-time target-arrival mechanism was established.",
+    "retained_as_pilot_only": true
+  },
+  "expected_replays": {
+    "linear": 4320,
+    "dag": 2250,
+    "total": 6570
+  }
+}

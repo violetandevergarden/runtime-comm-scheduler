@@ -1,0 +1,92 @@
+{
+  "schema": "jobpacer-gpu-linear",
+  "schema_version": 1,
+  "name": "phase3-gpu-linear-readiness-smoke",
+  "execution_seed": 7200,
+  "groups": [
+    {
+      "group_id": "g0",
+      "ranks": [
+        0,
+        1
+      ]
+    }
+  ],
+  "execution_contract": {
+    "producer_readiness": "physical-ready",
+    "submit_order": "comm-request-before-independent",
+    "segment_advance": "terminal-event-complete",
+    "max_inflight": 1
+  },
+  "jobs": [
+    {
+      "job_id": "job-slow-head",
+      "segments": [
+        {
+          "segment_id": "s0",
+          "group_id": "g0",
+          "group_seq": 0,
+          "producer_compute": {
+            "op": "matmul",
+            "m": 256,
+            "n": 256,
+            "k": 256,
+            "dtype": "float32",
+            "layout": "contiguous",
+            "repeats": 2,
+            "output_role": "collective_input"
+          },
+          "collective": {
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              256,
+              256
+            ],
+            "dtype": "float32",
+            "numel": 65536,
+            "num_bytes": 262144
+          },
+          "independent_compute": null,
+          "dependent_compute": null,
+          "estimates": {
+            "compute_profile_ref": "../../results/gpu-workload-implementation/L1-misaligned/gpu-compute-v2.json",
+            "comm_profile_ref": "../../results/gpu-workload-implementation/L1-misaligned/nccl-comm.json",
+            "estimator_version": "gpu-linear-static-tail-v1"
+          }
+        }
+      ]
+    },
+    {
+      "job_id": "job-fast-next",
+      "segments": [
+        {
+          "segment_id": "s1",
+          "group_id": "g0",
+          "group_seq": 1,
+          "producer_compute": {
+            "op": "fill"
+          },
+          "collective": {
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              16,
+              16
+            ],
+            "dtype": "float32",
+            "numel": 256,
+            "num_bytes": 1024
+          },
+          "independent_compute": null,
+          "dependent_compute": null,
+          "estimates": {
+            "compute_profile_ref": "../../results/gpu-workload-implementation/L1-misaligned/gpu-compute-v2.json",
+            "comm_profile_ref": "../../results/gpu-workload-implementation/L1-misaligned/nccl-comm.json",
+            "estimator_version": "gpu-linear-static-tail-v1"
+          }
+        }
+      ]
+    }
+  ]
+}

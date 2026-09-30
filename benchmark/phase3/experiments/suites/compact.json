@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "name": "phase3-cpu-gloo-compact",
+  "supersedes_for_future_runs": "formal.json",
+  "common": {
+    "backend": "gloo", "world_size": 2, "dtype": "float32", "reduction": "sum",
+    "max_inflight": 1, "warmup_iterations": 1, "poll_interval_s": 0.001,
+    "timeout_s": 60, "order_seed": 20260923, "bootstrap_samples": 2000,
+    "thread_environment": {"OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1",
+                           "OPENBLAS_NUM_THREADS": "1", "NUMEXPR_NUM_THREADS": "1"},
+    "profile": "supplied at run time; must record matching affinity and thread environment",
+    "cpu_affinity": "supplied at run time; fixed for calibration and every replay",
+    "tie_threshold": "supplied after independent noise pilot, before main execution"
+  },
+  "primary_comparisons": {
+    "L0": [["old-bare-fifo", "old-fifo"], ["old-fifo", "new-static_fifo"],
+           ["old-ltf", "new-static_ltf"], ["new-static_fifo", "new-fifo"],
+           ["new-fifo", "new-ltf"]],
+    "L1": [["old-bare-fifo", "old-fifo"], ["old-fifo", "new-static_fifo"],
+           ["old-ltf", "new-static_ltf"], ["new-static_fifo", "new-fifo"],
+           ["new-fifo", "new-ltf"]],
+    "L2": [["new-fifo", "new-ltf"]],
+    "G2": [["new-static_fifo", "new-fifo"], ["new-static_ltf", "new-ltf"],
+           ["new-fifo", "new-ltf"]],
+    "L5": [["new-static_fifo", "new-fifo"]],
+    "L3": [["new-ltf", "new-lookahead"]],
+    "L4": [["new-ltf", "new-lookahead"]],
+    "G4": [["new-ltf", "new-lookahead"]]
+  },
+  "sections": {
+    "main": {
+      "seeds": [4000, 4001, 4002, 4003, 4004, 4005, 4006, 4007, 4008, 4009],
+      "repeats": 3, "compute_jitter": 0.3,
+      "cases": [
+        {"id": "L0", "workload": "baseline/L0-balanced.json",
+         "arms": ["old-bare-fifo", "old-fifo", "old-ltf", "new-static_fifo", "new-static_ltf", "new-fifo", "new-ltf"],
+         "baseline": "old-bare-fifo", "secondary_baselines": ["old-fifo", "old-ltf", "new-static_fifo", "new-fifo"]},
+        {"id": "L1", "workload": "readiness/L1-head-misalignment.json",
+         "arms": ["old-bare-fifo", "old-fifo", "old-ltf", "new-static_fifo", "new-static_ltf", "new-fifo", "new-ltf"],
+         "baseline": "old-bare-fifo", "secondary_baselines": ["old-fifo", "old-ltf", "new-static_fifo", "new-fifo"]},
+        {"id": "L2", "workload": "priority/L2-tail-asymmetry.json",
+         "arms": ["new-fifo", "new-ltf"], "baseline": "new-fifo",
+         "requires_mechanism_case": "L2", "minimum_triggered_per_arm": 3},
+        {"id": "G2", "dag": "priority/G2-multi-frontier.json",
+         "arms": ["new-static_fifo", "new-static_ltf", "new-fifo", "new-ltf"],
+         "baseline": "new-static_fifo", "secondary_baselines": ["new-fifo", "new-static_ltf"],
+         "requires_mechanism_case": "G2", "minimum_triggered_per_arm": 3},
+        {"id": "L5", "workload": "readiness/L5-member-skew.json",
+         "arms": ["new-static_fifo", "new-fifo"], "baseline": "new-static_fifo"}
+      ]
+    },
+    "mechanism": {
+      "seeds": [0], "repeats": 5, "compute_jitter": 0.0,
+      "cases": [
+        {"id": "L2", "workload": "priority/L2-tail-asymmetry.json",
+         "arms": ["new-fifo", "new-ltf"], "baseline": "new-fifo"},
+        {"id": "G2", "dag": "priority/G2-multi-frontier.json",
+         "arms": ["new-fifo", "new-ltf"], "baseline": "new-fifo"},
+        {"id": "L3", "workload": "lookahead/L3-lookahead.json",
+         "arms": ["new-ltf", "new-lookahead"], "baseline": "new-ltf", "wait_budget_s": 0.004},
+        {"id": "L4", "workload": "lookahead/L4-late-prediction.json",
+         "arms": ["new-ltf", "new-lookahead"], "baseline": "new-ltf", "wait_budget_s": 0.004},
+        {"id": "G4", "dag": "lookahead/G4-prediction-frontier.json",
+         "arms": ["new-ltf", "new-lookahead"], "baseline": "new-ltf", "wait_budget_s": 0.004},
+        {"id": "G1", "dag": "dag-semantics/G1-diamond.json",
+         "arms": ["new-fifo", "new-lookahead"], "baseline": "new-fifo"},
+        {"id": "G3", "dag": "dag-semantics/G3-group-order.json",
+         "arms": ["new-static_fifo", "new-fifo"], "baseline": "new-static_fifo"},
+        {"id": "G0-linear", "workload": "bridge/L0-no-overlap-bridge.json",
+         "arms": ["new-static_ltf"], "baseline": "new-static_ltf"},
+        {"id": "G0-dag", "dag": "bridge/G0-linear-bridge.json",
+         "arms": ["new-static_ltf"], "baseline": "new-static_ltf",
+         "static_ltf_order": "bridge/G0-interleaved-order.json"},
+        {"id": "L5", "workload": "readiness/L5-member-skew.json",
+         "arms": ["new-static_fifo", "new-fifo"], "baseline": "new-static_fifo"}
+      ]
+    },
+    "lookahead": {
+      "optional": true,
+      "seeds": [4100, 4101, 4102, 4103, 4104, 4105, 4106, 4107, 4108, 4109],
+      "repeats": 3, "compute_jitter": 0.3,
+      "requires_mechanism_cases": ["L3", "L4"], "minimum_triggered_lookahead": 4,
+      "cases": [
+        {"id": "L3", "workload": "lookahead/L3-lookahead.json",
+         "arms": ["new-ltf", "new-lookahead"], "baseline": "new-ltf", "wait_budget_s": 0.004},
+        {"id": "L4", "workload": "lookahead/L4-late-prediction.json",
+         "arms": ["new-ltf", "new-lookahead"], "baseline": "new-ltf", "wait_budget_s": 0.004}
+      ]
+    },
+    "isolated": {
+      "runner": "examples.jobpacer.scripts.run_interleaved_isolated",
+      "seeds": [0], "repeats": 5, "compute_jitter": 0.0,
+      "conditions": ["linear/L0-balanced.json", "isolated/job-0.json", "isolated/job-1.json"],
+      "arms": ["new-fifo", "new-ltf"], "expected_replays": 30
+    }
+  },
+  "expected_replays": {"main": 660, "mechanism": 90, "isolated": 30,
+                       "base_total": 780, "lookahead_optional": 120, "with_optional": 900}
+}

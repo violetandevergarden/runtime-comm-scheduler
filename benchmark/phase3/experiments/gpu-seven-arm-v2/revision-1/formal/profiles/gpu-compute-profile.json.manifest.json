@@ -1,0 +1,307 @@
+{
+  "device_uuids": [
+    "c024d768-866d-952a-36f6-899a9e5844e0",
+    "a376a831-0ace-b841-7b91-6b962b9c2398"
+  ],
+  "inputs": [
+    {
+      "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+      "file_sha256": "2c1548e92404eca1df46ce0b6e2d1f376723e37b08cd6584dd29ac02d95fbf81",
+      "input_hash": "2d412d81242c93d2d6154bcbdac545a826295e5d19470a6a0eeec5abb965606f",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D0-fork-join/workload-8101.json"
+    },
+    {
+      "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+      "file_sha256": "268b61c1034c8abf101bf065f2a3d7dddb4f8b55d7e38311d57a6421279ab3f6",
+      "input_hash": "3e35674fd29bf80fa773b2e20f436e216c599dba6cedc9adbdc95b01d25fdc1b",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D0-fork-join/workload-8102.json"
+    },
+    {
+      "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+      "file_sha256": "43a52482b0ab89762a6ef57bb179d813ab804d588ea8109c05b87e5ae1b5761a",
+      "input_hash": "c23fb94f17e8f49f59472bd959241d0094ebb01c85926d371218aedf11dfe780",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D0-fork-join/workload-8103.json"
+    },
+    {
+      "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+      "file_sha256": "d4cbea10348496d1d24f4d94060031ed31a8e6dabd0b4a80cfdf378c30491263",
+      "input_hash": "d8178029967ed29ef755dcf0caa349f5bc7f0c9e8100c4524dc00a34204712e0",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D0-fork-join/workload-8104.json"
+    },
+    {
+      "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+      "file_sha256": "b01ded3233b91c29ffa9d15dfe317f7956f7d7ba6cbe5ad5db20568bab603177",
+      "input_hash": "cbab6a659a3b827fc5489b75edb0b44c893550b1a26f2d60782af6a2bb936a92",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D0-fork-join/workload-8105.json"
+    },
+    {
+      "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+      "file_sha256": "a7ad530d22b5ab4b1a04f0d8ba231ad1fe9c623f87911fcfc08fd9f15a568acd",
+      "input_hash": "84a2eef1b01dae7fab246c59700f78ae0b0f9ff5c91de0b1a7e71faeee412e7a",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D1-asymmetric-frontiers/workload-8101.json"
+    },
+    {
+      "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+      "file_sha256": "66f9b7282a22501e8b4624e4786414382a67735904ec2cbc0829d676ffb39315",
+      "input_hash": "acd02e383a75832871acc7a99c4173675dc2ab31462c619c25b332a3742936ad",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D1-asymmetric-frontiers/workload-8102.json"
+    },
+    {
+      "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+      "file_sha256": "ce545f797171f91fc6d14bd42c35db8158ee765f5d88f05ff4091424f4b38bb7",
+      "input_hash": "c5c3167314c6e1c5f308a009e45f98672971c1ac59a90666fa7cc808d9cf75a4",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D1-asymmetric-frontiers/workload-8103.json"
+    },
+    {
+      "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+      "file_sha256": "82ec09919c6ca311264b63653640ce5ca6968247013f643458788f79309dbdb9",
+      "input_hash": "c741191c84e709b66fea02069bdc1a865322368cd8fefea747426ae719adb5aa",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D1-asymmetric-frontiers/workload-8104.json"
+    },
+    {
+      "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+      "file_sha256": "4756aaba039085e17701c3699386194623826ca61b03785d81bbf1218ef5a1b3",
+      "input_hash": "423043b5cf225deee15ba0202af393b3bab55f082aac6c08b646acce970b8a17",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D1-asymmetric-frontiers/workload-8105.json"
+    },
+    {
+      "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+      "file_sha256": "01d67cfd50729074d1ecdbf2624cb2b824489f77a81d4d44dc9ababc91d430af",
+      "input_hash": "a5446784e878d8714d76a10e43f7fec7d7eaf2dfd9db779860f149f5d3864edf",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D2-cross-job-skew/workload-8101.json"
+    },
+    {
+      "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+      "file_sha256": "eebeb8709d37cc59996d6128f5f2e201d1617773dddb1a897938d6450b184a23",
+      "input_hash": "f5e61cc7cd121a7296f49c2f5bf5039dd6777aad963f040e43862d008ca54027",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D2-cross-job-skew/workload-8102.json"
+    },
+    {
+      "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+      "file_sha256": "b40623706fabaa45cab9341494b2712269d318970b586a89526e5167f4757a16",
+      "input_hash": "f53f37038498ce4f56fe3d1fcddae74f57f9ccf9af1b254cf1fd15da3f35caf1",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D2-cross-job-skew/workload-8103.json"
+    },
+    {
+      "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+      "file_sha256": "a9de589456c165c0ec9d965b1fa41262204fe58d7dad84a5f2f89130ced4020b",
+      "input_hash": "36809b153e1e99c763767d0856ff771d0d77bc3f415ee44450185ffa4dda8dbb",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D2-cross-job-skew/workload-8104.json"
+    },
+    {
+      "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+      "file_sha256": "ebd20d98e7dc2e5988b07f170884c6d81259f5f61028dec8717c31b7a8a0c2f6",
+      "input_hash": "270963773f66cd20f5c01e2e1dd5dd11007f03943f2042527be06215b06a2a5d",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D2-cross-job-skew/workload-8105.json"
+    },
+    {
+      "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+      "file_sha256": "bd8d65457de9c4bb0ddcb4826559d59651f3a18c0cd58616633aa61693ecd03e",
+      "input_hash": "fa0a18eb7bbdd6791580ddc5b9d8220743424c791f63418858a9faa0ae1adf19",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D3-order-and-sinks/workload-8101.json"
+    },
+    {
+      "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+      "file_sha256": "8b5afdd5ac57b9faee7d1a7a7ae0acbe44d4965e7e303f5b148addfc166796ea",
+      "input_hash": "22101b2aae5aa226ad2f68da3dfb71e3006e2f58fb06ad74732b0f4c1d82c8e4",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D3-order-and-sinks/workload-8102.json"
+    },
+    {
+      "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+      "file_sha256": "2dd02235f382c420113d2f695cec4ab0e1bc05b2749b70f0056d14005158df7c",
+      "input_hash": "6a024023a9d8f9df6ae55e6d5f0f76f3b81e1c5a7cea59f2b6e56f76eb85d44b",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D3-order-and-sinks/workload-8103.json"
+    },
+    {
+      "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+      "file_sha256": "6dc1ef79a27ff37345690c9cedf9f6b7a2aa0e10520e7bbda062bb384b0e9657",
+      "input_hash": "5b9a78a5d82edc4b6ff297b14846ad96b0b638f0c44de353807c620fd15c5b28",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D3-order-and-sinks/workload-8104.json"
+    },
+    {
+      "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+      "file_sha256": "00d319a61779a6cbff8fc0002639b817f0c1ca89f953421848ce64a92f74e699",
+      "input_hash": "2eb84beb7fbb70283769a10c68dbf21ed312900f55535e38b3f38d3c73fea9c9",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D3-order-and-sinks/workload-8105.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "d961d1e22b5748e975c2f7a0a601a9c218aa04d8d45b32df684de645308f1609",
+      "input_hash": "4df3fec62417aa346c1dec2eda63716ccb14743ae655d56d32d59db554704d89",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L0-balanced/workload-8101.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "55efb70835bdbbe07bbd1134522034fec518c7b2b9285a24e64743e0aaead7a3",
+      "input_hash": "ccf4d84cae9e8a2c138b3d4e345e67b25a6d7aa73ad6b6f073b6722e811b908e",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L0-balanced/workload-8102.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "cb88bf258877687f13ace37e2f7b4b0ea0c2260916a83b805e5aa2c89f54ff3c",
+      "input_hash": "bf798937d13aa6f2046ae8d7df38abe5feb6493ac7a92fe828874029fd5142ab",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L0-balanced/workload-8103.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "faefe9976b9c633ef2d3ece9a5bf218edcfa0e33c3a392fb225f857bb39a4dfd",
+      "input_hash": "abdeac3f11f2ee8d01a3fd3a30a6333d93ec0e20d147595aa4cfbc4010812999",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L0-balanced/workload-8104.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "d12e0932f59b346d33ea25412c9ce100178b3ffe1a52b07250abc4231c78d1ab",
+      "input_hash": "2f9dd1ee760a88fd20741960120c7b1e9b65954ad1b83aaa920dedcc4fbcb06e",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L0-balanced/workload-8105.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "364ee197257c63f90fed0fadbd99876c0f86f286ebe2cd68f9e0f61ee363f209",
+      "input_hash": "dd9957e7e374c8eaf0995d36ebe96973311d8428c30c081372b6af3c665503f2",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L1-skew-tail/workload-8101.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "2fecd168d3da370c67948671fa00659a828269e99fc5e8def3818acea2d0c2f0",
+      "input_hash": "eb33814dfcf5a3d982473141d983df522d8c1fc501892010de5ddace25aeef4a",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L1-skew-tail/workload-8102.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "bbfa31d9071f6dfabb122d17fcc989781715c733f8e80efe1d7bbc0160145e32",
+      "input_hash": "39761c02bb8d3e3e3c4232880ef38d4fc29832eb1b445f280cbd4f1c7bd3b544",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L1-skew-tail/workload-8103.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "584a275a9b9460d8a6987e0a5484d83518a545510c055252a366a430cb38f222",
+      "input_hash": "7f1f1cb88de1591d56b41dd87506a0273d6664bd682bbce31212503026d41fad",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L1-skew-tail/workload-8104.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "41c5e82271b169d8bee8dcb6608f0a54807747454569d05d0c9b6507f89ceec0",
+      "input_hash": "3b5b76a84008ea11874bf1ef2735cd9f7c98b0fcfaf3449e2df5d71fa0fe0e25",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L1-skew-tail/workload-8105.json"
+    },
+    {
+      "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+      "file_sha256": "667217ace6681d7ddfb68446f22139e21bcd022d4c65a1fe918055316e23d2c0",
+      "input_hash": "b7db91947fb8a08a972b4f49787fbd948870401da82b56585bf744c35b880378",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D0-fork-join/workload-9101.json"
+    },
+    {
+      "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+      "file_sha256": "8c32a1229c8fa0375eedfcf82e159044a16c676d43be12ea6885361b3c08d59a",
+      "input_hash": "a5fa742a9cd06d9d4805cbd51c34998fc9edab48f2ecb37d33b757958a36ac0d",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D0-fork-join/workload-9102.json"
+    },
+    {
+      "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+      "file_sha256": "42ce6cc3a7f1057a3aaac3df1cb2e8f476115d138ee8faae0320f0bb4021be96",
+      "input_hash": "5051fc2aeceec18af08fd463e5ffacbc3517dbf5e8726d48bfe1906902f32f3f",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D0-fork-join/workload-9103.json"
+    },
+    {
+      "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+      "file_sha256": "49aaff0eb34b8272cb032b8eca9928984160007e8fcd24e877e331790c0554e3",
+      "input_hash": "9375932fd5979acdcc9cd0e5b90130e5d8fe2f8369e2c78fddf19907c9e6c168",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D1-asymmetric-frontiers/workload-9101.json"
+    },
+    {
+      "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+      "file_sha256": "574a971a45451838628cd53c82a898f56defd8fbf994e936701ed09d66a416fa",
+      "input_hash": "934085684babef5d89ee2a70ba87d63634386da9903ff024b6fb8e0628e831dc",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D1-asymmetric-frontiers/workload-9102.json"
+    },
+    {
+      "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+      "file_sha256": "dbb1b877cc7e2402869e15788ec3f881c5522001c2dbc4e09428fc6a71c0257f",
+      "input_hash": "4244c3870d5ec20f93dfb953ea70e81d035d2d870e726cbd9389c811a1d8c8c3",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D1-asymmetric-frontiers/workload-9103.json"
+    },
+    {
+      "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+      "file_sha256": "6018d0cf8f18dbf4b260d5fe1512b8f1dd4dfa88989c735d4cdbc7ba8d67ff6d",
+      "input_hash": "5779c4d3d3d584b22054fa698aa89a9ee421bec603b3d859bc243793502c3379",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D2-cross-job-skew/workload-9101.json"
+    },
+    {
+      "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+      "file_sha256": "f863a0e74dd9918aebee8faaff32839b8352986f785af4a1ed9805b5ace9d6ad",
+      "input_hash": "1c06ec27099b2f1f80d52177a359e9bb119f8525b97da0efa275e5a4f1267a5f",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D2-cross-job-skew/workload-9102.json"
+    },
+    {
+      "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+      "file_sha256": "f45abb066d2e6c6a2c672c0603343d9ba3ae69aebb1e7db1a017d58276d39487",
+      "input_hash": "a065b0317ee1cc6dc3f89a0bd7d4761bb1b7614a4a6469c91c0c0de3d40a94f2",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D2-cross-job-skew/workload-9103.json"
+    },
+    {
+      "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+      "file_sha256": "4f96a7f5bb213071489f7e95015194d3e5ce659f824b7f1635d7c6baff095f3c",
+      "input_hash": "899d38d9134b6f9cd9d10d146ae906517882d074c568e441756928908b521807",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D3-order-and-sinks/workload-9101.json"
+    },
+    {
+      "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+      "file_sha256": "fb6dd14202e73b7bd2839d51f165041b92c56c804d32d19b5507f025a1442eeb",
+      "input_hash": "8c03e5b4054029b97d8894fd841a5d1fa3b54fa16f92b407b61e7f0705e595cf",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D3-order-and-sinks/workload-9102.json"
+    },
+    {
+      "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+      "file_sha256": "e6f43898da2a5b964c62088379bc1da17dad72f119a26866a483b7bcac4e1ea0",
+      "input_hash": "f79bb9a6b0053b185edcc5b3668a3b679ab212b6c8bd99ada4745cc1e014650b",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D3-order-and-sinks/workload-9103.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "5044bcda3b64394541c130651d981d1b39f7b8af66eb675bf65cfb1a06c7f185",
+      "input_hash": "51a05e240d3909c1c81cf67ec9d71f86fb861fec7060acb349cb76eb7c85472b",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/L0-balanced/workload-9101.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "e76f1f2178709e848cee45f7c3c34b715c5bea82bb71d625656099413d5baf5a",
+      "input_hash": "7b63baa853a16bf924f74a51587e421269b8d1b50843c7aa4316f2f9c251f61a",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/L0-balanced/workload-9102.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "22d5fa91a79781e79a13e0e13bab0b95613806a1c944b86cb6642ffcfa88f55f",
+      "input_hash": "b713b800ae331c5bf36be63e327d6ed1efcaf59a0db6f131bcb7d2880cd85031",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/L0-balanced/workload-9103.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "2604f05fc6a0165e4eb7bcc5485108890dcecdb61754e3251946d1592f84c287",
+      "input_hash": "04f2355bdf80ff721f1a0b00753a5ed90db0b9cba4f328dd1704ef59ba239c3f",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/L1-skew-tail/workload-9101.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "140ecce98c4efea4366b5b9cbea19cc7461bc78069bde706b40614181d4bdf5b",
+      "input_hash": "ad4420175a550f63bb294a4b597e811110763145f609127c8e6b5dee33aa20d7",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/L1-skew-tail/workload-9102.json"
+    },
+    {
+      "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+      "file_sha256": "a1b1572c351221c53990d76af2b4caf42e3d64000acebdc85c1c139584bc9a03",
+      "input_hash": "eabbbdf2e0e6bd5066dffa57cc2aca17d5dc7ec7e3f512fa893392e178b234a0",
+      "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/L1-skew-tail/workload-9103.json"
+    }
+  ],
+  "profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+  "record_count": 44,
+  "schema": "jobpacer-gpu-compute-profile-calibration",
+  "schema_version": 1,
+  "settings": {
+    "allow_tf32": false,
+    "iterations": 30,
+    "matmul_precision": "highest",
+    "timing": "CUDA events plus host enqueue",
+    "warmup": 5
+  }
+}

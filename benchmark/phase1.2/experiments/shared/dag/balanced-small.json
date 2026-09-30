@@ -1,0 +1,18 @@
+{
+  "id": "balanced-small",
+  "metadata": {"seed": 11, "duration_unit_s": 0.001},
+  "tasks": [
+    {"id": "a-c0", "kind": "compute", "duration": 3, "dependencies": []},
+    {"id": "a-m0", "kind": "communication", "duration": 0.5, "num_bytes": 4096, "dependencies": ["a-c0"]},
+    {"id": "a-c1", "kind": "compute", "duration": 2, "dependencies": ["a-m0"]},
+    {"id": "a-m1", "kind": "communication", "duration": 1, "num_bytes": 1048576, "dependencies": ["a-c1"]},
+    {"id": "a-c2", "kind": "compute", "duration": 1, "dependencies": ["a-m1"]},
+
+    {"id": "b-c0", "kind": "compute", "duration": 2, "dependencies": []},
+    {"id": "b-m0", "kind": "communication", "duration": 0.5, "num_bytes": 4096, "dependencies": ["b-c0"]},
+    {"id": "b-c1", "kind": "compute", "duration": 3, "dependencies": ["b-m0"]},
+    {"id": "b-m1", "kind": "communication", "duration": 1, "num_bytes": 1048576, "dependencies": ["b-c1"]},
+    {"id": "b-c2", "kind": "compute", "duration": 1, "dependencies": ["b-m1"]}
+  ]
+}
+

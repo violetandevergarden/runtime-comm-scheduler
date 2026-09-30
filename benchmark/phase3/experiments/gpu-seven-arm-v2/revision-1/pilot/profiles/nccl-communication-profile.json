@@ -1,0 +1,142 @@
+{
+  "environment": {
+    "backend": "nccl",
+    "cpu_affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      120,
+      121,
+      122,
+      123,
+      124,
+      125,
+      126,
+      127,
+      128,
+      129,
+      130,
+      131,
+      132,
+      133,
+      134,
+      135,
+      136,
+      137,
+      138,
+      139,
+      140,
+      141,
+      142,
+      143,
+      144,
+      145,
+      146,
+      147,
+      148,
+      149
+    ],
+    "cuda_version": "12.6",
+    "device_names": [
+      "NVIDIA GeForce RTX 4090",
+      "NVIDIA GeForce RTX 4090"
+    ],
+    "device_type": "cuda",
+    "device_uuids": [
+      "c024d768-866d-952a-36f6-899a9e5844e0",
+      "a376a831-0ace-b841-7b91-6b962b9c2398"
+    ],
+    "generated_at": "2026-09-29T08:52:00.309059+00:00",
+    "group_ranks": [
+      [
+        0,
+        1
+      ]
+    ],
+    "hostname": "el1",
+    "nccl_version": [
+      2,
+      29,
+      3
+    ],
+    "thread_environment": {
+      "GLOO_SOCKET_IFNAME": null,
+      "MKL_NUM_THREADS": null,
+      "NUMEXPR_NUM_THREADS": null,
+      "OMP_NUM_THREADS": null,
+      "OPENBLAS_NUM_THREADS": null
+    },
+    "torch_version": "2.13.0+cu126",
+    "world_size": 2
+  },
+  "records": [
+    {
+      "api_call_duration_p50_s": 4.2883e-05,
+      "backend": "nccl",
+      "device_type": "cuda",
+      "dtype": "float32",
+      "group_size": 2,
+      "mean_s": 0.004590319533333333,
+      "num_bytes": 67108864,
+      "op": "all_reduce",
+      "p10_s": 0.0044207887999999996,
+      "p50_s": 0.0044544585,
+      "p90_s": 0.0048248097,
+      "profile_service_time_s": 0.0044544585,
+      "reduction": "sum",
+      "return_to_sync_p50_s": 0.004411575500000001,
+      "samples": 30,
+      "stdev_s": 0.0004093255837361203
+    },
+    {
+      "api_call_duration_p50_s": 2.0620000000000002e-05,
+      "backend": "nccl",
+      "device_type": "cuda",
+      "dtype": "float32",
+      "group_size": 2,
+      "mean_s": 7.911113333333333e-05,
+      "num_bytes": 262144,
+      "op": "all_reduce",
+      "p10_s": 7.59165e-05,
+      "p50_s": 7.8764e-05,
+      "p90_s": 8.353970000000001e-05,
+      "profile_service_time_s": 7.8764e-05,
+      "reduction": "sum",
+      "return_to_sync_p50_s": 5.814399999999999e-05,
+      "samples": 30,
+      "stdev_s": 3.081288861643596e-06
+    }
+  ],
+  "schema_version": 1,
+  "settings": {
+    "iterations": 30,
+    "warmup": 5
+  }
+}

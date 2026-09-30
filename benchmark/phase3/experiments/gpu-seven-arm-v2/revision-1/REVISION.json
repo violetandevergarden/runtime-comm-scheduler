@@ -1,0 +1,19 @@
+{
+  "bare_mechanism_checks": {
+    "backend": true,
+    "contract": true,
+    "five_repeats": true,
+    "launch_before_completion_observation": true,
+    "numeric": true,
+    "two_ranks": true
+  },
+  "bare_mechanism_passed": true,
+  "bare_mechanism_sha256": "0279e350bf8ec30c079180e49e45483d17bb2c9945db2e06978384869485f9e5",
+  "bare_mechanism_summary": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/results/gpu-seven-arm/preparation-v2-20260929/bare-mechanism-revision-1/mechanism-summary.json",
+  "formal_parent_manifest_sha256": "8c2267cdb9b4010fba09a68b5c908e3f63473b967d0ed09660ee181ab632e4bd",
+  "parent_revision": 0,
+  "pilot_parent_manifest_sha256": "e12bcc055aba3c9e1b243a515719619f2dd430d45c9632020e0d760fd03ee0a1",
+  "reason": "Fix structured EADDRINUSE pre-task port-conflict classification; preserve whole-block retry semantics.",
+  "revision": 1,
+  "source_snapshot_sha256": "31c6524c63fbaaf6989991bb76a7f1583c9e42c13f8cb0f60ee911b7ef77931a"
+}

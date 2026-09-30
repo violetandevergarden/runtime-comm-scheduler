@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "phase3-fixed-input-screening-20260922",
+  "interpretation": "zero-jitter repeated-system-noise control; seed blocks do not sample different compute durations",
+  "repeats": 1,
+  "seeds": [100, 101, 102, 103, 104, 105, 106, 107, 108, 109],
+  "linear": ["L0-balanced", "L1-head-misalignment", "L2-tail-asymmetry"],
+  "dag": ["G0-linear-bridge", "G1-diamond", "G2-multi-frontier"],
+  "required": {"backend": "gloo", "world_size": 2, "strict_profile": true, "warmup_iterations": 1,
+               "compute_jitter": 0.0, "wait_budget_s": 0.02, "poll_interval_s": 0.001,
+               "baseline": "new-static_fifo", "order_seed": 0, "paired_by_seed": true}
+}

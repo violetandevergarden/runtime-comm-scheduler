@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "name": "phase3-zero-jitter-L0-ab-noise-20260923",
+  "interpretation": "fixed-input system-noise control; not a compute-perturbation sample",
+  "workload": "benchmark/phase3/experiments/baseline/L0-balanced.json",
+  "profile": {
+    "path": "benchmark/phase3/results/calibration/multi-scale/phase3-compact-20260923/profile.json",
+    "sha256": "0283de537d286411b5014ca5436b6284c748fecc122360c8d1dfd8ab42573093"
+  },
+  "backend": "gloo",
+  "world_size": 2,
+  "arms": ["new-fifo"],
+  "seeds": [5200, 5201, 5202, 5203, 5204, 5205, 5206, 5207, 5208, 5209],
+  "repeats_per_copy": 3,
+  "copies": ["A", "B"],
+  "compute_jitter": 0.0,
+  "wait_budget_s": 0.02,
+  "poll_interval_s": 0.001,
+  "warmup_iterations": 1,
+  "order": "alternate A/B first-copy by seed parity",
+  "aggregation": "median of repeats within each copy, then paired relative A/B difference within seed",
+  "result_batch": "benchmark/phase3/results/noise/L0-balanced/20260923-compact-noise/"
+}

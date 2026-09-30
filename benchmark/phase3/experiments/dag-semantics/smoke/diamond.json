@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "diamond",
+  "seed": 23,
+  "groups": [
+    {"group_id": "group-a", "ranks": [0, 1]},
+    {"group_id": "group-b", "ranks": [0, 1]}
+  ],
+  "execution": {
+    "compute_duration_s": {
+      "job-0/producer": 0.002,
+      "job-0/independent": 0.004,
+      "job-0/join": 0.0
+    }
+  },
+  "jobs": [
+    {
+      "job_id": "job-0",
+      "nodes": [
+        {"node_id": "producer", "kind": "compute", "deps": [], "estimated_duration_s": 0.002},
+        {"node_id": "comm-a", "kind": "comm", "deps": ["producer"], "group_id": "group-a", "group_seq": 0, "estimated_comm_s": 0.001, "collective": {"op": "all_reduce", "numel": 1024, "num_bytes": 4096, "dtype": "float32", "shape": [1024], "reduction": "sum"}},
+        {"node_id": "independent", "kind": "compute", "deps": ["producer"], "estimated_duration_s": 0.004},
+        {"node_id": "join", "kind": "compute", "deps": ["comm-a", "independent"], "estimated_duration_s": 0.0},
+        {"node_id": "comm-c", "kind": "comm", "deps": ["join"], "group_id": "group-b", "group_seq": 0, "estimated_comm_s": 0.001, "collective": {"op": "all_reduce", "numel": 1024, "num_bytes": 4096, "dtype": "float32", "shape": [1024], "reduction": "sum"}}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,471 @@
+{
+  "execution": {
+    "buffers": {
+      "job-0": {
+        "independent-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "independent-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "private": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "sink-scalar": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": []
+        },
+        "tail": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "wire": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        }
+      },
+      "job-1": {
+        "independent-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "independent-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "private": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "producer-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "sink-scalar": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": []
+        },
+        "tail": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-left": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "tail-right": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            256,
+            256
+          ]
+        },
+        "wire": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": [
+            256,
+            256
+          ]
+        }
+      },
+      "occupancy": {
+        "sink-scalar": {
+          "dtype": "float32",
+          "init": "zeros",
+          "shape": []
+        },
+        "wire": {
+          "dtype": "float32",
+          "init": "seeded-random",
+          "shape": [
+            16777216
+          ]
+        }
+      }
+    },
+    "comm_bindings": {
+      "job-0/frontier": {
+        "buffer": "wire"
+      },
+      "job-1/frontier": {
+        "buffer": "wire"
+      },
+      "occupancy/comm": {
+        "buffer": "wire"
+      }
+    },
+    "compute_model": "one-active-compute-per-job",
+    "compute_programs": {
+      "job-0/independent": {
+        "inputs": [
+          "independent-left",
+          "independent-right"
+        ],
+        "op": "matmul",
+        "output": "private",
+        "repeats": 8
+      },
+      "job-0/producer": {
+        "inputs": [
+          "producer-left",
+          "producer-right"
+        ],
+        "op": "matmul",
+        "output": "wire",
+        "repeats": 8
+      },
+      "job-0/sink": {
+        "inputs": [
+          "wire",
+          "private",
+          "tail"
+        ],
+        "op": "sum_join",
+        "output": "sink-scalar"
+      },
+      "job-0/tail": {
+        "inputs": [
+          "tail-left",
+          "tail-right"
+        ],
+        "op": "matmul",
+        "output": "tail",
+        "repeats": 8
+      },
+      "job-1/independent": {
+        "inputs": [
+          "independent-left",
+          "independent-right"
+        ],
+        "op": "matmul",
+        "output": "private",
+        "repeats": 8
+      },
+      "job-1/producer": {
+        "inputs": [
+          "producer-left",
+          "producer-right"
+        ],
+        "op": "matmul",
+        "output": "wire",
+        "repeats": 12
+      },
+      "job-1/sink": {
+        "inputs": [
+          "wire",
+          "private",
+          "tail"
+        ],
+        "op": "sum_join",
+        "output": "sink-scalar"
+      },
+      "job-1/tail": {
+        "inputs": [
+          "tail-left",
+          "tail-right"
+        ],
+        "op": "matmul",
+        "output": "tail",
+        "repeats": 96
+      },
+      "occupancy/sink": {
+        "inputs": [
+          "wire"
+        ],
+        "op": "sum_join",
+        "output": "sink-scalar"
+      }
+    },
+    "mode": "cuda-program",
+    "profiles": {
+      "design_revision": 0,
+      "nominal_compute_repeats": {
+        "job-0/independent": 8,
+        "job-0/producer": 8,
+        "job-0/tail": 8,
+        "job-1/independent": 8,
+        "job-1/producer": 8,
+        "job-1/tail": 96
+      },
+      "parameters": {
+        "long_tail_repeats": 96,
+        "matrix": 256,
+        "occupancy_bytes": 67108864,
+        "short_tail_repeats": 8
+      }
+    },
+    "sample_id": "template",
+    "submit_after": {
+      "job-0/independent": [
+        "job-0/frontier"
+      ],
+      "job-1/independent": [
+        "job-1/frontier"
+      ]
+    }
+  },
+  "groups": [
+    {
+      "group_id": "occupancy",
+      "ranks": [
+        0,
+        1
+      ]
+    },
+    {
+      "group_id": "g0",
+      "ranks": [
+        0,
+        1
+      ]
+    },
+    {
+      "group_id": "g1",
+      "ranks": [
+        0,
+        1
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "job_id": "occupancy",
+      "nodes": [
+        {
+          "collective": {
+            "dtype": "float32",
+            "num_bytes": 67108864,
+            "numel": 16777216,
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              16777216
+            ]
+          },
+          "deps": [],
+          "estimated_comm_s": 0.001,
+          "group_id": "occupancy",
+          "group_seq": 0,
+          "kind": "comm",
+          "node_id": "comm"
+        },
+        {
+          "deps": [
+            "comm"
+          ],
+          "estimated_duration_s": 0.001,
+          "kind": "compute",
+          "node_id": "sink"
+        }
+      ]
+    },
+    {
+      "job_id": "job-0",
+      "nodes": [
+        {
+          "deps": [],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "producer"
+        },
+        {
+          "collective": {
+            "dtype": "float32",
+            "num_bytes": 262144,
+            "numel": 65536,
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              256,
+              256
+            ]
+          },
+          "deps": [
+            "producer"
+          ],
+          "estimated_comm_s": 0.001,
+          "group_id": "g0",
+          "group_seq": 0,
+          "kind": "comm",
+          "node_id": "frontier"
+        },
+        {
+          "deps": [
+            "producer"
+          ],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "independent"
+        },
+        {
+          "deps": [
+            "frontier"
+          ],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "tail"
+        },
+        {
+          "deps": [
+            "tail",
+            "independent"
+          ],
+          "estimated_duration_s": 0.001,
+          "kind": "compute",
+          "node_id": "sink"
+        }
+      ]
+    },
+    {
+      "job_id": "job-1",
+      "nodes": [
+        {
+          "deps": [],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "producer"
+        },
+        {
+          "collective": {
+            "dtype": "float32",
+            "num_bytes": 262144,
+            "numel": 65536,
+            "op": "all_reduce",
+            "reduction": "sum",
+            "shape": [
+              256,
+              256
+            ]
+          },
+          "deps": [
+            "producer"
+          ],
+          "estimated_comm_s": 0.001,
+          "group_id": "g1",
+          "group_seq": 0,
+          "kind": "comm",
+          "node_id": "frontier"
+        },
+        {
+          "deps": [
+            "producer"
+          ],
+          "estimated_duration_s": 0.002,
+          "kind": "compute",
+          "node_id": "independent"
+        },
+        {
+          "deps": [
+            "frontier"
+          ],
+          "estimated_duration_s": 0.024,
+          "kind": "compute",
+          "node_id": "tail"
+        },
+        {
+          "deps": [
+            "tail",
+            "independent"
+          ],
+          "estimated_duration_s": 0.001,
+          "kind": "compute",
+          "node_id": "sink"
+        }
+      ]
+    }
+  ],
+  "name": "gpu-seven-arm-D1-asymmetric-frontiers-template",
+  "schema_version": 2,
+  "seed": 0
+}

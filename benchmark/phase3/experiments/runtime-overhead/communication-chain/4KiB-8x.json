@@ -1,0 +1,15 @@
+{
+  "name": "communication-chain-4KiB-8x",
+  "seed": 6200,
+  "execution": {"compute_duration_s": {}},
+  "jobs": [{"job_id": "job-0", "communications": [
+    {"id": 0, "num_bytes": 4096, "producer_compute_s": 0.0, "consumer_compute_s": 0.0, "estimated_comm_s": 0.001},
+    {"id": 1, "num_bytes": 4096, "producer_compute_s": 0.0, "consumer_compute_s": 0.0, "estimated_comm_s": 0.001},
+    {"id": 2, "num_bytes": 4096, "producer_compute_s": 0.0, "consumer_compute_s": 0.0, "estimated_comm_s": 0.001},
+    {"id": 3, "num_bytes": 4096, "producer_compute_s": 0.0, "consumer_compute_s": 0.0, "estimated_comm_s": 0.001},
+    {"id": 4, "num_bytes": 4096, "producer_compute_s": 0.0, "consumer_compute_s": 0.0, "estimated_comm_s": 0.001},
+    {"id": 5, "num_bytes": 4096, "producer_compute_s": 0.0, "consumer_compute_s": 0.0, "estimated_comm_s": 0.001},
+    {"id": 6, "num_bytes": 4096, "producer_compute_s": 0.0, "consumer_compute_s": 0.0, "estimated_comm_s": 0.001},
+    {"id": 7, "num_bytes": 4096, "producer_compute_s": 0.0, "consumer_compute_s": 0.0, "estimated_comm_s": 0.001}
+  ]}]
+}

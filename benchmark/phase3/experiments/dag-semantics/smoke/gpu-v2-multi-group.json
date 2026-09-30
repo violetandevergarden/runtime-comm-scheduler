@@ -1,0 +1,488 @@
+{
+  "schema_version": 2,
+  "name": "gpu-v2-multi-group-smoke",
+  "seed": 37,
+  "groups": [
+    {
+      "group_id": "group-a",
+      "ranks": [
+        0,
+        1
+      ]
+    },
+    {
+      "group_id": "group-b",
+      "ranks": [
+        0,
+        1
+      ]
+    },
+    {
+      "group_id": "group-c",
+      "ranks": [
+        0,
+        1
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "job_id": "job-0",
+      "nodes": [
+        {
+          "node_id": "producer",
+          "kind": "compute",
+          "deps": [],
+          "estimated_duration_s": 0.001
+        },
+        {
+          "node_id": "comm-b0",
+          "kind": "comm",
+          "deps": [
+            "producer"
+          ],
+          "group_id": "group-b",
+          "group_seq": 0,
+          "estimated_comm_s": 0.02,
+          "collective": {
+            "op": "all_reduce",
+            "numel": 1024,
+            "num_bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1024
+            ],
+            "reduction": "sum"
+          }
+        },
+        {
+          "node_id": "comm-a0",
+          "kind": "comm",
+          "deps": [
+            "producer"
+          ],
+          "group_id": "group-a",
+          "group_seq": 0,
+          "estimated_comm_s": 0.02,
+          "collective": {
+            "op": "all_reduce",
+            "numel": 1024,
+            "num_bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1024
+            ],
+            "reduction": "sum"
+          }
+        },
+        {
+          "node_id": "compute-a-tail",
+          "kind": "compute",
+          "deps": [
+            "comm-a0"
+          ],
+          "estimated_duration_s": 0.001
+        },
+        {
+          "node_id": "comm-a1",
+          "kind": "comm",
+          "deps": [
+            "compute-a-tail"
+          ],
+          "group_id": "group-a",
+          "group_seq": 1,
+          "estimated_comm_s": 0.001,
+          "collective": {
+            "op": "all_reduce",
+            "numel": 1024,
+            "num_bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1024
+            ],
+            "reduction": "sum"
+          }
+        },
+        {
+          "node_id": "compute-b-tail",
+          "kind": "compute",
+          "deps": [
+            "comm-b0"
+          ],
+          "estimated_duration_s": 0.001
+        },
+        {
+          "node_id": "comm-b1",
+          "kind": "comm",
+          "deps": [
+            "compute-b-tail"
+          ],
+          "group_id": "group-b",
+          "group_seq": 1,
+          "estimated_comm_s": 0.001,
+          "collective": {
+            "op": "all_reduce",
+            "numel": 1024,
+            "num_bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1024
+            ],
+            "reduction": "sum"
+          }
+        }
+      ]
+    },
+    {
+      "job_id": "job-1",
+      "nodes": [
+        {
+          "node_id": "setup",
+          "kind": "compute",
+          "deps": [],
+          "estimated_duration_s": 0.001
+        },
+        {
+          "node_id": "skew",
+          "kind": "compute",
+          "deps": [
+            "setup"
+          ],
+          "estimated_duration_s": 0.001
+        },
+        {
+          "node_id": "comm-c0",
+          "kind": "comm",
+          "deps": [
+            "skew"
+          ],
+          "group_id": "group-c",
+          "group_seq": 0,
+          "estimated_comm_s": 0.001,
+          "collective": {
+            "op": "all_reduce",
+            "numel": 1024,
+            "num_bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1024
+            ],
+            "reduction": "sum"
+          }
+        },
+        {
+          "node_id": "compute-c-tail",
+          "kind": "compute",
+          "deps": [
+            "comm-c0"
+          ],
+          "estimated_duration_s": 0.001
+        },
+        {
+          "node_id": "comm-c1",
+          "kind": "comm",
+          "deps": [
+            "compute-c-tail"
+          ],
+          "group_id": "group-c",
+          "group_seq": 1,
+          "estimated_comm_s": 0.001,
+          "collective": {
+            "op": "all_reduce",
+            "numel": 1024,
+            "num_bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1024
+            ],
+            "reduction": "sum"
+          }
+        }
+      ]
+    }
+  ],
+  "execution": {
+    "mode": "cuda-program",
+    "sample_id": "gpu-v2-multi-group-smoke-v1",
+    "compute_model": "one-active-compute-per-job",
+    "buffers": {
+      "job-0": {
+        "producer-left": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "producer-right": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "producer-output": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "zeros"
+        },
+        "comm-b0-buffer": {
+          "shape": [
+            1024
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "comm-a0-buffer": {
+          "shape": [
+            1024
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "compute-a-tail-left": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "compute-a-tail-right": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "compute-a-tail-output": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "zeros"
+        },
+        "comm-a1-buffer": {
+          "shape": [
+            1024
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "compute-b-tail-left": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "compute-b-tail-right": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "compute-b-tail-output": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "zeros"
+        },
+        "comm-b1-buffer": {
+          "shape": [
+            1024
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        }
+      },
+      "job-1": {
+        "setup-left": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "setup-right": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "setup-output": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "zeros"
+        },
+        "skew-left": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "skew-right": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "skew-output": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "zeros"
+        },
+        "comm-c0-buffer": {
+          "shape": [
+            1024
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "compute-c-tail-left": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "compute-c-tail-right": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        },
+        "compute-c-tail-output": {
+          "shape": [
+            32,
+            32
+          ],
+          "dtype": "float32",
+          "init": "zeros"
+        },
+        "comm-c1-buffer": {
+          "shape": [
+            1024
+          ],
+          "dtype": "float32",
+          "init": "seeded-random"
+        }
+      }
+    },
+    "compute_programs": {
+      "job-0/producer": {
+        "op": "matmul",
+        "inputs": [
+          "producer-left",
+          "producer-right"
+        ],
+        "output": "producer-output",
+        "repeats": 1
+      },
+      "job-0/compute-a-tail": {
+        "op": "matmul",
+        "inputs": [
+          "compute-a-tail-left",
+          "compute-a-tail-right"
+        ],
+        "output": "compute-a-tail-output",
+        "repeats": 1
+      },
+      "job-0/compute-b-tail": {
+        "op": "matmul",
+        "inputs": [
+          "compute-b-tail-left",
+          "compute-b-tail-right"
+        ],
+        "output": "compute-b-tail-output",
+        "repeats": 1
+      },
+      "job-1/setup": {
+        "op": "matmul",
+        "inputs": [
+          "setup-left",
+          "setup-right"
+        ],
+        "output": "setup-output",
+        "repeats": 1
+      },
+      "job-1/skew": {
+        "op": "matmul",
+        "inputs": [
+          "skew-left",
+          "skew-right"
+        ],
+        "output": "skew-output",
+        "repeats": 1
+      },
+      "job-1/compute-c-tail": {
+        "op": "matmul",
+        "inputs": [
+          "compute-c-tail-left",
+          "compute-c-tail-right"
+        ],
+        "output": "compute-c-tail-output",
+        "repeats": 1
+      }
+    },
+    "comm_bindings": {
+      "job-0/comm-b0": {
+        "buffer": "comm-b0-buffer"
+      },
+      "job-0/comm-a0": {
+        "buffer": "comm-a0-buffer"
+      },
+      "job-0/comm-a1": {
+        "buffer": "comm-a1-buffer"
+      },
+      "job-0/comm-b1": {
+        "buffer": "comm-b1-buffer"
+      },
+      "job-1/comm-c0": {
+        "buffer": "comm-c0-buffer"
+      },
+      "job-1/comm-c1": {
+        "buffer": "comm-c1-buffer"
+      }
+    },
+    "submit_after": {},
+    "application_terminals": {
+      "job-0": [
+        "comm-a1",
+        "comm-b1"
+      ],
+      "job-1": [
+        "comm-c1"
+      ]
+    },
+    "profiles": {}
+  }
+}

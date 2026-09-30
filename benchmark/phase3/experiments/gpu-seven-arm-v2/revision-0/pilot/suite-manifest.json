@@ -1,0 +1,2624 @@
+{
+  "aggregate_execution_sample_hash": "47424ae8a363a106516ddd4a5416837cacb7cb2ae4584f06ebea267b3c85b4ff",
+  "arm_contracts": {
+    "bare-ordered": {
+      "status": "pending-G1",
+      "supported": true
+    },
+    "new-dynamic-fifo": {
+      "status": "implemented",
+      "supported": true
+    },
+    "new-dynamic-ltf": {
+      "status": "implemented",
+      "supported": true
+    },
+    "new-static-fifo": {
+      "status": "implemented",
+      "supported": true
+    },
+    "new-static-ltf": {
+      "status": "implemented",
+      "supported": true
+    },
+    "old-static-fifo": {
+      "status": "implemented",
+      "supported": true
+    },
+    "old-static-ltf": {
+      "status": "implemented",
+      "supported": true
+    }
+  },
+  "bare": {
+    "available_reference": "raw-ordered-static-fifo",
+    "evidence": null,
+    "status": "unqualified"
+  },
+  "bare_qualification": {
+    "arm": "bare-ordered",
+    "evidence": {
+      "contract_version": "bare-ordered-v2-layered-round-robin",
+      "device_uuids": [
+        "a376a831-0ace-b841-7b91-6b962b9c2398",
+        "c024d768-866d-952a-36f6-899a9e5844e0"
+      ],
+      "evidence_path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/results/gpu-seven-arm/preparation-v2-20260929/qualification/qualification-audit.json",
+      "evidence_sha256": "954da6d791ba674b402b9270f80b77b8da8c5fe5e207b466570c8c8fb9116b90",
+      "profile_sha256": "07e6cf28f84219484af376f3161b261acdb45ae535d5d7ba70a9e36a1a1e8058",
+      "source_snapshot_sha256": "65cbed6e99e174a11d8dc5293baef00b0129cc79e09387c44778dbc5e5379084"
+    },
+    "status": "qualified"
+  },
+  "contract_version": "gpu-seven-arm-v2",
+  "execution_contract": {
+    "backend": "nccl",
+    "capacity_by_engine": {
+      "bare": null,
+      "new": "global-one",
+      "old": "local-one"
+    },
+    "contract_version": "gpu-seven-arm-v2",
+    "dtype": "float32",
+    "measurement_lane": "DAG CUDA program with physical completion",
+    "op": "all_reduce",
+    "reduction": "sum",
+    "static_fifo_order": "topological-layer-job-round-robin-v1",
+    "warmup_iterations": 5,
+    "world_size": 2
+  },
+  "generator_version": "gpu-seven-arm-inputs-v5-mechanisms",
+  "max_pilot_parameter_revisions": 2,
+  "order_seed": 20260927,
+  "pilot_revision": 0,
+  "profiles": {
+    "communication": {
+      "environment": {
+        "backend": "nccl",
+        "cpu_affinity": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          120,
+          121,
+          122,
+          123,
+          124,
+          125,
+          126,
+          127,
+          128,
+          129,
+          130,
+          131,
+          132,
+          133,
+          134,
+          135,
+          136,
+          137,
+          138,
+          139,
+          140,
+          141,
+          142,
+          143,
+          144,
+          145,
+          146,
+          147,
+          148,
+          149
+        ],
+        "cuda_version": "12.6",
+        "device_names": [
+          "NVIDIA GeForce RTX 4090",
+          "NVIDIA GeForce RTX 4090"
+        ],
+        "device_type": "cuda",
+        "device_uuids": [
+          "c024d768-866d-952a-36f6-899a9e5844e0",
+          "a376a831-0ace-b841-7b91-6b962b9c2398"
+        ],
+        "generated_at": "2026-09-29T08:52:00.309059+00:00",
+        "group_ranks": [
+          [
+            0,
+            1
+          ]
+        ],
+        "hostname": "el1",
+        "nccl_version": [
+          2,
+          29,
+          3
+        ],
+        "thread_environment": {
+          "GLOO_SOCKET_IFNAME": null,
+          "MKL_NUM_THREADS": null,
+          "NUMEXPR_NUM_THREADS": null,
+          "OMP_NUM_THREADS": null,
+          "OPENBLAS_NUM_THREADS": null
+        },
+        "torch_version": "2.13.0+cu126",
+        "world_size": 2
+      },
+      "path": "profiles/nccl-communication-profile.json",
+      "schema_version": 1,
+      "settings": {
+        "iterations": 30,
+        "warmup": 5
+      },
+      "sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6"
+    },
+    "compute": {
+      "calibration": {
+        "device_uuids": [
+          "c024d768-866d-952a-36f6-899a9e5844e0",
+          "a376a831-0ace-b841-7b91-6b962b9c2398"
+        ],
+        "inputs": [
+          {
+            "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+            "file_sha256": "2c1548e92404eca1df46ce0b6e2d1f376723e37b08cd6584dd29ac02d95fbf81",
+            "input_hash": "2d412d81242c93d2d6154bcbdac545a826295e5d19470a6a0eeec5abb965606f",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D0-fork-join/workload-8101.json"
+          },
+          {
+            "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+            "file_sha256": "268b61c1034c8abf101bf065f2a3d7dddb4f8b55d7e38311d57a6421279ab3f6",
+            "input_hash": "3e35674fd29bf80fa773b2e20f436e216c599dba6cedc9adbdc95b01d25fdc1b",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D0-fork-join/workload-8102.json"
+          },
+          {
+            "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+            "file_sha256": "43a52482b0ab89762a6ef57bb179d813ab804d588ea8109c05b87e5ae1b5761a",
+            "input_hash": "c23fb94f17e8f49f59472bd959241d0094ebb01c85926d371218aedf11dfe780",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D0-fork-join/workload-8103.json"
+          },
+          {
+            "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+            "file_sha256": "d4cbea10348496d1d24f4d94060031ed31a8e6dabd0b4a80cfdf378c30491263",
+            "input_hash": "d8178029967ed29ef755dcf0caa349f5bc7f0c9e8100c4524dc00a34204712e0",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D0-fork-join/workload-8104.json"
+          },
+          {
+            "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+            "file_sha256": "b01ded3233b91c29ffa9d15dfe317f7956f7d7ba6cbe5ad5db20568bab603177",
+            "input_hash": "cbab6a659a3b827fc5489b75edb0b44c893550b1a26f2d60782af6a2bb936a92",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D0-fork-join/workload-8105.json"
+          },
+          {
+            "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+            "file_sha256": "a7ad530d22b5ab4b1a04f0d8ba231ad1fe9c623f87911fcfc08fd9f15a568acd",
+            "input_hash": "84a2eef1b01dae7fab246c59700f78ae0b0f9ff5c91de0b1a7e71faeee412e7a",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D1-asymmetric-frontiers/workload-8101.json"
+          },
+          {
+            "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+            "file_sha256": "66f9b7282a22501e8b4624e4786414382a67735904ec2cbc0829d676ffb39315",
+            "input_hash": "acd02e383a75832871acc7a99c4173675dc2ab31462c619c25b332a3742936ad",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D1-asymmetric-frontiers/workload-8102.json"
+          },
+          {
+            "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+            "file_sha256": "ce545f797171f91fc6d14bd42c35db8158ee765f5d88f05ff4091424f4b38bb7",
+            "input_hash": "c5c3167314c6e1c5f308a009e45f98672971c1ac59a90666fa7cc808d9cf75a4",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D1-asymmetric-frontiers/workload-8103.json"
+          },
+          {
+            "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+            "file_sha256": "82ec09919c6ca311264b63653640ce5ca6968247013f643458788f79309dbdb9",
+            "input_hash": "c741191c84e709b66fea02069bdc1a865322368cd8fefea747426ae719adb5aa",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D1-asymmetric-frontiers/workload-8104.json"
+          },
+          {
+            "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+            "file_sha256": "4756aaba039085e17701c3699386194623826ca61b03785d81bbf1218ef5a1b3",
+            "input_hash": "423043b5cf225deee15ba0202af393b3bab55f082aac6c08b646acce970b8a17",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D1-asymmetric-frontiers/workload-8105.json"
+          },
+          {
+            "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+            "file_sha256": "01d67cfd50729074d1ecdbf2624cb2b824489f77a81d4d44dc9ababc91d430af",
+            "input_hash": "a5446784e878d8714d76a10e43f7fec7d7eaf2dfd9db779860f149f5d3864edf",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D2-cross-job-skew/workload-8101.json"
+          },
+          {
+            "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+            "file_sha256": "eebeb8709d37cc59996d6128f5f2e201d1617773dddb1a897938d6450b184a23",
+            "input_hash": "f5e61cc7cd121a7296f49c2f5bf5039dd6777aad963f040e43862d008ca54027",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D2-cross-job-skew/workload-8102.json"
+          },
+          {
+            "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+            "file_sha256": "b40623706fabaa45cab9341494b2712269d318970b586a89526e5167f4757a16",
+            "input_hash": "f53f37038498ce4f56fe3d1fcddae74f57f9ccf9af1b254cf1fd15da3f35caf1",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D2-cross-job-skew/workload-8103.json"
+          },
+          {
+            "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+            "file_sha256": "a9de589456c165c0ec9d965b1fa41262204fe58d7dad84a5f2f89130ced4020b",
+            "input_hash": "36809b153e1e99c763767d0856ff771d0d77bc3f415ee44450185ffa4dda8dbb",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D2-cross-job-skew/workload-8104.json"
+          },
+          {
+            "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+            "file_sha256": "ebd20d98e7dc2e5988b07f170884c6d81259f5f61028dec8717c31b7a8a0c2f6",
+            "input_hash": "270963773f66cd20f5c01e2e1dd5dd11007f03943f2042527be06215b06a2a5d",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D2-cross-job-skew/workload-8105.json"
+          },
+          {
+            "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+            "file_sha256": "bd8d65457de9c4bb0ddcb4826559d59651f3a18c0cd58616633aa61693ecd03e",
+            "input_hash": "fa0a18eb7bbdd6791580ddc5b9d8220743424c791f63418858a9faa0ae1adf19",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D3-order-and-sinks/workload-8101.json"
+          },
+          {
+            "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+            "file_sha256": "8b5afdd5ac57b9faee7d1a7a7ae0acbe44d4965e7e303f5b148addfc166796ea",
+            "input_hash": "22101b2aae5aa226ad2f68da3dfb71e3006e2f58fb06ad74732b0f4c1d82c8e4",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D3-order-and-sinks/workload-8102.json"
+          },
+          {
+            "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+            "file_sha256": "2dd02235f382c420113d2f695cec4ab0e1bc05b2749b70f0056d14005158df7c",
+            "input_hash": "6a024023a9d8f9df6ae55e6d5f0f76f3b81e1c5a7cea59f2b6e56f76eb85d44b",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D3-order-and-sinks/workload-8103.json"
+          },
+          {
+            "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+            "file_sha256": "6dc1ef79a27ff37345690c9cedf9f6b7a2aa0e10520e7bbda062bb384b0e9657",
+            "input_hash": "5b9a78a5d82edc4b6ff297b14846ad96b0b638f0c44de353807c620fd15c5b28",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D3-order-and-sinks/workload-8104.json"
+          },
+          {
+            "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+            "file_sha256": "00d319a61779a6cbff8fc0002639b817f0c1ca89f953421848ce64a92f74e699",
+            "input_hash": "2eb84beb7fbb70283769a10c68dbf21ed312900f55535e38b3f38d3c73fea9c9",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/D3-order-and-sinks/workload-8105.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "d961d1e22b5748e975c2f7a0a601a9c218aa04d8d45b32df684de645308f1609",
+            "input_hash": "4df3fec62417aa346c1dec2eda63716ccb14743ae655d56d32d59db554704d89",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L0-balanced/workload-8101.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "55efb70835bdbbe07bbd1134522034fec518c7b2b9285a24e64743e0aaead7a3",
+            "input_hash": "ccf4d84cae9e8a2c138b3d4e345e67b25a6d7aa73ad6b6f073b6722e811b908e",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L0-balanced/workload-8102.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "cb88bf258877687f13ace37e2f7b4b0ea0c2260916a83b805e5aa2c89f54ff3c",
+            "input_hash": "bf798937d13aa6f2046ae8d7df38abe5feb6493ac7a92fe828874029fd5142ab",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L0-balanced/workload-8103.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "faefe9976b9c633ef2d3ece9a5bf218edcfa0e33c3a392fb225f857bb39a4dfd",
+            "input_hash": "abdeac3f11f2ee8d01a3fd3a30a6333d93ec0e20d147595aa4cfbc4010812999",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L0-balanced/workload-8104.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "d12e0932f59b346d33ea25412c9ce100178b3ffe1a52b07250abc4231c78d1ab",
+            "input_hash": "2f9dd1ee760a88fd20741960120c7b1e9b65954ad1b83aaa920dedcc4fbcb06e",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L0-balanced/workload-8105.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "364ee197257c63f90fed0fadbd99876c0f86f286ebe2cd68f9e0f61ee363f209",
+            "input_hash": "dd9957e7e374c8eaf0995d36ebe96973311d8428c30c081372b6af3c665503f2",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L1-skew-tail/workload-8101.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "2fecd168d3da370c67948671fa00659a828269e99fc5e8def3818acea2d0c2f0",
+            "input_hash": "eb33814dfcf5a3d982473141d983df522d8c1fc501892010de5ddace25aeef4a",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L1-skew-tail/workload-8102.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "bbfa31d9071f6dfabb122d17fcc989781715c733f8e80efe1d7bbc0160145e32",
+            "input_hash": "39761c02bb8d3e3e3c4232880ef38d4fc29832eb1b445f280cbd4f1c7bd3b544",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L1-skew-tail/workload-8103.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "584a275a9b9460d8a6987e0a5484d83518a545510c055252a366a430cb38f222",
+            "input_hash": "7f1f1cb88de1591d56b41dd87506a0273d6664bd682bbce31212503026d41fad",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L1-skew-tail/workload-8104.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "41c5e82271b169d8bee8dcb6608f0a54807747454569d05d0c9b6507f89ceec0",
+            "input_hash": "3b5b76a84008ea11874bf1ef2735cd9f7c98b0fcfaf3449e2df5d71fa0fe0e25",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/formal/inputs/L1-skew-tail/workload-8105.json"
+          },
+          {
+            "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+            "file_sha256": "667217ace6681d7ddfb68446f22139e21bcd022d4c65a1fe918055316e23d2c0",
+            "input_hash": "b7db91947fb8a08a972b4f49787fbd948870401da82b56585bf744c35b880378",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D0-fork-join/workload-9101.json"
+          },
+          {
+            "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+            "file_sha256": "8c32a1229c8fa0375eedfcf82e159044a16c676d43be12ea6885361b3c08d59a",
+            "input_hash": "a5fa742a9cd06d9d4805cbd51c34998fc9edab48f2ecb37d33b757958a36ac0d",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D0-fork-join/workload-9102.json"
+          },
+          {
+            "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+            "file_sha256": "42ce6cc3a7f1057a3aaac3df1cb2e8f476115d138ee8faae0320f0bb4021be96",
+            "input_hash": "5051fc2aeceec18af08fd463e5ffacbc3517dbf5e8726d48bfe1906902f32f3f",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D0-fork-join/workload-9103.json"
+          },
+          {
+            "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+            "file_sha256": "49aaff0eb34b8272cb032b8eca9928984160007e8fcd24e877e331790c0554e3",
+            "input_hash": "9375932fd5979acdcc9cd0e5b90130e5d8fe2f8369e2c78fddf19907c9e6c168",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D1-asymmetric-frontiers/workload-9101.json"
+          },
+          {
+            "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+            "file_sha256": "574a971a45451838628cd53c82a898f56defd8fbf994e936701ed09d66a416fa",
+            "input_hash": "934085684babef5d89ee2a70ba87d63634386da9903ff024b6fb8e0628e831dc",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D1-asymmetric-frontiers/workload-9102.json"
+          },
+          {
+            "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+            "file_sha256": "dbb1b877cc7e2402869e15788ec3f881c5522001c2dbc4e09428fc6a71c0257f",
+            "input_hash": "4244c3870d5ec20f93dfb953ea70e81d035d2d870e726cbd9389c811a1d8c8c3",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D1-asymmetric-frontiers/workload-9103.json"
+          },
+          {
+            "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+            "file_sha256": "6018d0cf8f18dbf4b260d5fe1512b8f1dd4dfa88989c735d4cdbc7ba8d67ff6d",
+            "input_hash": "5779c4d3d3d584b22054fa698aa89a9ee421bec603b3d859bc243793502c3379",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D2-cross-job-skew/workload-9101.json"
+          },
+          {
+            "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+            "file_sha256": "f863a0e74dd9918aebee8faaff32839b8352986f785af4a1ed9805b5ace9d6ad",
+            "input_hash": "1c06ec27099b2f1f80d52177a359e9bb119f8525b97da0efa275e5a4f1267a5f",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D2-cross-job-skew/workload-9102.json"
+          },
+          {
+            "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+            "file_sha256": "f45abb066d2e6c6a2c672c0603343d9ba3ae69aebb1e7db1a017d58276d39487",
+            "input_hash": "a065b0317ee1cc6dc3f89a0bd7d4761bb1b7614a4a6469c91c0c0de3d40a94f2",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D2-cross-job-skew/workload-9103.json"
+          },
+          {
+            "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+            "file_sha256": "4f96a7f5bb213071489f7e95015194d3e5ce659f824b7f1635d7c6baff095f3c",
+            "input_hash": "899d38d9134b6f9cd9d10d146ae906517882d074c568e441756928908b521807",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D3-order-and-sinks/workload-9101.json"
+          },
+          {
+            "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+            "file_sha256": "fb6dd14202e73b7bd2839d51f165041b92c56c804d32d19b5507f025a1442eeb",
+            "input_hash": "8c03e5b4054029b97d8894fd841a5d1fa3b54fa16f92b407b61e7f0705e595cf",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D3-order-and-sinks/workload-9102.json"
+          },
+          {
+            "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+            "file_sha256": "e6f43898da2a5b964c62088379bc1da17dad72f119a26866a483b7bcac4e1ea0",
+            "input_hash": "f79bb9a6b0053b185edcc5b3668a3b679ab212b6c8bd99ada4745cc1e014650b",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/D3-order-and-sinks/workload-9103.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "5044bcda3b64394541c130651d981d1b39f7b8af66eb675bf65cfb1a06c7f185",
+            "input_hash": "51a05e240d3909c1c81cf67ec9d71f86fb861fec7060acb349cb76eb7c85472b",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/L0-balanced/workload-9101.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "e76f1f2178709e848cee45f7c3c34b715c5bea82bb71d625656099413d5baf5a",
+            "input_hash": "7b63baa853a16bf924f74a51587e421269b8d1b50843c7aa4316f2f9c251f61a",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/L0-balanced/workload-9102.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "22d5fa91a79781e79a13e0e13bab0b95613806a1c944b86cb6642ffcfa88f55f",
+            "input_hash": "b713b800ae331c5bf36be63e327d6ed1efcaf59a0db6f131bcb7d2880cd85031",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/L0-balanced/workload-9103.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "2604f05fc6a0165e4eb7bcc5485108890dcecdb61754e3251946d1592f84c287",
+            "input_hash": "04f2355bdf80ff721f1a0b00753a5ed90db0b9cba4f328dd1704ef59ba239c3f",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/L1-skew-tail/workload-9101.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "140ecce98c4efea4366b5b9cbea19cc7461bc78069bde706b40614181d4bdf5b",
+            "input_hash": "ad4420175a550f63bb294a4b597e811110763145f609127c8e6b5dee33aa20d7",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/L1-skew-tail/workload-9102.json"
+          },
+          {
+            "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+            "file_sha256": "a1b1572c351221c53990d76af2b4caf42e3d64000acebdc85c1c139584bc9a03",
+            "input_hash": "eabbbdf2e0e6bd5066dffa57cc2aca17d5dc7ec7e3f512fa893392e178b234a0",
+            "path": "/home/liuxunpeng/MyScheduler/runtime-comm-scheduler/benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/pilot/inputs/L1-skew-tail/workload-9103.json"
+          }
+        ],
+        "profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+        "record_count": 44,
+        "schema": "jobpacer-gpu-compute-profile-calibration",
+        "schema_version": 1,
+        "settings": {
+          "allow_tf32": false,
+          "iterations": 30,
+          "matmul_precision": "highest",
+          "timing": "CUDA events plus host enqueue",
+          "warmup": 5
+        }
+      },
+      "calibration_input_suite_sha256": "1c9bff3d28eaea95426d3dbc1a0cc576621110601754c1883e20ac633d9acd59",
+      "path": "profiles/gpu-compute-profile.json",
+      "schema_version": 3,
+      "sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59"
+    }
+  },
+  "readiness": {
+    "backend": "pending",
+    "measurement": "pending",
+    "mechanism": "pending",
+    "recovery": "pending",
+    "rehearsal": "pending",
+    "software": "pending"
+  },
+  "samples": [
+    {
+      "actual_matmul_repeats": {
+        "job-0/independent-s0": 32,
+        "job-0/independent-s1": 24,
+        "job-0/producer-s0": 10,
+        "job-0/producer-s1": 8,
+        "job-1/independent-s0": 32,
+        "job-1/independent-s1": 24,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 8
+      },
+      "canonical_static_sequence_sha256": "1c8dd449ab69f219644aa9466cefa19a4a12e3bdc6f978104dddb17288483e90",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "d455d3c5be48cc447043497c3b4967494f2664e71ba86c1c71f6186c612788ed",
+      "execution_sample_hash": "d3321deb351fa3a8fe39c3872c0adb4a5705e3d2a89928c182bba5cc217de7bf",
+      "fifo_order_path": "inputs/D0-fork-join/workload-9101.fifo-order.json",
+      "fifo_order_sha256": "9691b5cd3ca222b4faafd046d169612901febe071fc29978b5e281ef776600a1",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1"
+      ],
+      "input_hash": "b7db91947fb8a08a972b4f49787fbd948870401da82b56585bf744c35b880378",
+      "input_sha256": "667217ace6681d7ddfb68446f22139e21bcd022d4c65a1fe918055316e23d2c0",
+      "ltf_order_path": "inputs/D0-fork-join/workload-9101.ltf-order.json",
+      "ltf_order_sha256": "9691b5cd3ca222b4faafd046d169612901febe071fc29978b5e281ef776600a1",
+      "nominal_matmul_repeats": {
+        "job-0/independent-s0": 32,
+        "job-0/independent-s1": 32,
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-1/independent-s0": 32,
+        "job-1/independent-s1": 32,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8
+      },
+      "path": "inputs/D0-fork-join/workload-9101.json",
+      "pattern_index": 1,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1"
+      ],
+      "profiled_ltf_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D0-fork-join:tensor-v1",
+      "scenario": "D0-fork-join",
+      "tensor_seed": 560017451486221505,
+      "topology_hash": "3a0d09bf55f155c95a5bfe3b458598aced50a972d059b76cb70b1e8f96090474",
+      "workload_seed": 9101
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/independent-s0": 24,
+        "job-0/independent-s1": 32,
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 10,
+        "job-1/independent-s0": 24,
+        "job-1/independent-s1": 32,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 6
+      },
+      "canonical_static_sequence_sha256": "1c8dd449ab69f219644aa9466cefa19a4a12e3bdc6f978104dddb17288483e90",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "d455d3c5be48cc447043497c3b4967494f2664e71ba86c1c71f6186c612788ed",
+      "execution_sample_hash": "5d5f43bbf88df149fcc9e2e6c1dc422262e66e60fb438f808c9ed8f1e62395dc",
+      "fifo_order_path": "inputs/D0-fork-join/workload-9102.fifo-order.json",
+      "fifo_order_sha256": "9691b5cd3ca222b4faafd046d169612901febe071fc29978b5e281ef776600a1",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1"
+      ],
+      "input_hash": "a5fa742a9cd06d9d4805cbd51c34998fc9edab48f2ecb37d33b757958a36ac0d",
+      "input_sha256": "8c32a1229c8fa0375eedfcf82e159044a16c676d43be12ea6885361b3c08d59a",
+      "ltf_order_path": "inputs/D0-fork-join/workload-9102.ltf-order.json",
+      "ltf_order_sha256": "9691b5cd3ca222b4faafd046d169612901febe071fc29978b5e281ef776600a1",
+      "nominal_matmul_repeats": {
+        "job-0/independent-s0": 32,
+        "job-0/independent-s1": 32,
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-1/independent-s0": 32,
+        "job-1/independent-s1": 32,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8
+      },
+      "path": "inputs/D0-fork-join/workload-9102.json",
+      "pattern_index": 2,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1"
+      ],
+      "profiled_ltf_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D0-fork-join:tensor-v1",
+      "scenario": "D0-fork-join",
+      "tensor_seed": 6788206981562528986,
+      "topology_hash": "3a0d09bf55f155c95a5bfe3b458598aced50a972d059b76cb70b1e8f96090474",
+      "workload_seed": 9102
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/independent-s0": 24,
+        "job-0/independent-s1": 24,
+        "job-0/producer-s0": 6,
+        "job-0/producer-s1": 6,
+        "job-1/independent-s0": 24,
+        "job-1/independent-s1": 32,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 10
+      },
+      "canonical_static_sequence_sha256": "1c8dd449ab69f219644aa9466cefa19a4a12e3bdc6f978104dddb17288483e90",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "d455d3c5be48cc447043497c3b4967494f2664e71ba86c1c71f6186c612788ed",
+      "execution_sample_hash": "28268b9762d4ed580acf01255dc3597096dfdaa4ec744c9c33f9eb9ae6aacdf4",
+      "fifo_order_path": "inputs/D0-fork-join/workload-9103.fifo-order.json",
+      "fifo_order_sha256": "9691b5cd3ca222b4faafd046d169612901febe071fc29978b5e281ef776600a1",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1"
+      ],
+      "input_hash": "5051fc2aeceec18af08fd463e5ffacbc3517dbf5e8726d48bfe1906902f32f3f",
+      "input_sha256": "42ce6cc3a7f1057a3aaac3df1cb2e8f476115d138ee8faae0320f0bb4021be96",
+      "ltf_order_path": "inputs/D0-fork-join/workload-9103.ltf-order.json",
+      "ltf_order_sha256": "9691b5cd3ca222b4faafd046d169612901febe071fc29978b5e281ef776600a1",
+      "nominal_matmul_repeats": {
+        "job-0/independent-s0": 32,
+        "job-0/independent-s1": 32,
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-1/independent-s0": 32,
+        "job-1/independent-s1": 32,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8
+      },
+      "path": "inputs/D0-fork-join/workload-9103.json",
+      "pattern_index": 0,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1"
+      ],
+      "profiled_ltf_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D0-fork-join:tensor-v1",
+      "scenario": "D0-fork-join",
+      "tensor_seed": 3244151095283637760,
+      "topology_hash": "3a0d09bf55f155c95a5bfe3b458598aced50a972d059b76cb70b1e8f96090474",
+      "workload_seed": 9103
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/independent": 8,
+        "job-0/producer": 6,
+        "job-0/tail": 6,
+        "job-1/independent": 10,
+        "job-1/producer": 15,
+        "job-1/tail": 72
+      },
+      "canonical_static_sequence_sha256": "7452acdbf5ea55698f113b3d9e8aae1868499dfa2118d2e05aaea3a8d1c99ef8",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "b1d7a22edd6ebb6238402c23dcaa0f2969d757b88a43581c47b5251c273023a6",
+      "execution_sample_hash": "42ca80b0609ce9adc1a07b1894fbc2e340bf0ced652f83862930a10958757aea",
+      "fifo_order_path": "inputs/D1-asymmetric-frontiers/workload-9101.fifo-order.json",
+      "fifo_order_sha256": "31eac9e71102b76870cc16fb7235be81d9573d1d64928baf28867d4066b70359",
+      "fifo_sequence": [
+        "occupancy/comm",
+        "job-0/frontier",
+        "job-1/frontier"
+      ],
+      "input_hash": "9375932fd5979acdcc9cd0e5b90130e5d8fe2f8369e2c78fddf19907c9e6c168",
+      "input_sha256": "49aaff0eb34b8272cb032b8eca9928984160007e8fcd24e877e331790c0554e3",
+      "ltf_order_path": "inputs/D1-asymmetric-frontiers/workload-9101.ltf-order.json",
+      "ltf_order_sha256": "fe47d5ce8614ee2269cfe0319dd9749f011b31de3135a0eef80fc0e8cf4872e6",
+      "nominal_matmul_repeats": {
+        "job-0/independent": 8,
+        "job-0/producer": 8,
+        "job-0/tail": 8,
+        "job-1/independent": 8,
+        "job-1/producer": 8,
+        "job-1/tail": 96
+      },
+      "path": "inputs/D1-asymmetric-frontiers/workload-9101.json",
+      "pattern_index": 1,
+      "profiled_fifo_order": [
+        "occupancy/comm",
+        "job-0/frontier",
+        "job-1/frontier"
+      ],
+      "profiled_ltf_order": [
+        "occupancy/comm",
+        "job-1/frontier",
+        "job-0/frontier"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D1-asymmetric-frontiers:tensor-v1",
+      "scenario": "D1-asymmetric-frontiers",
+      "tensor_seed": 5860743976135358638,
+      "topology_hash": "aa45dc0b8f54ae48b90b19ef9b45ecb0fa161d664a795fcd338c3e5085c74535",
+      "workload_seed": 9101
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/independent": 6,
+        "job-0/producer": 8,
+        "job-0/tail": 10,
+        "job-1/independent": 6,
+        "job-1/producer": 9,
+        "job-1/tail": 72
+      },
+      "canonical_static_sequence_sha256": "7452acdbf5ea55698f113b3d9e8aae1868499dfa2118d2e05aaea3a8d1c99ef8",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "b1d7a22edd6ebb6238402c23dcaa0f2969d757b88a43581c47b5251c273023a6",
+      "execution_sample_hash": "a578daeac662fb83b359bd225874783a118066596ae1528e4e33243fb881a83f",
+      "fifo_order_path": "inputs/D1-asymmetric-frontiers/workload-9102.fifo-order.json",
+      "fifo_order_sha256": "31eac9e71102b76870cc16fb7235be81d9573d1d64928baf28867d4066b70359",
+      "fifo_sequence": [
+        "occupancy/comm",
+        "job-0/frontier",
+        "job-1/frontier"
+      ],
+      "input_hash": "934085684babef5d89ee2a70ba87d63634386da9903ff024b6fb8e0628e831dc",
+      "input_sha256": "574a971a45451838628cd53c82a898f56defd8fbf994e936701ed09d66a416fa",
+      "ltf_order_path": "inputs/D1-asymmetric-frontiers/workload-9102.ltf-order.json",
+      "ltf_order_sha256": "fe47d5ce8614ee2269cfe0319dd9749f011b31de3135a0eef80fc0e8cf4872e6",
+      "nominal_matmul_repeats": {
+        "job-0/independent": 8,
+        "job-0/producer": 8,
+        "job-0/tail": 8,
+        "job-1/independent": 8,
+        "job-1/producer": 8,
+        "job-1/tail": 96
+      },
+      "path": "inputs/D1-asymmetric-frontiers/workload-9102.json",
+      "pattern_index": 2,
+      "profiled_fifo_order": [
+        "occupancy/comm",
+        "job-0/frontier",
+        "job-1/frontier"
+      ],
+      "profiled_ltf_order": [
+        "occupancy/comm",
+        "job-1/frontier",
+        "job-0/frontier"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D1-asymmetric-frontiers:tensor-v1",
+      "scenario": "D1-asymmetric-frontiers",
+      "tensor_seed": 7687476760575972916,
+      "topology_hash": "aa45dc0b8f54ae48b90b19ef9b45ecb0fa161d664a795fcd338c3e5085c74535",
+      "workload_seed": 9102
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/independent": 6,
+        "job-0/producer": 6,
+        "job-0/tail": 10,
+        "job-1/independent": 8,
+        "job-1/producer": 15,
+        "job-1/tail": 72
+      },
+      "canonical_static_sequence_sha256": "7452acdbf5ea55698f113b3d9e8aae1868499dfa2118d2e05aaea3a8d1c99ef8",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "b1d7a22edd6ebb6238402c23dcaa0f2969d757b88a43581c47b5251c273023a6",
+      "execution_sample_hash": "fabc8f0827a03cecbf07ed51a095478b541f6924771a421dfa90a4bbdee26ae1",
+      "fifo_order_path": "inputs/D1-asymmetric-frontiers/workload-9103.fifo-order.json",
+      "fifo_order_sha256": "31eac9e71102b76870cc16fb7235be81d9573d1d64928baf28867d4066b70359",
+      "fifo_sequence": [
+        "occupancy/comm",
+        "job-0/frontier",
+        "job-1/frontier"
+      ],
+      "input_hash": "4244c3870d5ec20f93dfb953ea70e81d035d2d870e726cbd9389c811a1d8c8c3",
+      "input_sha256": "dbb1b877cc7e2402869e15788ec3f881c5522001c2dbc4e09428fc6a71c0257f",
+      "ltf_order_path": "inputs/D1-asymmetric-frontiers/workload-9103.ltf-order.json",
+      "ltf_order_sha256": "fe47d5ce8614ee2269cfe0319dd9749f011b31de3135a0eef80fc0e8cf4872e6",
+      "nominal_matmul_repeats": {
+        "job-0/independent": 8,
+        "job-0/producer": 8,
+        "job-0/tail": 8,
+        "job-1/independent": 8,
+        "job-1/producer": 8,
+        "job-1/tail": 96
+      },
+      "path": "inputs/D1-asymmetric-frontiers/workload-9103.json",
+      "pattern_index": 0,
+      "profiled_fifo_order": [
+        "occupancy/comm",
+        "job-0/frontier",
+        "job-1/frontier"
+      ],
+      "profiled_ltf_order": [
+        "occupancy/comm",
+        "job-1/frontier",
+        "job-0/frontier"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D1-asymmetric-frontiers:tensor-v1",
+      "scenario": "D1-asymmetric-frontiers",
+      "tensor_seed": 8408359649866889217,
+      "topology_hash": "aa45dc0b8f54ae48b90b19ef9b45ecb0fa161d664a795fcd338c3e5085c74535",
+      "workload_seed": 9103
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/independent-s0": 24,
+        "job-0/independent-s1": 18,
+        "job-0/independent-s2": 30,
+        "job-0/producer-s0": 120,
+        "job-0/producer-s1": 8,
+        "job-0/producer-s2": 10,
+        "job-0/tail-s0": 8,
+        "job-0/tail-s1": 10,
+        "job-0/tail-s2": 8,
+        "job-1/independent-s0": 24,
+        "job-1/independent-s1": 18,
+        "job-1/independent-s2": 18,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 8,
+        "job-1/producer-s2": 10,
+        "job-1/tail-s0": 24,
+        "job-1/tail-s1": 40,
+        "job-1/tail-s2": 24
+      },
+      "canonical_static_sequence_sha256": "13729c4acb0db011eea3cf977c3bb00b77511a12a48fef96e180fe6b948e4675",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "73118c263bc31980f3cef25e748ad5c0ed4fca8e7fd174689b93d3050fc5e081",
+      "execution_sample_hash": "8700c7522ec45f6bee904ecd74530cca602b82564668a3d592da95d09367d088",
+      "fifo_order_path": "inputs/D2-cross-job-skew/workload-9101.fifo-order.json",
+      "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "input_hash": "5779c4d3d3d584b22054fa698aa89a9ee421bec603b3d859bc243793502c3379",
+      "input_sha256": "6018d0cf8f18dbf4b260d5fe1512b8f1dd4dfa88989c735d4cdbc7ba8d67ff6d",
+      "ltf_order_path": "inputs/D2-cross-job-skew/workload-9101.ltf-order.json",
+      "ltf_order_sha256": "7e3e333ac32faa628fa3db2167c0e682990f641e568026810da5973e7dafdc29",
+      "nominal_matmul_repeats": {
+        "job-0/independent-s0": 24,
+        "job-0/independent-s1": 24,
+        "job-0/independent-s2": 24,
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-0/producer-s2": 8,
+        "job-0/tail-s0": 8,
+        "job-0/tail-s1": 8,
+        "job-0/tail-s2": 8,
+        "job-1/independent-s0": 24,
+        "job-1/independent-s1": 24,
+        "job-1/independent-s2": 24,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8,
+        "job-1/producer-s2": 8,
+        "job-1/tail-s0": 32,
+        "job-1/tail-s1": 32,
+        "job-1/tail-s2": 32
+      },
+      "path": "inputs/D2-cross-job-skew/workload-9101.json",
+      "pattern_index": 1,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "profiled_ltf_order": [
+        "job-1/comm-s0",
+        "job-0/comm-s0",
+        "job-1/comm-s1",
+        "job-0/comm-s1",
+        "job-1/comm-s2",
+        "job-0/comm-s2"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D2-cross-job-skew:tensor-v1",
+      "scenario": "D2-cross-job-skew",
+      "tensor_seed": 2703855231084520562,
+      "topology_hash": "ab775cd0d309cc55382ded8eb03d358f5c8e09a09847c76f28eb7d124aa34971",
+      "workload_seed": 9101
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/independent-s0": 18,
+        "job-0/independent-s1": 24,
+        "job-0/independent-s2": 30,
+        "job-0/producer-s0": 96,
+        "job-0/producer-s1": 10,
+        "job-0/producer-s2": 10,
+        "job-0/tail-s0": 6,
+        "job-0/tail-s1": 10,
+        "job-0/tail-s2": 10,
+        "job-1/independent-s0": 18,
+        "job-1/independent-s1": 24,
+        "job-1/independent-s2": 30,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 6,
+        "job-1/producer-s2": 6,
+        "job-1/tail-s0": 24,
+        "job-1/tail-s1": 32,
+        "job-1/tail-s2": 24
+      },
+      "canonical_static_sequence_sha256": "13729c4acb0db011eea3cf977c3bb00b77511a12a48fef96e180fe6b948e4675",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "73118c263bc31980f3cef25e748ad5c0ed4fca8e7fd174689b93d3050fc5e081",
+      "execution_sample_hash": "8d855584aece9c276c089eedc6436b9d0795d154af13522c283e71ae02c53d71",
+      "fifo_order_path": "inputs/D2-cross-job-skew/workload-9102.fifo-order.json",
+      "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "input_hash": "1c06ec27099b2f1f80d52177a359e9bb119f8525b97da0efa275e5a4f1267a5f",
+      "input_sha256": "f863a0e74dd9918aebee8faaff32839b8352986f785af4a1ed9805b5ace9d6ad",
+      "ltf_order_path": "inputs/D2-cross-job-skew/workload-9102.ltf-order.json",
+      "ltf_order_sha256": "7e3e333ac32faa628fa3db2167c0e682990f641e568026810da5973e7dafdc29",
+      "nominal_matmul_repeats": {
+        "job-0/independent-s0": 24,
+        "job-0/independent-s1": 24,
+        "job-0/independent-s2": 24,
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-0/producer-s2": 8,
+        "job-0/tail-s0": 8,
+        "job-0/tail-s1": 8,
+        "job-0/tail-s2": 8,
+        "job-1/independent-s0": 24,
+        "job-1/independent-s1": 24,
+        "job-1/independent-s2": 24,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8,
+        "job-1/producer-s2": 8,
+        "job-1/tail-s0": 32,
+        "job-1/tail-s1": 32,
+        "job-1/tail-s2": 32
+      },
+      "path": "inputs/D2-cross-job-skew/workload-9102.json",
+      "pattern_index": 2,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "profiled_ltf_order": [
+        "job-1/comm-s0",
+        "job-0/comm-s0",
+        "job-1/comm-s1",
+        "job-0/comm-s1",
+        "job-1/comm-s2",
+        "job-0/comm-s2"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D2-cross-job-skew:tensor-v1",
+      "scenario": "D2-cross-job-skew",
+      "tensor_seed": 57492340326983565,
+      "topology_hash": "ab775cd0d309cc55382ded8eb03d358f5c8e09a09847c76f28eb7d124aa34971",
+      "workload_seed": 9102
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/independent-s0": 18,
+        "job-0/independent-s1": 18,
+        "job-0/independent-s2": 30,
+        "job-0/producer-s0": 72,
+        "job-0/producer-s1": 6,
+        "job-0/producer-s2": 8,
+        "job-0/tail-s0": 6,
+        "job-0/tail-s1": 6,
+        "job-0/tail-s2": 8,
+        "job-1/independent-s0": 18,
+        "job-1/independent-s1": 24,
+        "job-1/independent-s2": 24,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 10,
+        "job-1/producer-s2": 8,
+        "job-1/tail-s0": 32,
+        "job-1/tail-s1": 40,
+        "job-1/tail-s2": 32
+      },
+      "canonical_static_sequence_sha256": "13729c4acb0db011eea3cf977c3bb00b77511a12a48fef96e180fe6b948e4675",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "73118c263bc31980f3cef25e748ad5c0ed4fca8e7fd174689b93d3050fc5e081",
+      "execution_sample_hash": "672b06c6a52f8d2841ef9f82c42cd1799adc1f14fd751d23838793d166b08494",
+      "fifo_order_path": "inputs/D2-cross-job-skew/workload-9103.fifo-order.json",
+      "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "input_hash": "a065b0317ee1cc6dc3f89a0bd7d4761bb1b7614a4a6469c91c0c0de3d40a94f2",
+      "input_sha256": "f45abb066d2e6c6a2c672c0603343d9ba3ae69aebb1e7db1a017d58276d39487",
+      "ltf_order_path": "inputs/D2-cross-job-skew/workload-9103.ltf-order.json",
+      "ltf_order_sha256": "7e3e333ac32faa628fa3db2167c0e682990f641e568026810da5973e7dafdc29",
+      "nominal_matmul_repeats": {
+        "job-0/independent-s0": 24,
+        "job-0/independent-s1": 24,
+        "job-0/independent-s2": 24,
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-0/producer-s2": 8,
+        "job-0/tail-s0": 8,
+        "job-0/tail-s1": 8,
+        "job-0/tail-s2": 8,
+        "job-1/independent-s0": 24,
+        "job-1/independent-s1": 24,
+        "job-1/independent-s2": 24,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8,
+        "job-1/producer-s2": 8,
+        "job-1/tail-s0": 32,
+        "job-1/tail-s1": 32,
+        "job-1/tail-s2": 32
+      },
+      "path": "inputs/D2-cross-job-skew/workload-9103.json",
+      "pattern_index": 0,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "profiled_ltf_order": [
+        "job-1/comm-s0",
+        "job-0/comm-s0",
+        "job-1/comm-s1",
+        "job-0/comm-s1",
+        "job-1/comm-s2",
+        "job-0/comm-s2"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D2-cross-job-skew:tensor-v1",
+      "scenario": "D2-cross-job-skew",
+      "tensor_seed": 5366718529627105494,
+      "topology_hash": "ab775cd0d309cc55382ded8eb03d358f5c8e09a09847c76f28eb7d124aa34971",
+      "workload_seed": 9103
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/independent-s0": 16,
+        "job-0/independent-s1": 12,
+        "job-0/producer-s0": 10,
+        "job-0/producer-s1": 8,
+        "job-1/independent-s0": 16,
+        "job-1/independent-s1": 12,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 8
+      },
+      "canonical_static_sequence_sha256": "885836f810d6599d7ae39c3e0e4f4b7e0c760e64eab8f399faac52ee47469428",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "685d0f936f0407218a11c7e0069a39ce9d39490c0ed7a81ba6d9bd680f5f8cbb",
+      "execution_sample_hash": "385e9352dd575b1848de445ec6b96569957df0ac0c0f8e40eedfafd69bcafda3",
+      "fifo_order_path": "inputs/D3-order-and-sinks/workload-9101.fifo-order.json",
+      "fifo_order_sha256": "a7f634aabc033ea6adffc0dd6f63992efe4a40fe119165f2021aa7e5536a04eb",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s0",
+        "job-1/comm-s1"
+      ],
+      "input_hash": "899d38d9134b6f9cd9d10d146ae906517882d074c568e441756928908b521807",
+      "input_sha256": "4f96a7f5bb213071489f7e95015194d3e5ce659f824b7f1635d7c6baff095f3c",
+      "ltf_order_path": "inputs/D3-order-and-sinks/workload-9101.ltf-order.json",
+      "ltf_order_sha256": "a7f634aabc033ea6adffc0dd6f63992efe4a40fe119165f2021aa7e5536a04eb",
+      "nominal_matmul_repeats": {
+        "job-0/independent-s0": 16,
+        "job-0/independent-s1": 16,
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-1/independent-s0": 16,
+        "job-1/independent-s1": 16,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8
+      },
+      "path": "inputs/D3-order-and-sinks/workload-9101.json",
+      "pattern_index": 1,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s0",
+        "job-1/comm-s1"
+      ],
+      "profiled_ltf_order": [
+        "job-0/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s0",
+        "job-1/comm-s1"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D3-order-and-sinks:tensor-v1",
+      "scenario": "D3-order-and-sinks",
+      "tensor_seed": 4573674627545075451,
+      "topology_hash": "ad39783df8d4aa2bdac06ac5fe8d3a651913cc9cea20582e93d57fd3aa9718f3",
+      "workload_seed": 9101
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/independent-s0": 12,
+        "job-0/independent-s1": 16,
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 10,
+        "job-1/independent-s0": 12,
+        "job-1/independent-s1": 16,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 6
+      },
+      "canonical_static_sequence_sha256": "885836f810d6599d7ae39c3e0e4f4b7e0c760e64eab8f399faac52ee47469428",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "685d0f936f0407218a11c7e0069a39ce9d39490c0ed7a81ba6d9bd680f5f8cbb",
+      "execution_sample_hash": "521967a9635c56af4e6c273a99021dee52175015d2d9b7a089509b8fe52722cc",
+      "fifo_order_path": "inputs/D3-order-and-sinks/workload-9102.fifo-order.json",
+      "fifo_order_sha256": "a7f634aabc033ea6adffc0dd6f63992efe4a40fe119165f2021aa7e5536a04eb",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s0",
+        "job-1/comm-s1"
+      ],
+      "input_hash": "8c03e5b4054029b97d8894fd841a5d1fa3b54fa16f92b407b61e7f0705e595cf",
+      "input_sha256": "fb6dd14202e73b7bd2839d51f165041b92c56c804d32d19b5507f025a1442eeb",
+      "ltf_order_path": "inputs/D3-order-and-sinks/workload-9102.ltf-order.json",
+      "ltf_order_sha256": "a7f634aabc033ea6adffc0dd6f63992efe4a40fe119165f2021aa7e5536a04eb",
+      "nominal_matmul_repeats": {
+        "job-0/independent-s0": 16,
+        "job-0/independent-s1": 16,
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-1/independent-s0": 16,
+        "job-1/independent-s1": 16,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8
+      },
+      "path": "inputs/D3-order-and-sinks/workload-9102.json",
+      "pattern_index": 2,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s0",
+        "job-1/comm-s1"
+      ],
+      "profiled_ltf_order": [
+        "job-0/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s0",
+        "job-1/comm-s1"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D3-order-and-sinks:tensor-v1",
+      "scenario": "D3-order-and-sinks",
+      "tensor_seed": 8373394897077223712,
+      "topology_hash": "ad39783df8d4aa2bdac06ac5fe8d3a651913cc9cea20582e93d57fd3aa9718f3",
+      "workload_seed": 9102
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/independent-s0": 12,
+        "job-0/independent-s1": 12,
+        "job-0/producer-s0": 6,
+        "job-0/producer-s1": 6,
+        "job-1/independent-s0": 12,
+        "job-1/independent-s1": 16,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 10
+      },
+      "canonical_static_sequence_sha256": "885836f810d6599d7ae39c3e0e4f4b7e0c760e64eab8f399faac52ee47469428",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "685d0f936f0407218a11c7e0069a39ce9d39490c0ed7a81ba6d9bd680f5f8cbb",
+      "execution_sample_hash": "3745eb4ee5cb238c769f7515c2517f17d1afc31db18884aa8f0e7fd12a847688",
+      "fifo_order_path": "inputs/D3-order-and-sinks/workload-9103.fifo-order.json",
+      "fifo_order_sha256": "a7f634aabc033ea6adffc0dd6f63992efe4a40fe119165f2021aa7e5536a04eb",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s0",
+        "job-1/comm-s1"
+      ],
+      "input_hash": "f79bb9a6b0053b185edcc5b3668a3b679ab212b6c8bd99ada4745cc1e014650b",
+      "input_sha256": "e6f43898da2a5b964c62088379bc1da17dad72f119a26866a483b7bcac4e1ea0",
+      "ltf_order_path": "inputs/D3-order-and-sinks/workload-9103.ltf-order.json",
+      "ltf_order_sha256": "a7f634aabc033ea6adffc0dd6f63992efe4a40fe119165f2021aa7e5536a04eb",
+      "nominal_matmul_repeats": {
+        "job-0/independent-s0": 16,
+        "job-0/independent-s1": 16,
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-1/independent-s0": 16,
+        "job-1/independent-s1": 16,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8
+      },
+      "path": "inputs/D3-order-and-sinks/workload-9103.json",
+      "pattern_index": 0,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s0",
+        "job-1/comm-s1"
+      ],
+      "profiled_ltf_order": [
+        "job-0/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s0",
+        "job-1/comm-s1"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D3-order-and-sinks:tensor-v1",
+      "scenario": "D3-order-and-sinks",
+      "tensor_seed": 5708687624376643246,
+      "topology_hash": "ad39783df8d4aa2bdac06ac5fe8d3a651913cc9cea20582e93d57fd3aa9718f3",
+      "workload_seed": 9103
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 6,
+        "job-0/producer-s2": 10,
+        "job-0/tail-s0": 8,
+        "job-0/tail-s1": 10,
+        "job-0/tail-s2": 8,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 8,
+        "job-1/producer-s2": 10,
+        "job-1/tail-s0": 6,
+        "job-1/tail-s1": 10,
+        "job-1/tail-s2": 6
+      },
+      "canonical_static_sequence_sha256": "bd5b325b5a4ffd5c9e042b03178c5a88972998c355e1ad3283944e2d6ee0a4d0",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "c590acab41484d7d3c8d30de7101b2919e903ce25976a54e9b1b3af56ea4635a",
+      "execution_sample_hash": "0bac6432b80f1a2afdab138d3ed16bea7fb8fad8ed2228f14b1b5c36a33a5d0f",
+      "fifo_order_path": "inputs/L0-balanced/workload-9101.fifo-order.json",
+      "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "input_hash": "51a05e240d3909c1c81cf67ec9d71f86fb861fec7060acb349cb76eb7c85472b",
+      "input_sha256": "5044bcda3b64394541c130651d981d1b39f7b8af66eb675bf65cfb1a06c7f185",
+      "ltf_order_path": "inputs/L0-balanced/workload-9101.ltf-order.json",
+      "ltf_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "nominal_matmul_repeats": {
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-0/producer-s2": 8,
+        "job-0/tail-s0": 8,
+        "job-0/tail-s1": 8,
+        "job-0/tail-s2": 8,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8,
+        "job-1/producer-s2": 8,
+        "job-1/tail-s0": 8,
+        "job-1/tail-s1": 8,
+        "job-1/tail-s2": 8
+      },
+      "path": "inputs/L0-balanced/workload-9101.json",
+      "pattern_index": 1,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "profiled_ltf_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:L0-balanced:tensor-v1",
+      "scenario": "L0-balanced",
+      "tensor_seed": 8396430964223402302,
+      "topology_hash": "684480a6890cabbf175cc046d5306154c2e983cc0a0f04f3692e6a7ec74001a0",
+      "workload_seed": 9101
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/producer-s0": 6,
+        "job-0/producer-s1": 8,
+        "job-0/producer-s2": 10,
+        "job-0/tail-s0": 6,
+        "job-0/tail-s1": 10,
+        "job-0/tail-s2": 10,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 6,
+        "job-1/producer-s2": 6,
+        "job-1/tail-s0": 6,
+        "job-1/tail-s1": 8,
+        "job-1/tail-s2": 6
+      },
+      "canonical_static_sequence_sha256": "bd5b325b5a4ffd5c9e042b03178c5a88972998c355e1ad3283944e2d6ee0a4d0",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "c590acab41484d7d3c8d30de7101b2919e903ce25976a54e9b1b3af56ea4635a",
+      "execution_sample_hash": "9af0b79183cd10e529443a667390c762d0f42a528355599f1f34fbf8fd211127",
+      "fifo_order_path": "inputs/L0-balanced/workload-9102.fifo-order.json",
+      "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "input_hash": "7b63baa853a16bf924f74a51587e421269b8d1b50843c7aa4316f2f9c251f61a",
+      "input_sha256": "e76f1f2178709e848cee45f7c3c34b715c5bea82bb71d625656099413d5baf5a",
+      "ltf_order_path": "inputs/L0-balanced/workload-9102.ltf-order.json",
+      "ltf_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "nominal_matmul_repeats": {
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-0/producer-s2": 8,
+        "job-0/tail-s0": 8,
+        "job-0/tail-s1": 8,
+        "job-0/tail-s2": 8,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8,
+        "job-1/producer-s2": 8,
+        "job-1/tail-s0": 8,
+        "job-1/tail-s1": 8,
+        "job-1/tail-s2": 8
+      },
+      "path": "inputs/L0-balanced/workload-9102.json",
+      "pattern_index": 2,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "profiled_ltf_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:L0-balanced:tensor-v1",
+      "scenario": "L0-balanced",
+      "tensor_seed": 2074672246521737761,
+      "topology_hash": "684480a6890cabbf175cc046d5306154c2e983cc0a0f04f3692e6a7ec74001a0",
+      "workload_seed": 9102
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/producer-s0": 6,
+        "job-0/producer-s1": 6,
+        "job-0/producer-s2": 8,
+        "job-0/tail-s0": 6,
+        "job-0/tail-s1": 6,
+        "job-0/tail-s2": 8,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 10,
+        "job-1/producer-s2": 8,
+        "job-1/tail-s0": 8,
+        "job-1/tail-s1": 10,
+        "job-1/tail-s2": 8
+      },
+      "canonical_static_sequence_sha256": "bd5b325b5a4ffd5c9e042b03178c5a88972998c355e1ad3283944e2d6ee0a4d0",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "c590acab41484d7d3c8d30de7101b2919e903ce25976a54e9b1b3af56ea4635a",
+      "execution_sample_hash": "0a221edde395f6d050e242438aa378c332327f83191125d7abb10363fceb9c51",
+      "fifo_order_path": "inputs/L0-balanced/workload-9103.fifo-order.json",
+      "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "input_hash": "b713b800ae331c5bf36be63e327d6ed1efcaf59a0db6f131bcb7d2880cd85031",
+      "input_sha256": "22d5fa91a79781e79a13e0e13bab0b95613806a1c944b86cb6642ffcfa88f55f",
+      "ltf_order_path": "inputs/L0-balanced/workload-9103.ltf-order.json",
+      "ltf_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "nominal_matmul_repeats": {
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-0/producer-s2": 8,
+        "job-0/tail-s0": 8,
+        "job-0/tail-s1": 8,
+        "job-0/tail-s2": 8,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8,
+        "job-1/producer-s2": 8,
+        "job-1/tail-s0": 8,
+        "job-1/tail-s1": 8,
+        "job-1/tail-s2": 8
+      },
+      "path": "inputs/L0-balanced/workload-9103.json",
+      "pattern_index": 0,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "profiled_ltf_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:L0-balanced:tensor-v1",
+      "scenario": "L0-balanced",
+      "tensor_seed": 6715680131045916077,
+      "topology_hash": "684480a6890cabbf175cc046d5306154c2e983cc0a0f04f3692e6a7ec74001a0",
+      "workload_seed": 9103
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/producer-s0": 160,
+        "job-0/producer-s1": 6,
+        "job-0/producer-s2": 10,
+        "job-0/tail-s0": 8,
+        "job-0/tail-s1": 10,
+        "job-0/tail-s2": 8,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 8,
+        "job-1/producer-s2": 10,
+        "job-1/tail-s0": 6,
+        "job-1/tail-s1": 10,
+        "job-1/tail-s2": 6
+      },
+      "canonical_static_sequence_sha256": "bd5b325b5a4ffd5c9e042b03178c5a88972998c355e1ad3283944e2d6ee0a4d0",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "c590acab41484d7d3c8d30de7101b2919e903ce25976a54e9b1b3af56ea4635a",
+      "execution_sample_hash": "78a27653dd7b1eaf8294936ab964fbaa18f32fe72565bf6ac5d9f5314815ebcb",
+      "fifo_order_path": "inputs/L1-skew-tail/workload-9101.fifo-order.json",
+      "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "input_hash": "04f2355bdf80ff721f1a0b00753a5ed90db0b9cba4f328dd1704ef59ba239c3f",
+      "input_sha256": "2604f05fc6a0165e4eb7bcc5485108890dcecdb61754e3251946d1592f84c287",
+      "ltf_order_path": "inputs/L1-skew-tail/workload-9101.ltf-order.json",
+      "ltf_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "nominal_matmul_repeats": {
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-0/producer-s2": 8,
+        "job-0/tail-s0": 8,
+        "job-0/tail-s1": 8,
+        "job-0/tail-s2": 8,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8,
+        "job-1/producer-s2": 8,
+        "job-1/tail-s0": 8,
+        "job-1/tail-s1": 8,
+        "job-1/tail-s2": 8
+      },
+      "path": "inputs/L1-skew-tail/workload-9101.json",
+      "pattern_index": 1,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "profiled_ltf_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:L1-skew-tail:tensor-v1",
+      "scenario": "L1-skew-tail",
+      "tensor_seed": 822642976928210064,
+      "topology_hash": "684480a6890cabbf175cc046d5306154c2e983cc0a0f04f3692e6a7ec74001a0",
+      "workload_seed": 9101
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/producer-s0": 120,
+        "job-0/producer-s1": 8,
+        "job-0/producer-s2": 10,
+        "job-0/tail-s0": 6,
+        "job-0/tail-s1": 10,
+        "job-0/tail-s2": 10,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 6,
+        "job-1/producer-s2": 6,
+        "job-1/tail-s0": 6,
+        "job-1/tail-s1": 8,
+        "job-1/tail-s2": 6
+      },
+      "canonical_static_sequence_sha256": "bd5b325b5a4ffd5c9e042b03178c5a88972998c355e1ad3283944e2d6ee0a4d0",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "c590acab41484d7d3c8d30de7101b2919e903ce25976a54e9b1b3af56ea4635a",
+      "execution_sample_hash": "495e71cca5817655b6ddb6b07d1462e4e9850dd38c6c6cfad2f6cac21d875a6e",
+      "fifo_order_path": "inputs/L1-skew-tail/workload-9102.fifo-order.json",
+      "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "input_hash": "ad4420175a550f63bb294a4b597e811110763145f609127c8e6b5dee33aa20d7",
+      "input_sha256": "140ecce98c4efea4366b5b9cbea19cc7461bc78069bde706b40614181d4bdf5b",
+      "ltf_order_path": "inputs/L1-skew-tail/workload-9102.ltf-order.json",
+      "ltf_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "nominal_matmul_repeats": {
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-0/producer-s2": 8,
+        "job-0/tail-s0": 8,
+        "job-0/tail-s1": 8,
+        "job-0/tail-s2": 8,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8,
+        "job-1/producer-s2": 8,
+        "job-1/tail-s0": 8,
+        "job-1/tail-s1": 8,
+        "job-1/tail-s2": 8
+      },
+      "path": "inputs/L1-skew-tail/workload-9102.json",
+      "pattern_index": 2,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "profiled_ltf_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:L1-skew-tail:tensor-v1",
+      "scenario": "L1-skew-tail",
+      "tensor_seed": 1467831454722471793,
+      "topology_hash": "684480a6890cabbf175cc046d5306154c2e983cc0a0f04f3692e6a7ec74001a0",
+      "workload_seed": 9102
+    },
+    {
+      "actual_matmul_repeats": {
+        "job-0/producer-s0": 120,
+        "job-0/producer-s1": 6,
+        "job-0/producer-s2": 8,
+        "job-0/tail-s0": 6,
+        "job-0/tail-s1": 6,
+        "job-0/tail-s2": 8,
+        "job-1/producer-s0": 10,
+        "job-1/producer-s1": 10,
+        "job-1/producer-s2": 8,
+        "job-1/tail-s0": 8,
+        "job-1/tail-s1": 10,
+        "job-1/tail-s2": 8
+      },
+      "canonical_static_sequence_sha256": "bd5b325b5a4ffd5c9e042b03178c5a88972998c355e1ad3283944e2d6ee0a4d0",
+      "comm_profile_sha256": "718cf8d06c594aa79967f03b7d987ff9b4e869080c13d6cf70207e019b65c0b6",
+      "compute_profile_sha256": "d3613e947de527f25cd3c3fe25d3b19b48643c93d97656e2e8083d9b91b83a59",
+      "default_order_rule": "topological-layer-job-round-robin-v1",
+      "estimate_view_hash": "c590acab41484d7d3c8d30de7101b2919e903ce25976a54e9b1b3af56ea4635a",
+      "execution_sample_hash": "8b353c39b7eb38e380ccf205d3b9c09c678b748f241f74018d23ad27ff72f7e1",
+      "fifo_order_path": "inputs/L1-skew-tail/workload-9103.fifo-order.json",
+      "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "fifo_sequence": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "input_hash": "eabbbdf2e0e6bd5066dffa57cc2aca17d5dc7ec7e3f512fa893392e178b234a0",
+      "input_sha256": "a1b1572c351221c53990d76af2b4caf42e3d64000acebdc85c1c139584bc9a03",
+      "ltf_order_path": "inputs/L1-skew-tail/workload-9103.ltf-order.json",
+      "ltf_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+      "nominal_matmul_repeats": {
+        "job-0/producer-s0": 8,
+        "job-0/producer-s1": 8,
+        "job-0/producer-s2": 8,
+        "job-0/tail-s0": 8,
+        "job-0/tail-s1": 8,
+        "job-0/tail-s2": 8,
+        "job-1/producer-s0": 8,
+        "job-1/producer-s1": 8,
+        "job-1/producer-s2": 8,
+        "job-1/tail-s0": 8,
+        "job-1/tail-s1": 8,
+        "job-1/tail-s2": 8
+      },
+      "path": "inputs/L1-skew-tail/workload-9103.json",
+      "pattern_index": 0,
+      "profiled_fifo_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "profiled_ltf_order": [
+        "job-0/comm-s0",
+        "job-1/comm-s0",
+        "job-0/comm-s1",
+        "job-1/comm-s1",
+        "job-0/comm-s2",
+        "job-1/comm-s2"
+      ],
+      "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:L1-skew-tail:tensor-v1",
+      "scenario": "L1-skew-tail",
+      "tensor_seed": 4688024095356291022,
+      "topology_hash": "684480a6890cabbf175cc046d5306154c2e983cc0a0f04f3692e6a7ec74001a0",
+      "workload_seed": 9103
+    }
+  ],
+  "scenarios": {
+    "D0-fork-join": {
+      "samples": [
+        {
+          "actual_matmul_repeats": {
+            "job-0/independent-s0": 32,
+            "job-0/independent-s1": 24,
+            "job-0/producer-s0": 10,
+            "job-0/producer-s1": 8,
+            "job-1/independent-s0": 32,
+            "job-1/independent-s1": 24,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 8
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+          "execution_sample_hash": "d3321deb351fa3a8fe39c3872c0adb4a5705e3d2a89928c182bba5cc217de7bf",
+          "fifo_order_path": "inputs/D0-fork-join/workload-9101.fifo-order.json",
+          "fifo_order_sha256": "9691b5cd3ca222b4faafd046d169612901febe071fc29978b5e281ef776600a1",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-1/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s1"
+          ],
+          "input_hash": "b7db91947fb8a08a972b4f49787fbd948870401da82b56585bf744c35b880378",
+          "input_sha256": "667217ace6681d7ddfb68446f22139e21bcd022d4c65a1fe918055316e23d2c0",
+          "nominal_matmul_repeats": {
+            "job-0/independent-s0": 32,
+            "job-0/independent-s1": 32,
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-1/independent-s0": 32,
+            "job-1/independent-s1": 32,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8
+          },
+          "path": "inputs/D0-fork-join/workload-9101.json",
+          "pattern_index": 1,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D0-fork-join:tensor-v1",
+          "scenario": "D0-fork-join",
+          "tensor_seed": 560017451486221505,
+          "topology_hash": "3a0d09bf55f155c95a5bfe3b458598aced50a972d059b76cb70b1e8f96090474",
+          "workload_seed": 9101
+        },
+        {
+          "actual_matmul_repeats": {
+            "job-0/independent-s0": 24,
+            "job-0/independent-s1": 32,
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 10,
+            "job-1/independent-s0": 24,
+            "job-1/independent-s1": 32,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 6
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+          "execution_sample_hash": "5d5f43bbf88df149fcc9e2e6c1dc422262e66e60fb438f808c9ed8f1e62395dc",
+          "fifo_order_path": "inputs/D0-fork-join/workload-9102.fifo-order.json",
+          "fifo_order_sha256": "9691b5cd3ca222b4faafd046d169612901febe071fc29978b5e281ef776600a1",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-1/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s1"
+          ],
+          "input_hash": "a5fa742a9cd06d9d4805cbd51c34998fc9edab48f2ecb37d33b757958a36ac0d",
+          "input_sha256": "8c32a1229c8fa0375eedfcf82e159044a16c676d43be12ea6885361b3c08d59a",
+          "nominal_matmul_repeats": {
+            "job-0/independent-s0": 32,
+            "job-0/independent-s1": 32,
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-1/independent-s0": 32,
+            "job-1/independent-s1": 32,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8
+          },
+          "path": "inputs/D0-fork-join/workload-9102.json",
+          "pattern_index": 2,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D0-fork-join:tensor-v1",
+          "scenario": "D0-fork-join",
+          "tensor_seed": 6788206981562528986,
+          "topology_hash": "3a0d09bf55f155c95a5bfe3b458598aced50a972d059b76cb70b1e8f96090474",
+          "workload_seed": 9102
+        },
+        {
+          "actual_matmul_repeats": {
+            "job-0/independent-s0": 24,
+            "job-0/independent-s1": 24,
+            "job-0/producer-s0": 6,
+            "job-0/producer-s1": 6,
+            "job-1/independent-s0": 24,
+            "job-1/independent-s1": 32,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 10
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "a7b7b175511918f7f6f97cf67d925f94840128ea0be3f195e1a7f4b6497c399b",
+          "execution_sample_hash": "28268b9762d4ed580acf01255dc3597096dfdaa4ec744c9c33f9eb9ae6aacdf4",
+          "fifo_order_path": "inputs/D0-fork-join/workload-9103.fifo-order.json",
+          "fifo_order_sha256": "9691b5cd3ca222b4faafd046d169612901febe071fc29978b5e281ef776600a1",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-1/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s1"
+          ],
+          "input_hash": "5051fc2aeceec18af08fd463e5ffacbc3517dbf5e8726d48bfe1906902f32f3f",
+          "input_sha256": "42ce6cc3a7f1057a3aaac3df1cb2e8f476115d138ee8faae0320f0bb4021be96",
+          "nominal_matmul_repeats": {
+            "job-0/independent-s0": 32,
+            "job-0/independent-s1": 32,
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-1/independent-s0": 32,
+            "job-1/independent-s1": 32,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8
+          },
+          "path": "inputs/D0-fork-join/workload-9103.json",
+          "pattern_index": 0,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D0-fork-join:tensor-v1",
+          "scenario": "D0-fork-join",
+          "tensor_seed": 3244151095283637760,
+          "topology_hash": "3a0d09bf55f155c95a5bfe3b458598aced50a972d059b76cb70b1e8f96090474",
+          "workload_seed": 9103
+        }
+      ],
+      "template_path": "templates/D0-fork-join.json",
+      "template_sha256": "f705853aca5e1b87b748bde52026ac66006d340bde8c5b4bbd499f7e32495179"
+    },
+    "D1-asymmetric-frontiers": {
+      "samples": [
+        {
+          "actual_matmul_repeats": {
+            "job-0/independent": 8,
+            "job-0/producer": 6,
+            "job-0/tail": 6,
+            "job-1/independent": 10,
+            "job-1/producer": 15,
+            "job-1/tail": 72
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+          "execution_sample_hash": "42ca80b0609ce9adc1a07b1894fbc2e340bf0ced652f83862930a10958757aea",
+          "fifo_order_path": "inputs/D1-asymmetric-frontiers/workload-9101.fifo-order.json",
+          "fifo_order_sha256": "31eac9e71102b76870cc16fb7235be81d9573d1d64928baf28867d4066b70359",
+          "fifo_sequence": [
+            "occupancy/comm",
+            "job-0/frontier",
+            "job-1/frontier"
+          ],
+          "input_hash": "9375932fd5979acdcc9cd0e5b90130e5d8fe2f8369e2c78fddf19907c9e6c168",
+          "input_sha256": "49aaff0eb34b8272cb032b8eca9928984160007e8fcd24e877e331790c0554e3",
+          "nominal_matmul_repeats": {
+            "job-0/independent": 8,
+            "job-0/producer": 8,
+            "job-0/tail": 8,
+            "job-1/independent": 8,
+            "job-1/producer": 8,
+            "job-1/tail": 96
+          },
+          "path": "inputs/D1-asymmetric-frontiers/workload-9101.json",
+          "pattern_index": 1,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D1-asymmetric-frontiers:tensor-v1",
+          "scenario": "D1-asymmetric-frontiers",
+          "tensor_seed": 5860743976135358638,
+          "topology_hash": "aa45dc0b8f54ae48b90b19ef9b45ecb0fa161d664a795fcd338c3e5085c74535",
+          "workload_seed": 9101
+        },
+        {
+          "actual_matmul_repeats": {
+            "job-0/independent": 6,
+            "job-0/producer": 8,
+            "job-0/tail": 10,
+            "job-1/independent": 6,
+            "job-1/producer": 9,
+            "job-1/tail": 72
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+          "execution_sample_hash": "a578daeac662fb83b359bd225874783a118066596ae1528e4e33243fb881a83f",
+          "fifo_order_path": "inputs/D1-asymmetric-frontiers/workload-9102.fifo-order.json",
+          "fifo_order_sha256": "31eac9e71102b76870cc16fb7235be81d9573d1d64928baf28867d4066b70359",
+          "fifo_sequence": [
+            "occupancy/comm",
+            "job-0/frontier",
+            "job-1/frontier"
+          ],
+          "input_hash": "934085684babef5d89ee2a70ba87d63634386da9903ff024b6fb8e0628e831dc",
+          "input_sha256": "574a971a45451838628cd53c82a898f56defd8fbf994e936701ed09d66a416fa",
+          "nominal_matmul_repeats": {
+            "job-0/independent": 8,
+            "job-0/producer": 8,
+            "job-0/tail": 8,
+            "job-1/independent": 8,
+            "job-1/producer": 8,
+            "job-1/tail": 96
+          },
+          "path": "inputs/D1-asymmetric-frontiers/workload-9102.json",
+          "pattern_index": 2,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D1-asymmetric-frontiers:tensor-v1",
+          "scenario": "D1-asymmetric-frontiers",
+          "tensor_seed": 7687476760575972916,
+          "topology_hash": "aa45dc0b8f54ae48b90b19ef9b45ecb0fa161d664a795fcd338c3e5085c74535",
+          "workload_seed": 9102
+        },
+        {
+          "actual_matmul_repeats": {
+            "job-0/independent": 6,
+            "job-0/producer": 6,
+            "job-0/tail": 10,
+            "job-1/independent": 8,
+            "job-1/producer": 15,
+            "job-1/tail": 72
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "d5ed4800e7231e8cf99509df9a6c905423f13a6c19817ebe6d5bc281513359b8",
+          "execution_sample_hash": "fabc8f0827a03cecbf07ed51a095478b541f6924771a421dfa90a4bbdee26ae1",
+          "fifo_order_path": "inputs/D1-asymmetric-frontiers/workload-9103.fifo-order.json",
+          "fifo_order_sha256": "31eac9e71102b76870cc16fb7235be81d9573d1d64928baf28867d4066b70359",
+          "fifo_sequence": [
+            "occupancy/comm",
+            "job-0/frontier",
+            "job-1/frontier"
+          ],
+          "input_hash": "4244c3870d5ec20f93dfb953ea70e81d035d2d870e726cbd9389c811a1d8c8c3",
+          "input_sha256": "dbb1b877cc7e2402869e15788ec3f881c5522001c2dbc4e09428fc6a71c0257f",
+          "nominal_matmul_repeats": {
+            "job-0/independent": 8,
+            "job-0/producer": 8,
+            "job-0/tail": 8,
+            "job-1/independent": 8,
+            "job-1/producer": 8,
+            "job-1/tail": 96
+          },
+          "path": "inputs/D1-asymmetric-frontiers/workload-9103.json",
+          "pattern_index": 0,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D1-asymmetric-frontiers:tensor-v1",
+          "scenario": "D1-asymmetric-frontiers",
+          "tensor_seed": 8408359649866889217,
+          "topology_hash": "aa45dc0b8f54ae48b90b19ef9b45ecb0fa161d664a795fcd338c3e5085c74535",
+          "workload_seed": 9103
+        }
+      ],
+      "template_path": "templates/D1-asymmetric-frontiers.json",
+      "template_sha256": "b74114148ff83775ee06391ca4a31e312cf41a0837b33f7411d44d4b5d244803"
+    },
+    "D2-cross-job-skew": {
+      "samples": [
+        {
+          "actual_matmul_repeats": {
+            "job-0/independent-s0": 24,
+            "job-0/independent-s1": 18,
+            "job-0/independent-s2": 30,
+            "job-0/producer-s0": 120,
+            "job-0/producer-s1": 8,
+            "job-0/producer-s2": 10,
+            "job-0/tail-s0": 8,
+            "job-0/tail-s1": 10,
+            "job-0/tail-s2": 8,
+            "job-1/independent-s0": 24,
+            "job-1/independent-s1": 18,
+            "job-1/independent-s2": 18,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 8,
+            "job-1/producer-s2": 10,
+            "job-1/tail-s0": 24,
+            "job-1/tail-s1": 40,
+            "job-1/tail-s2": 24
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+          "execution_sample_hash": "8700c7522ec45f6bee904ecd74530cca602b82564668a3d592da95d09367d088",
+          "fifo_order_path": "inputs/D2-cross-job-skew/workload-9101.fifo-order.json",
+          "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-1/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s1",
+            "job-0/comm-s2",
+            "job-1/comm-s2"
+          ],
+          "input_hash": "5779c4d3d3d584b22054fa698aa89a9ee421bec603b3d859bc243793502c3379",
+          "input_sha256": "6018d0cf8f18dbf4b260d5fe1512b8f1dd4dfa88989c735d4cdbc7ba8d67ff6d",
+          "nominal_matmul_repeats": {
+            "job-0/independent-s0": 24,
+            "job-0/independent-s1": 24,
+            "job-0/independent-s2": 24,
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-0/producer-s2": 8,
+            "job-0/tail-s0": 8,
+            "job-0/tail-s1": 8,
+            "job-0/tail-s2": 8,
+            "job-1/independent-s0": 24,
+            "job-1/independent-s1": 24,
+            "job-1/independent-s2": 24,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8,
+            "job-1/producer-s2": 8,
+            "job-1/tail-s0": 32,
+            "job-1/tail-s1": 32,
+            "job-1/tail-s2": 32
+          },
+          "path": "inputs/D2-cross-job-skew/workload-9101.json",
+          "pattern_index": 1,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D2-cross-job-skew:tensor-v1",
+          "scenario": "D2-cross-job-skew",
+          "tensor_seed": 2703855231084520562,
+          "topology_hash": "ab775cd0d309cc55382ded8eb03d358f5c8e09a09847c76f28eb7d124aa34971",
+          "workload_seed": 9101
+        },
+        {
+          "actual_matmul_repeats": {
+            "job-0/independent-s0": 18,
+            "job-0/independent-s1": 24,
+            "job-0/independent-s2": 30,
+            "job-0/producer-s0": 96,
+            "job-0/producer-s1": 10,
+            "job-0/producer-s2": 10,
+            "job-0/tail-s0": 6,
+            "job-0/tail-s1": 10,
+            "job-0/tail-s2": 10,
+            "job-1/independent-s0": 18,
+            "job-1/independent-s1": 24,
+            "job-1/independent-s2": 30,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 6,
+            "job-1/producer-s2": 6,
+            "job-1/tail-s0": 24,
+            "job-1/tail-s1": 32,
+            "job-1/tail-s2": 24
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+          "execution_sample_hash": "8d855584aece9c276c089eedc6436b9d0795d154af13522c283e71ae02c53d71",
+          "fifo_order_path": "inputs/D2-cross-job-skew/workload-9102.fifo-order.json",
+          "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-1/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s1",
+            "job-0/comm-s2",
+            "job-1/comm-s2"
+          ],
+          "input_hash": "1c06ec27099b2f1f80d52177a359e9bb119f8525b97da0efa275e5a4f1267a5f",
+          "input_sha256": "f863a0e74dd9918aebee8faaff32839b8352986f785af4a1ed9805b5ace9d6ad",
+          "nominal_matmul_repeats": {
+            "job-0/independent-s0": 24,
+            "job-0/independent-s1": 24,
+            "job-0/independent-s2": 24,
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-0/producer-s2": 8,
+            "job-0/tail-s0": 8,
+            "job-0/tail-s1": 8,
+            "job-0/tail-s2": 8,
+            "job-1/independent-s0": 24,
+            "job-1/independent-s1": 24,
+            "job-1/independent-s2": 24,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8,
+            "job-1/producer-s2": 8,
+            "job-1/tail-s0": 32,
+            "job-1/tail-s1": 32,
+            "job-1/tail-s2": 32
+          },
+          "path": "inputs/D2-cross-job-skew/workload-9102.json",
+          "pattern_index": 2,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D2-cross-job-skew:tensor-v1",
+          "scenario": "D2-cross-job-skew",
+          "tensor_seed": 57492340326983565,
+          "topology_hash": "ab775cd0d309cc55382ded8eb03d358f5c8e09a09847c76f28eb7d124aa34971",
+          "workload_seed": 9102
+        },
+        {
+          "actual_matmul_repeats": {
+            "job-0/independent-s0": 18,
+            "job-0/independent-s1": 18,
+            "job-0/independent-s2": 30,
+            "job-0/producer-s0": 72,
+            "job-0/producer-s1": 6,
+            "job-0/producer-s2": 8,
+            "job-0/tail-s0": 6,
+            "job-0/tail-s1": 6,
+            "job-0/tail-s2": 8,
+            "job-1/independent-s0": 18,
+            "job-1/independent-s1": 24,
+            "job-1/independent-s2": 24,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 10,
+            "job-1/producer-s2": 8,
+            "job-1/tail-s0": 32,
+            "job-1/tail-s1": 40,
+            "job-1/tail-s2": 32
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "d26877e87bc87602b11c99b1c894dc44226f9e0b179476b956b332ff4b6c3e81",
+          "execution_sample_hash": "672b06c6a52f8d2841ef9f82c42cd1799adc1f14fd751d23838793d166b08494",
+          "fifo_order_path": "inputs/D2-cross-job-skew/workload-9103.fifo-order.json",
+          "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-1/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s1",
+            "job-0/comm-s2",
+            "job-1/comm-s2"
+          ],
+          "input_hash": "a065b0317ee1cc6dc3f89a0bd7d4761bb1b7614a4a6469c91c0c0de3d40a94f2",
+          "input_sha256": "f45abb066d2e6c6a2c672c0603343d9ba3ae69aebb1e7db1a017d58276d39487",
+          "nominal_matmul_repeats": {
+            "job-0/independent-s0": 24,
+            "job-0/independent-s1": 24,
+            "job-0/independent-s2": 24,
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-0/producer-s2": 8,
+            "job-0/tail-s0": 8,
+            "job-0/tail-s1": 8,
+            "job-0/tail-s2": 8,
+            "job-1/independent-s0": 24,
+            "job-1/independent-s1": 24,
+            "job-1/independent-s2": 24,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8,
+            "job-1/producer-s2": 8,
+            "job-1/tail-s0": 32,
+            "job-1/tail-s1": 32,
+            "job-1/tail-s2": 32
+          },
+          "path": "inputs/D2-cross-job-skew/workload-9103.json",
+          "pattern_index": 0,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D2-cross-job-skew:tensor-v1",
+          "scenario": "D2-cross-job-skew",
+          "tensor_seed": 5366718529627105494,
+          "topology_hash": "ab775cd0d309cc55382ded8eb03d358f5c8e09a09847c76f28eb7d124aa34971",
+          "workload_seed": 9103
+        }
+      ],
+      "template_path": "templates/D2-cross-job-skew.json",
+      "template_sha256": "8e86e1846c99075d1e636d1997b92777524e1af2745b4af8de71faa0347c2d1c"
+    },
+    "D3-order-and-sinks": {
+      "samples": [
+        {
+          "actual_matmul_repeats": {
+            "job-0/independent-s0": 16,
+            "job-0/independent-s1": 12,
+            "job-0/producer-s0": 10,
+            "job-0/producer-s1": 8,
+            "job-1/independent-s0": 16,
+            "job-1/independent-s1": 12,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 8
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+          "execution_sample_hash": "385e9352dd575b1848de445ec6b96569957df0ac0c0f8e40eedfafd69bcafda3",
+          "fifo_order_path": "inputs/D3-order-and-sinks/workload-9101.fifo-order.json",
+          "fifo_order_sha256": "a7f634aabc033ea6adffc0dd6f63992efe4a40fe119165f2021aa7e5536a04eb",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s0",
+            "job-1/comm-s1"
+          ],
+          "input_hash": "899d38d9134b6f9cd9d10d146ae906517882d074c568e441756928908b521807",
+          "input_sha256": "4f96a7f5bb213071489f7e95015194d3e5ce659f824b7f1635d7c6baff095f3c",
+          "nominal_matmul_repeats": {
+            "job-0/independent-s0": 16,
+            "job-0/independent-s1": 16,
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-1/independent-s0": 16,
+            "job-1/independent-s1": 16,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8
+          },
+          "path": "inputs/D3-order-and-sinks/workload-9101.json",
+          "pattern_index": 1,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D3-order-and-sinks:tensor-v1",
+          "scenario": "D3-order-and-sinks",
+          "tensor_seed": 4573674627545075451,
+          "topology_hash": "ad39783df8d4aa2bdac06ac5fe8d3a651913cc9cea20582e93d57fd3aa9718f3",
+          "workload_seed": 9101
+        },
+        {
+          "actual_matmul_repeats": {
+            "job-0/independent-s0": 12,
+            "job-0/independent-s1": 16,
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 10,
+            "job-1/independent-s0": 12,
+            "job-1/independent-s1": 16,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 6
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+          "execution_sample_hash": "521967a9635c56af4e6c273a99021dee52175015d2d9b7a089509b8fe52722cc",
+          "fifo_order_path": "inputs/D3-order-and-sinks/workload-9102.fifo-order.json",
+          "fifo_order_sha256": "a7f634aabc033ea6adffc0dd6f63992efe4a40fe119165f2021aa7e5536a04eb",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s0",
+            "job-1/comm-s1"
+          ],
+          "input_hash": "8c03e5b4054029b97d8894fd841a5d1fa3b54fa16f92b407b61e7f0705e595cf",
+          "input_sha256": "fb6dd14202e73b7bd2839d51f165041b92c56c804d32d19b5507f025a1442eeb",
+          "nominal_matmul_repeats": {
+            "job-0/independent-s0": 16,
+            "job-0/independent-s1": 16,
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-1/independent-s0": 16,
+            "job-1/independent-s1": 16,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8
+          },
+          "path": "inputs/D3-order-and-sinks/workload-9102.json",
+          "pattern_index": 2,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D3-order-and-sinks:tensor-v1",
+          "scenario": "D3-order-and-sinks",
+          "tensor_seed": 8373394897077223712,
+          "topology_hash": "ad39783df8d4aa2bdac06ac5fe8d3a651913cc9cea20582e93d57fd3aa9718f3",
+          "workload_seed": 9102
+        },
+        {
+          "actual_matmul_repeats": {
+            "job-0/independent-s0": 12,
+            "job-0/independent-s1": 12,
+            "job-0/producer-s0": 6,
+            "job-0/producer-s1": 6,
+            "job-1/independent-s0": 12,
+            "job-1/independent-s1": 16,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 10
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "eff0a0802e1a4fa960b971e9a7238a4db52c6de573f0e89116ab68f396c30f94",
+          "execution_sample_hash": "3745eb4ee5cb238c769f7515c2517f17d1afc31db18884aa8f0e7fd12a847688",
+          "fifo_order_path": "inputs/D3-order-and-sinks/workload-9103.fifo-order.json",
+          "fifo_order_sha256": "a7f634aabc033ea6adffc0dd6f63992efe4a40fe119165f2021aa7e5536a04eb",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s0",
+            "job-1/comm-s1"
+          ],
+          "input_hash": "f79bb9a6b0053b185edcc5b3668a3b679ab212b6c8bd99ada4745cc1e014650b",
+          "input_sha256": "e6f43898da2a5b964c62088379bc1da17dad72f119a26866a483b7bcac4e1ea0",
+          "nominal_matmul_repeats": {
+            "job-0/independent-s0": 16,
+            "job-0/independent-s1": 16,
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-1/independent-s0": 16,
+            "job-1/independent-s1": 16,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8
+          },
+          "path": "inputs/D3-order-and-sinks/workload-9103.json",
+          "pattern_index": 0,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:D3-order-and-sinks:tensor-v1",
+          "scenario": "D3-order-and-sinks",
+          "tensor_seed": 5708687624376643246,
+          "topology_hash": "ad39783df8d4aa2bdac06ac5fe8d3a651913cc9cea20582e93d57fd3aa9718f3",
+          "workload_seed": 9103
+        }
+      ],
+      "template_path": "templates/D3-order-and-sinks.json",
+      "template_sha256": "19505eb1d4c9eb293cf4103ef871f95c6012438705c94670eaf9528834c0ea6c"
+    },
+    "L0-balanced": {
+      "samples": [
+        {
+          "actual_matmul_repeats": {
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 6,
+            "job-0/producer-s2": 10,
+            "job-0/tail-s0": 8,
+            "job-0/tail-s1": 10,
+            "job-0/tail-s2": 8,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 8,
+            "job-1/producer-s2": 10,
+            "job-1/tail-s0": 6,
+            "job-1/tail-s1": 10,
+            "job-1/tail-s2": 6
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+          "execution_sample_hash": "0bac6432b80f1a2afdab138d3ed16bea7fb8fad8ed2228f14b1b5c36a33a5d0f",
+          "fifo_order_path": "inputs/L0-balanced/workload-9101.fifo-order.json",
+          "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-1/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s1",
+            "job-0/comm-s2",
+            "job-1/comm-s2"
+          ],
+          "input_hash": "51a05e240d3909c1c81cf67ec9d71f86fb861fec7060acb349cb76eb7c85472b",
+          "input_sha256": "5044bcda3b64394541c130651d981d1b39f7b8af66eb675bf65cfb1a06c7f185",
+          "nominal_matmul_repeats": {
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-0/producer-s2": 8,
+            "job-0/tail-s0": 8,
+            "job-0/tail-s1": 8,
+            "job-0/tail-s2": 8,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8,
+            "job-1/producer-s2": 8,
+            "job-1/tail-s0": 8,
+            "job-1/tail-s1": 8,
+            "job-1/tail-s2": 8
+          },
+          "path": "inputs/L0-balanced/workload-9101.json",
+          "pattern_index": 1,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:L0-balanced:tensor-v1",
+          "scenario": "L0-balanced",
+          "tensor_seed": 8396430964223402302,
+          "topology_hash": "684480a6890cabbf175cc046d5306154c2e983cc0a0f04f3692e6a7ec74001a0",
+          "workload_seed": 9101
+        },
+        {
+          "actual_matmul_repeats": {
+            "job-0/producer-s0": 6,
+            "job-0/producer-s1": 8,
+            "job-0/producer-s2": 10,
+            "job-0/tail-s0": 6,
+            "job-0/tail-s1": 10,
+            "job-0/tail-s2": 10,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 6,
+            "job-1/producer-s2": 6,
+            "job-1/tail-s0": 6,
+            "job-1/tail-s1": 8,
+            "job-1/tail-s2": 6
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+          "execution_sample_hash": "9af0b79183cd10e529443a667390c762d0f42a528355599f1f34fbf8fd211127",
+          "fifo_order_path": "inputs/L0-balanced/workload-9102.fifo-order.json",
+          "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-1/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s1",
+            "job-0/comm-s2",
+            "job-1/comm-s2"
+          ],
+          "input_hash": "7b63baa853a16bf924f74a51587e421269b8d1b50843c7aa4316f2f9c251f61a",
+          "input_sha256": "e76f1f2178709e848cee45f7c3c34b715c5bea82bb71d625656099413d5baf5a",
+          "nominal_matmul_repeats": {
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-0/producer-s2": 8,
+            "job-0/tail-s0": 8,
+            "job-0/tail-s1": 8,
+            "job-0/tail-s2": 8,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8,
+            "job-1/producer-s2": 8,
+            "job-1/tail-s0": 8,
+            "job-1/tail-s1": 8,
+            "job-1/tail-s2": 8
+          },
+          "path": "inputs/L0-balanced/workload-9102.json",
+          "pattern_index": 2,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:L0-balanced:tensor-v1",
+          "scenario": "L0-balanced",
+          "tensor_seed": 2074672246521737761,
+          "topology_hash": "684480a6890cabbf175cc046d5306154c2e983cc0a0f04f3692e6a7ec74001a0",
+          "workload_seed": 9102
+        },
+        {
+          "actual_matmul_repeats": {
+            "job-0/producer-s0": 6,
+            "job-0/producer-s1": 6,
+            "job-0/producer-s2": 8,
+            "job-0/tail-s0": 6,
+            "job-0/tail-s1": 6,
+            "job-0/tail-s2": 8,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 10,
+            "job-1/producer-s2": 8,
+            "job-1/tail-s0": 8,
+            "job-1/tail-s1": 10,
+            "job-1/tail-s2": 8
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+          "execution_sample_hash": "0a221edde395f6d050e242438aa378c332327f83191125d7abb10363fceb9c51",
+          "fifo_order_path": "inputs/L0-balanced/workload-9103.fifo-order.json",
+          "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-1/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s1",
+            "job-0/comm-s2",
+            "job-1/comm-s2"
+          ],
+          "input_hash": "b713b800ae331c5bf36be63e327d6ed1efcaf59a0db6f131bcb7d2880cd85031",
+          "input_sha256": "22d5fa91a79781e79a13e0e13bab0b95613806a1c944b86cb6642ffcfa88f55f",
+          "nominal_matmul_repeats": {
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-0/producer-s2": 8,
+            "job-0/tail-s0": 8,
+            "job-0/tail-s1": 8,
+            "job-0/tail-s2": 8,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8,
+            "job-1/producer-s2": 8,
+            "job-1/tail-s0": 8,
+            "job-1/tail-s1": 8,
+            "job-1/tail-s2": 8
+          },
+          "path": "inputs/L0-balanced/workload-9103.json",
+          "pattern_index": 0,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:L0-balanced:tensor-v1",
+          "scenario": "L0-balanced",
+          "tensor_seed": 6715680131045916077,
+          "topology_hash": "684480a6890cabbf175cc046d5306154c2e983cc0a0f04f3692e6a7ec74001a0",
+          "workload_seed": 9103
+        }
+      ],
+      "template_path": "templates/L0-balanced.json",
+      "template_sha256": "4a54039cf59ab9b440dbda1554cd4a8b0effe1a792bbc87da4b1a89e7a125087"
+    },
+    "L1-skew-tail": {
+      "samples": [
+        {
+          "actual_matmul_repeats": {
+            "job-0/producer-s0": 160,
+            "job-0/producer-s1": 6,
+            "job-0/producer-s2": 10,
+            "job-0/tail-s0": 8,
+            "job-0/tail-s1": 10,
+            "job-0/tail-s2": 8,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 8,
+            "job-1/producer-s2": 10,
+            "job-1/tail-s0": 6,
+            "job-1/tail-s1": 10,
+            "job-1/tail-s2": 6
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+          "execution_sample_hash": "78a27653dd7b1eaf8294936ab964fbaa18f32fe72565bf6ac5d9f5314815ebcb",
+          "fifo_order_path": "inputs/L1-skew-tail/workload-9101.fifo-order.json",
+          "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-1/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s1",
+            "job-0/comm-s2",
+            "job-1/comm-s2"
+          ],
+          "input_hash": "04f2355bdf80ff721f1a0b00753a5ed90db0b9cba4f328dd1704ef59ba239c3f",
+          "input_sha256": "2604f05fc6a0165e4eb7bcc5485108890dcecdb61754e3251946d1592f84c287",
+          "nominal_matmul_repeats": {
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-0/producer-s2": 8,
+            "job-0/tail-s0": 8,
+            "job-0/tail-s1": 8,
+            "job-0/tail-s2": 8,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8,
+            "job-1/producer-s2": 8,
+            "job-1/tail-s0": 8,
+            "job-1/tail-s1": 8,
+            "job-1/tail-s2": 8
+          },
+          "path": "inputs/L1-skew-tail/workload-9101.json",
+          "pattern_index": 1,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:L1-skew-tail:tensor-v1",
+          "scenario": "L1-skew-tail",
+          "tensor_seed": 822642976928210064,
+          "topology_hash": "684480a6890cabbf175cc046d5306154c2e983cc0a0f04f3692e6a7ec74001a0",
+          "workload_seed": 9101
+        },
+        {
+          "actual_matmul_repeats": {
+            "job-0/producer-s0": 120,
+            "job-0/producer-s1": 8,
+            "job-0/producer-s2": 10,
+            "job-0/tail-s0": 6,
+            "job-0/tail-s1": 10,
+            "job-0/tail-s2": 10,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 6,
+            "job-1/producer-s2": 6,
+            "job-1/tail-s0": 6,
+            "job-1/tail-s1": 8,
+            "job-1/tail-s2": 6
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+          "execution_sample_hash": "495e71cca5817655b6ddb6b07d1462e4e9850dd38c6c6cfad2f6cac21d875a6e",
+          "fifo_order_path": "inputs/L1-skew-tail/workload-9102.fifo-order.json",
+          "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-1/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s1",
+            "job-0/comm-s2",
+            "job-1/comm-s2"
+          ],
+          "input_hash": "ad4420175a550f63bb294a4b597e811110763145f609127c8e6b5dee33aa20d7",
+          "input_sha256": "140ecce98c4efea4366b5b9cbea19cc7461bc78069bde706b40614181d4bdf5b",
+          "nominal_matmul_repeats": {
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-0/producer-s2": 8,
+            "job-0/tail-s0": 8,
+            "job-0/tail-s1": 8,
+            "job-0/tail-s2": 8,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8,
+            "job-1/producer-s2": 8,
+            "job-1/tail-s0": 8,
+            "job-1/tail-s1": 8,
+            "job-1/tail-s2": 8
+          },
+          "path": "inputs/L1-skew-tail/workload-9102.json",
+          "pattern_index": 2,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:L1-skew-tail:tensor-v1",
+          "scenario": "L1-skew-tail",
+          "tensor_seed": 1467831454722471793,
+          "topology_hash": "684480a6890cabbf175cc046d5306154c2e983cc0a0f04f3692e6a7ec74001a0",
+          "workload_seed": 9102
+        },
+        {
+          "actual_matmul_repeats": {
+            "job-0/producer-s0": 120,
+            "job-0/producer-s1": 6,
+            "job-0/producer-s2": 8,
+            "job-0/tail-s0": 6,
+            "job-0/tail-s1": 6,
+            "job-0/tail-s2": 8,
+            "job-1/producer-s0": 10,
+            "job-1/producer-s1": 10,
+            "job-1/producer-s2": 8,
+            "job-1/tail-s0": 8,
+            "job-1/tail-s1": 10,
+            "job-1/tail-s2": 8
+          },
+          "default_order_rule": "topological-layer-job-round-robin-v1",
+          "estimate_view_hash": "55fbd762642366b40911df16b237b9085e58f8326d161a8f7b48674dd9bc6eaa",
+          "execution_sample_hash": "8b353c39b7eb38e380ccf205d3b9c09c678b748f241f74018d23ad27ff72f7e1",
+          "fifo_order_path": "inputs/L1-skew-tail/workload-9103.fifo-order.json",
+          "fifo_order_sha256": "46b93f9002c25d19d4940e80fab27828a1e9e80e21e28eac03ea8647147fe04a",
+          "fifo_sequence": [
+            "job-0/comm-s0",
+            "job-1/comm-s0",
+            "job-0/comm-s1",
+            "job-1/comm-s1",
+            "job-0/comm-s2",
+            "job-1/comm-s2"
+          ],
+          "input_hash": "eabbbdf2e0e6bd5066dffa57cc2aca17d5dc7ec7e3f512fa893392e178b234a0",
+          "input_sha256": "a1b1572c351221c53990d76af2b4caf42e3d64000acebdc85c1c139584bc9a03",
+          "nominal_matmul_repeats": {
+            "job-0/producer-s0": 8,
+            "job-0/producer-s1": 8,
+            "job-0/producer-s2": 8,
+            "job-0/tail-s0": 8,
+            "job-0/tail-s1": 8,
+            "job-0/tail-s2": 8,
+            "job-1/producer-s0": 8,
+            "job-1/producer-s1": 8,
+            "job-1/producer-s2": 8,
+            "job-1/tail-s0": 8,
+            "job-1/tail-s1": 8,
+            "job-1/tail-s2": 8
+          },
+          "path": "inputs/L1-skew-tail/workload-9103.json",
+          "pattern_index": 0,
+          "sample_id": "gpu-seven-arm-inputs-v5-mechanisms:L1-skew-tail:tensor-v1",
+          "scenario": "L1-skew-tail",
+          "tensor_seed": 4688024095356291022,
+          "topology_hash": "684480a6890cabbf175cc046d5306154c2e983cc0a0f04f3692e6a7ec74001a0",
+          "workload_seed": 9103
+        }
+      ],
+      "template_path": "templates/L1-skew-tail.json",
+      "template_sha256": "cc4bc0755eb812a0b95556bada8980f478b0928130de0333b3adf922166f479f"
+    }
+  },
+  "schema": "jobpacer-gpu-seven-arm-input-suite",
+  "schema_version": 1,
+  "scope": "pilot",
+  "source_suite_sha256": "bf49f34ad5918fa750493dc205a38ae16715486d34a01ed167261798c7497198",
+  "status": "frozen-inputs-pilot-awaiting-batch",
+  "tensor_seed_derivation": "sha256-domain-separated-tensor-seed-v1",
+  "workload_seeds": [
+    9101,
+    9102,
+    9103
+  ]
+}
