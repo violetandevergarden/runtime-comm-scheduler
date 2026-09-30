@@ -8,11 +8,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from examples.jobpacer.runtime.gpu_compute_profile import (
+from examples.jobpacer.gpu.gpu_compute_profile import (
     dag_compute_profile_signature,
     load_gpu_compute_profile,
 )
-from examples.jobpacer.runtime.gpu_workload import GpuComputeSpec
+from examples.jobpacer.gpu.gpu_workload import GpuComputeSpec
 
 
 def _profile():

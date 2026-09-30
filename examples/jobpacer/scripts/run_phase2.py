@@ -19,7 +19,7 @@ from examples.jobpacer.analysis.measurement import occupancy_metrics
 from examples.jobpacer.runtime.plan_builder import build_plan, key_labels, policy_names
 from examples.jobpacer.workloads import load_workload, ranks_for_job
 from examples.jobpacer.comm_profile import apply_profile, load_profile
-from examples.jobpacer.scripts.cuda_devices import validate_visible_cuda_devices
+from examples.jobpacer.gpu.cuda_devices import validate_visible_cuda_devices
 
 
 HERE = Path(__file__).resolve().parent

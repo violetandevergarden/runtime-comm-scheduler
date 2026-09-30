@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from examples.jobpacer.runtime.gpu_workload import GpuComputeSpec
+from examples.jobpacer.gpu.gpu_workload import GpuComputeSpec
 
 
 PROFILE_SCHEMA = "jobpacer-gpu-compute-profile"

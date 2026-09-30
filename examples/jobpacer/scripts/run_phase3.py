@@ -24,7 +24,7 @@ from examples.jobpacer.runtime.runtime_adapter import (
 )
 from examples.jobpacer.workloads import load_workload, ranks_for_job
 from examples.jobpacer.comm_profile import apply_profile, load_profile
-from examples.jobpacer.scripts.cuda_devices import (
+from examples.jobpacer.gpu.cuda_devices import (
     compute_profile_software, validate_visible_cuda_devices, visible_cuda_uuids,
 )
 
@@ -290,7 +290,7 @@ def main() -> int:
                     strict=args.profile_strict,
                 )
             if args.compute_profile:
-                from examples.jobpacer.runtime.gpu_compute_profile import load_gpu_compute_profile
+                from examples.jobpacer.gpu.gpu_compute_profile import load_gpu_compute_profile
                 dag = apply_dag_compute_profile(
                     dag, load_gpu_compute_profile(args.compute_profile),
                     device_uuids=visible_cuda_uuids(args.world_size),
@@ -548,7 +548,7 @@ def main() -> int:
     if args.comm_profile:
         config["profile_digest"] = load_profile(args.comm_profile).digest()
     if args.compute_profile:
-        from examples.jobpacer.runtime.gpu_compute_profile import load_gpu_compute_profile
+        from examples.jobpacer.gpu.gpu_compute_profile import load_gpu_compute_profile
         config["compute_profile_digest"] = load_gpu_compute_profile(args.compute_profile).digest
     git_head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
                               capture_output=True, text=True, check=False)

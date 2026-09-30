@@ -7,7 +7,7 @@ the consumer's ``wait``.  This preserves a useful compute/communication
 overlap window while keeping the dependency graph explicit.
 
 ``consumer_compute_s`` is independent post-submit work in this historical
-schema. New fixed CUDA programs use ``runtime.gpu_workload`` and do not map
+schema. New fixed CUDA programs use ``examples.jobpacer.gpu.gpu_workload`` and do not map
 these seconds to device work.
 """
 

@@ -1,4 +1,8 @@
-"""Strict schema and immutable models for the phase 3 GPU linear workload."""
+"""GPU compute specifications and parsers, including historical linear inputs.
+
+The linear input models and parser remain for compatibility with old manifests.
+Their location here does not make a linear-to-DAG route part of the current model.
+"""
 
 from __future__ import annotations
 

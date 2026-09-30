@@ -578,7 +578,7 @@ def test_compute_profile_provenance_must_match_every_formal_sample_hash(tmp_path
 
 def test_pilot_profile_freeze_uses_the_verified_formal_calibration_suite(tmp_path, monkeypatch):
     import examples.jobpacer.comm_profile as comm_profile_module
-    import examples.jobpacer.runtime.gpu_compute_profile as compute_profile_module
+    import examples.jobpacer.gpu.gpu_compute_profile as compute_profile_module
     import examples.jobpacer.scripts.gpu_seven_arm_suite as suite_module
 
     formal_dir = tmp_path / "formal"

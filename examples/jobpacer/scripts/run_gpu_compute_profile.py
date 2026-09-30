@@ -10,7 +10,7 @@ from pathlib import Path
 
 import torch
 
-from examples.jobpacer.runtime.gpu_compute_profile import (
+from examples.jobpacer.gpu.gpu_compute_profile import (
     DAG_PROFILE_VERSION,
     PROFILE_SCHEMA,
     dag_compute_profile_signature,

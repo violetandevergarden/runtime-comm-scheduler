@@ -212,7 +212,7 @@ def test_v2_submit_after_rejects_completion_dependency_and_future_predecessors()
 
 
 def test_v2_compute_profile_uses_one_shared_estimate_across_rank_devices(tmp_path):
-    from examples.jobpacer.runtime.gpu_compute_profile import (
+    from examples.jobpacer.gpu.gpu_compute_profile import (
         dag_compute_profile_signature,
         load_gpu_compute_profile,
     )

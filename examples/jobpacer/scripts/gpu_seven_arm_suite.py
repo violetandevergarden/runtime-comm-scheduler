@@ -500,7 +500,7 @@ def freeze_suite(input_dir: Path, compute_profile_path: Path, comm_profile_path:
     comm_path = profile_dir / "nccl-communication-profile.json"
     compute_sha = _copy_profile(compute_profile_path, compute_path)
     comm_sha = _copy_profile(comm_profile_path, comm_path)
-    from examples.jobpacer.runtime.gpu_compute_profile import load_gpu_compute_profile
+    from examples.jobpacer.gpu.gpu_compute_profile import load_gpu_compute_profile
     from examples.jobpacer.comm_profile import load_profile
     compute_profile = load_gpu_compute_profile(compute_path)
     comm_profile = load_profile(comm_path)
@@ -694,7 +694,7 @@ def verify_order_table(order: Mapping[str, Any]) -> None:
 def make_estimate_view(dag_path: Path, compute_profile_path: Path, comm_profile_path: Path,
                        *, world_size: int = 2):
     """Load a sample with the same strict profile path used by the replay runner."""
-    from examples.jobpacer.runtime.gpu_compute_profile import load_gpu_compute_profile
+    from examples.jobpacer.gpu.gpu_compute_profile import load_gpu_compute_profile
     from examples.jobpacer.comm_profile import load_profile
 
     dag = load_dag(dag_path, world_size=world_size)

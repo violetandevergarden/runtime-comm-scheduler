@@ -609,7 +609,7 @@ def apply_dag_profile(dag: DagInput, profile, environment: Mapping[str, Any], *,
 def apply_dag_compute_profile(dag: DagInput, profile, *, device_uuids: tuple[str, ...],
                               software: Mapping[str, Any], strict: bool = True) -> DagInput:
     """Apply one shared compute estimate per node, conservatively across visible GPUs."""
-    from examples.jobpacer.runtime.gpu_compute_profile import DAG_PROFILE_VERSION, dag_compute_profile_signature
+    from examples.jobpacer.gpu.gpu_compute_profile import DAG_PROFILE_VERSION, dag_compute_profile_signature
 
     if dag.execution.schema_version != 2:
         raise ValueError("GPU compute profiles apply only to schema-v2 DAG inputs")

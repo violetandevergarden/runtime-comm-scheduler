@@ -52,7 +52,8 @@ G5 的 bridge 批次成功执行，但尚不能认定为等价迁移：所选 [D
 | --- | --- |
 | `src/runtime_comm_scheduler/runtime/` | 模型、coordinator、policy、控制通道、本地执行及完成探测 |
 | `src/runtime_comm_scheduler/dag/` | 图模型、校验、计算与通信节点推进 |
-| `examples/jobpacer/runtime/` | workload 映射、rank harness、GPU compute |
+| `examples/jobpacer/runtime/` | workload 映射、rank harness |
+| `examples/jobpacer/gpu/` | GPU workload、CUDA compute/DAG 资源、compute profile 与设备信息 |
 | `examples/jobpacer/scripts/` | 单次 replay、通信 profile、实验批次入口 |
 | `examples/jobpacer/analysis/` | 结果校验、汇总与可视化 |
 | `benchmark/phase3/experiments/` | 语义分类的实验输入 |

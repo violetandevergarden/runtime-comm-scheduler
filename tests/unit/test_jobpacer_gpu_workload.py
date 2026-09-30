@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from examples.jobpacer.runtime.gpu_workload import (
+from examples.jobpacer.gpu.gpu_workload import (
     FIFO_ESTIMATOR_VERSION,
     GPU_TAIL_ESTIMATOR_VERSION,
     parse_gpu_linear,

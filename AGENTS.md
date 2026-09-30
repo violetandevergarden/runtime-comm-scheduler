@@ -21,7 +21,7 @@
 - `src/runtime_comm_scheduler/runtime/`：新 runtime 核心，包括模型、coordinator、policy、本地执行、控制通道和观测。
 - `src/runtime_comm_scheduler/dag/`：runtime 上层的图模型、校验和节点推进；不把计算调度塞入 coordinator。
 - `examples/jobpacer/runtime/runtime_adapter.py`：workload 到新模型的映射。
-- `examples/jobpacer/runtime/gpu_compute.py`：示例中的固定工作量 CUDA compute。
+- `examples/jobpacer/gpu/`：GPU 工作量规格、CUDA compute/DAG 资源、compute profile 与可见设备辅助；`gpu_workload.py` 中的线性输入解析保留作历史兼容。
 - `examples/jobpacer/runtime/runtime_worker.py`、`examples/jobpacer/scripts/run_phase3.py`：新 runtime 的 rank harness 与启动、汇总入口。
 - `tests/unit/runtime/`、`tests/integration/test_runtime_replay.py`、`tests/integration/test_runtime_replay_nccl.py`：新 runtime 的单元、Gloo 与 opt-in 双卡 NCCL 检查。
 - 包根目录的 `plan.py`、`scheduler.py`、`work.py` 等及旧 replay 属于历史路径，仍可用于基线和回归。

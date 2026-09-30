@@ -39,11 +39,11 @@ from examples.jobpacer.runtime.runtime_adapter import (
     task_hint,
     task_spec,
 )
-from examples.jobpacer.runtime.gpu_dag_resources import GpuDagResources
-from examples.jobpacer.scripts.cuda_devices import compute_profile_software, visible_cuda_uuids
+from examples.jobpacer.gpu.gpu_dag_resources import GpuDagResources
+from examples.jobpacer.gpu.cuda_devices import compute_profile_software, visible_cuda_uuids
 from examples.jobpacer.workloads import Job, Workload, linear_execution_duration, load_workload, ranks_for_job
 from examples.jobpacer.comm_profile import apply_profile, load_profile
-from examples.jobpacer.runtime.gpu_compute import CudaMatmulProgram
+from examples.jobpacer.gpu.gpu_compute import CudaMatmulProgram
 
 
 class _FailingProbe:
@@ -768,7 +768,7 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     if compute_profile_path:
         if dag is None or dag.execution.schema_version != 2:
             raise ValueError("--compute-profile requires a schema-v2 GPU DAG")
-        from examples.jobpacer.runtime.gpu_compute_profile import load_gpu_compute_profile
+        from examples.jobpacer.gpu.gpu_compute_profile import load_gpu_compute_profile
         compute_profile = load_gpu_compute_profile(compute_profile_path)
         dag = apply_dag_compute_profile(
             dag, compute_profile, device_uuids=visible_cuda_uuids(world_size),

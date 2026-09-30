@@ -20,7 +20,7 @@ import torch
 import torch.distributed as dist
 
 from examples.jobpacer.comm_profile import CommSignature, CommunicationProfile, ProfileRecord
-from examples.jobpacer.scripts.cuda_devices import validate_visible_cuda_devices
+from examples.jobpacer.gpu.cuda_devices import validate_visible_cuda_devices
 from examples.jobpacer.analysis.benchmark_paths import repository_path, resolve_migrated_path
 from examples.jobpacer.runtime.runtime_adapter import load_dag
 from examples.jobpacer.workloads import load_workload, ranks_for_job
