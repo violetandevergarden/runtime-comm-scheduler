@@ -72,6 +72,7 @@ class DagRunner:
         self.bindings: dict[str, LocalBinding] = {}
         self.declared: set[str] = set()
         self.failed_node: str | None = None
+        self.completed_at_us: dict[str, int] = {}
         self._node_key = {node.node_id: index for index, node in enumerate(job.nodes)}
         self._validate_submit_after()
 
@@ -132,7 +133,8 @@ class DagRunner:
             self.event_log.record("job_completed", job_id=self.job.job_id,
                                   duration_s=(time.perf_counter_ns() // 1000 - started) / 1_000_000)
             return {"job_id": self.job.job_id, "status": "ok", "node_count": len(self.job.nodes),
-                    "completed_node_ids": list(self.completed_node_ids)}
+                    "completed_node_ids": list(self.completed_node_ids),
+                    "physical_completion_observed_ts": max(self.completed_at_us.values(), default=started)}
         except BaseException as exc:
             if self.failed_node is not None:
                 self.states[self.failed_node] = NodeState.FAILED
@@ -281,6 +283,7 @@ class DagRunner:
     def _complete(self, node_id: str) -> None:
         if self.states[node_id] is not NodeState.RUNNING:
             raise RuntimeError(f"DAG node {self.job.job_id}/{node_id} completed from {self.states[node_id].value}")
+        self.completed_at_us.setdefault(node_id, monotonic_us())
         self.states[node_id] = NodeState.COMPLETED
         for successor_id in self.successors[node_id]:
             self.remaining_deps[successor_id] -= 1

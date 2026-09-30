@@ -247,7 +247,7 @@ runner 的最小依赖是 `submit(spec, binding, hint) -> handle`、可读取的
 | old | 由共同静态序列构造旧 Plan/TaskKey，启动旧 scheduler；不启动新 coordinator | 旧请求进入 scheduler 并返回本地 handle；不等计划发射 | 对实际 Work 建 CUDA host 完成回执，不能直接把 `ScheduledWork.is_completed()` 当证明 | 旧 scheduler 排空已接受任务并按其 API 结束 |
 | raw-ordered 受控参考 | 建立共同静态顺序；不启动新 coordinator 或旧 admission | 本地请求进入唯一有序发射入口并返回 handle；不等实际 launch | CUDA event query 对应的物理完成回执 | 等所有已接受请求真实完成后关闭发射入口 |
 
-原始 `bare` 尚未实现。raw-ordered 必须保持独立 arm 名称，不能作为 bare 通过或七配置正式矩阵完成的证据。
+原始 `bare` 尚未实现是本过程文档初次执行时的记录。后续已在共同 DAG 路径增加直接提交 `BareDagAdapter` 并完成真实双卡 L1/D1/D3 诊断；L1 出现两 rank 全局 launch 顺序差异，因此仍不能作为合格 arm。raw-ordered 始终保持独立名称，不能作为 bare 通过证据。
 
 旧 scheduler 的旧 Plan 与新 StaticOrder 都由 `build_static_order(graph, policy, tails)` 的同一个规范任务 ID 序列生成；转换前后比较**规范序列 hash**，旧 `Plan.digest()` 另记为旧格式身份，不能要求它与新 StaticOrder 的原始 hash 字节相等。旧 `TaskKey` 有 `iteration/microbatch/parallelism/process_group_id/layer_id/bucket_id/ordinal` 字段，adapter 应冻结一张从规范 `(epoch, job_id, task_id, group_id, group_seq)` 到这些字段的确定性映射表，并保留反向映射供结果核对；不得用进程随机 `hash()`、各 rank 的线程到达次序或假定 `group_id==job_id` 编号。旧 scheduler 若现有 `submit` 或完成接口不能满足表中的非阻塞/物理完成条件，先实现适配或判为未支持，不能在 runner 中等待 grant 或把校验时同步当完成。
 
@@ -274,7 +274,7 @@ release barrier 使用独立控制 group，不能用被调度的 job collective 
 
 `run_phase3.py` 的共同结果保留 `validation`、`metrics/performance`、`ranks`，增加 `execution_contract`、三个输入/样本/估计 hash、profile/estimator 版本、实际 arm/adapter、每 rank 设备 UUID、每 job 全部 sink 和物理完成来源。旧分析消费者若依赖 `measurement_lane` 或 linear segment 列，升级为读取共同字段并显式区分 v1/v2；不能用缺失字段默认“通过”。结果检查按规范通信 task ID 计算成员实际 launch 投影、group_seq、静态序列、tensor 数值与 terminal 覆盖；new 额外核对 grant 前缀，bare 则核对其已声明的发射合同。
 
-`run_experiments.py` 保留原 ledger/恢复逻辑，schema-v2 DAG 可经共同 worker 启动六个已支持配置（old/new 的 FIFO/LTF 与 new 动态 FIFO/LTF）；raw-ordered 仅可显式选择为受控参考。原始 bare 尚未支持。DAG batch 记录并冻结输入、compute profile、源码摘要及 arm 配置；目前没有六场景样本生成与全场景配对合同，因此不能据此启动或宣称完成 1,050 次矩阵。
+`run_experiments.py` 保留原 ledger/恢复逻辑，schema-v2 DAG 可经共同 worker 启动 old/new 配置；raw-ordered 仅可显式选择为受控参考，bare 可通过 `run_phase3.py` 的独立诊断入口选择，但七臂 suite 按正式计划只采用 raw-ordered。DAG batch 记录并冻结输入、compute profile、源码摘要及 arm 配置；目前没有六场景样本生成与全场景配对合同，因此不能据此启动或宣称完成 1,050 次矩阵。
 
 ## 16. 分阶段完成门槛与实施记录模板
 

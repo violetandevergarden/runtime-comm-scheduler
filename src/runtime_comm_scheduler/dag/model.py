@@ -206,13 +206,111 @@ def compute_tails(graph: DagGraph) -> dict[str, float]:
     return tails
 
 
+def build_layered_fifo_order(
+    graph: DagGraph,
+    *,
+    extra_predecessors: Mapping[str, tuple[str, ...]] | None = None,
+    job_order: tuple[str, ...] | None = None,
+) -> tuple[str, ...]:
+    """Return a fixed, estimate-independent FIFO projection of the DAG.
+
+    The complete node graph, including group-order and caller-supplied edges,
+    determines topological layers. Nodes in a layer are then emitted by a
+    round-robin over jobs; each job's nodes retain their input order. Only
+    communication nodes are returned, and their legality is checked again.
+    """
+    validate_graph(graph)
+    predecessors = joint_predecessors(graph)
+    node_by_id = {
+        f"{job.job_id}/{node.node_id}": node
+        for job in graph.jobs for node in job.nodes
+    }
+    node_order = {node_id: index for index, node_id in enumerate(node_by_id)}
+    for node_id, extra in (extra_predecessors or {}).items():
+        if node_id not in predecessors:
+            raise ValueError(f"extra predecessor target {node_id!r} is absent from the DAG")
+        if len(extra) != len(set(extra)):
+            raise ValueError(f"extra predecessors for {node_id!r} contain duplicates")
+        for predecessor in extra:
+            if predecessor not in predecessors:
+                raise ValueError(
+                    f"extra predecessor {predecessor!r} for {node_id!r} is absent from the DAG"
+                )
+            predecessors[node_id].add(predecessor)
+
+    successors: dict[str, list[str]] = {node_id: [] for node_id in predecessors}
+    indegree = {node_id: len(deps) for node_id, deps in predecessors.items()}
+    for node_id, deps in predecessors.items():
+        for dependency in deps:
+            successors[dependency].append(node_id)
+
+    layers: list[list[str]] = []
+    ready = sorted(
+        (node_id for node_id, degree in indegree.items() if degree == 0),
+        key=node_order.__getitem__,
+    )
+    visited = 0
+    while ready:
+        layer = ready
+        layers.append(layer)
+        visited += len(layer)
+        next_ready: list[str] = []
+        for node_id in layer:
+            for child in successors[node_id]:
+                indegree[child] -= 1
+                if indegree[child] == 0:
+                    next_ready.append(child)
+        ready = sorted(next_ready, key=node_order.__getitem__)
+    if visited != len(predecessors):
+        blocked = sorted(node_id for node_id, degree in indegree.items() if degree)
+        raise ValueError(f"layered FIFO constraints form a cycle: {blocked}")
+
+    resolved_job_order = (tuple(job.job_id for job in graph.jobs)
+                          if job_order is None else job_order)
+    graph_job_ids = tuple(job.job_id for job in graph.jobs)
+    if (len(resolved_job_order) != len(graph_job_ids)
+            or set(resolved_job_order) != set(graph_job_ids)):
+        raise ValueError("job_order must be a permutation of the DAG job IDs")
+    job_for_node = {node_id: node_id.split("/", 1)[0] for node_id in node_by_id}
+
+    ordered_nodes: list[str] = []
+    for layer in layers:
+        queues: dict[str, list[str]] = {job_id: [] for job_id in resolved_job_order}
+        for node_id in sorted(layer, key=node_order.__getitem__):
+            queues[job_for_node[node_id]].append(node_id)
+        offsets = {job_id: 0 for job_id in resolved_job_order}
+        while any(offsets[job_id] < len(queues[job_id]) for job_id in resolved_job_order):
+            for job_id in resolved_job_order:
+                offset = offsets[job_id]
+                if offset < len(queues[job_id]):
+                    ordered_nodes.append(queues[job_id][offset])
+                    offsets[job_id] += 1
+
+    sequence = tuple(
+        node_id for node_id in ordered_nodes if isinstance(node_by_id[node_id], CommNode)
+    )
+    position = {node_id: index for index, node_id in enumerate(ordered_nodes)}
+    if any(position[predecessor] >= position[node_id]
+           for node_id, dependencies in predecessors.items()
+           for predecessor in dependencies):
+        raise ValueError("layered FIFO projection violates a full-DAG predecessor constraint")
+    return _validate_static_order(sequence, graph)
+
+
 def build_static_order(graph: DagGraph, policy: str, *,
-                       tails: Mapping[str, float] | None = None) -> tuple[str, ...]:
+                       tails: Mapping[str, float] | None = None,
+                       extra_predecessors: Mapping[str, tuple[str, ...]] | None = None) -> tuple[str, ...]:
     """Generate one deterministic legal topological order for Static FIFO/LTF."""
     if policy not in {"static_fifo", "static_ltf"}:
         raise ValueError("static order generation requires static_fifo or static_ltf")
+    if policy == "static_fifo":
+        return build_layered_fifo_order(graph, extra_predecessors=extra_predecessors)
     validate_graph(graph)
     predecessors = joint_predecessors(graph)
+    for node_id, deps in (extra_predecessors or {}).items():
+        if node_id not in predecessors or any(dep not in predecessors for dep in deps):
+            raise ValueError("static order has unknown acceptance constraint nodes")
+        predecessors[node_id].update(deps)
     successors: dict[str, set[str]] = {node_id: set() for node_id in predecessors}
     remaining = {node_id: len(deps) for node_id, deps in predecessors.items()}
     for node_id, deps in predecessors.items():
@@ -259,12 +357,14 @@ def build_static_order(graph: DagGraph, policy: str, *,
     return _validate_static_order(tuple(order), graph)
 
 
-def validate_static_order(values: Any, graph: DagGraph) -> tuple[str, ...]:
+def validate_static_order(values: Any, graph: DagGraph, *,
+                          extra_predecessors: Mapping[str, tuple[str, ...]] | None = None) -> tuple[str, ...]:
     validate_graph(graph)
-    return _validate_static_order(values, graph)
+    return _validate_static_order(values, graph, extra_predecessors=extra_predecessors)
 
 
-def _validate_static_order(values: Any, graph: DagGraph) -> tuple[str, ...]:
+def _validate_static_order(values: Any, graph: DagGraph, *,
+                           extra_predecessors: Mapping[str, tuple[str, ...]] | None = None) -> tuple[str, ...]:
     if not isinstance(values, (list, tuple)) or any(not isinstance(item, str) for item in values):
         raise ValueError("static order must be an array of task IDs")
     expected = set(graph.expected_task_ids)
@@ -272,6 +372,10 @@ def _validate_static_order(values: Any, graph: DagGraph) -> tuple[str, ...]:
         raise ValueError(f"static order must cover all communication tasks exactly once; expected={sorted(expected)}")
     positions = {task_id: index for index, task_id in enumerate(values)}
     predecessors = joint_predecessors(graph)
+    for node_id, deps in (extra_predecessors or {}).items():
+        if node_id not in predecessors or any(dep not in predecessors for dep in deps):
+            raise ValueError("static order has unknown acceptance constraint nodes")
+        predecessors[node_id].update(deps)
     node_by_id = {
         f"{job.job_id}/{node.node_id}": node
         for job in graph.jobs for node in job.nodes

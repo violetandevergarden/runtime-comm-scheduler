@@ -106,6 +106,8 @@ class CoordinatorState:
         self._next_group_seq: dict[str, int] = {}
         self._registered_seq = 0
         self._eligible_seq = 0
+        self.mechanism_counts = {"dispatch_candidate_counts": {}, "distinct_scores": 0,
+                                 "fifo_ltf_disagreements": 0, "fifo_matches": 0, "ltf_matches": 0}
         self.decision_seq = 0
         self.inflight: str | None = None
         self.failed: dict[str, Any] | None = None
@@ -641,6 +643,16 @@ class CoordinatorState:
                 raise CoordinatorError(
                     f"policy selected ineligible task {decision.task_id}"
                 )
+            fifo = min(eligible, key=lambda item: (item.eligible_seq, item.task_id))
+            ltf = select_ltf(eligible)
+            counts = self.mechanism_counts
+            histogram = counts["dispatch_candidate_counts"]
+            histogram[str(len(eligible))] = histogram.get(str(len(eligible)), 0) + 1
+            counts["distinct_scores"] += int(len({item.estimated_comm_s + item.remaining_tail_s
+                                                   for item in eligible}) > 1)
+            counts["fifo_ltf_disagreements"] += int(fifo.task_id != ltf.task_id)
+            counts["fifo_matches"] += int(selected.task_id == fifo.task_id)
+            counts["ltf_matches"] += int(selected.task_id == ltf.task_id)
             self.decision_seq += 1
             task = self.tasks[selected.task_id]
             task.grant_seq = self.decision_seq

@@ -10,10 +10,11 @@ import os
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
-from runtime_comm_scheduler.dag import build_static_order
+from runtime_comm_scheduler.dag import CommNode, build_static_order
 from examples.jobpacer.analysis.benchmark_paths import (
     is_formal_experiment_input, repository_path, resolve_migrated_path,
 )
@@ -32,18 +33,51 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 FORMAL_INPUT_ROOT = (ROOT / "benchmark/phase3/experiments").resolve()
 PHASE3_MIGRATION_MAP = ROOT / "benchmark/phase3/results/migration-map.json"
+BARE_FAILURE_CLEANUP_GRACE_S = 5.0
+RENDEZVOUS_STARTUP_MAX_ATTEMPTS = 5
+RENDEZVOUS_BIND_ERROR_MARKER = "The server socket has failed to listen"
 
 
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
+def _free_port(exclude: set[int] | None = None) -> int:
+    excluded = exclude or set()
+    for _ in range(32):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = int(sock.getsockname()[1])
+        if port not in excluded:
+            return port
+    raise RuntimeError("could not allocate distinct local rendezvous and control ports")
+
+
+def _is_rendezvous_bind_conflict(errors: list[str]) -> bool:
+    return any(
+        RENDEZVOUS_BIND_ERROR_MARKER in error
+        and "EADDRINUSE" in error
+        and "address already in use" in error.lower()
+        for error in errors
+    )
+
+
+def _should_retry_rendezvous_startup(
+    results: list[dict[str, Any]], errors: list[str], attempt_index: int,
+) -> bool:
+    """Retry only a pre-task TCPStore bind collision, never a partial rank result."""
+    return (
+        not results
+        and attempt_index + 1 < RENDEZVOUS_STARTUP_MAX_ATTEMPTS
+        and _is_rendezvous_bind_conflict(errors)
+    )
 
 
 def _start(rank: int, args: argparse.Namespace, rendezvous_port: int, control_port: int) -> subprocess.Popen[str]:
     env = dict(os.environ)
     env.update(MASTER_ADDR="127.0.0.1", MASTER_PORT=str(rendezvous_port), RANK=str(rank),
                WORLD_SIZE=str(args.world_size), LOCAL_RANK=str(rank))
+    if args.comm_engine == "bare":
+        # NCCL 2.26+ implicit ordering is disabled by default. Each worker
+        # still uses the same frozen host call order; this enables NCCL's
+        # supported cross-communicator ordering and possible device overlap.
+        env["NCCL_LAUNCH_ORDER_IMPLICIT"] = "1"
     env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "src"), str(ROOT), env.get("PYTHONPATH", "")))
     command = [sys.executable, "-m", "examples.jobpacer.runtime.runtime_worker",
                "--policy", args.policy, "--backend", args.backend,
@@ -100,20 +134,41 @@ def _collect(rank: int, process: subprocess.Popen[str], timeout: float) -> tuple
         return None, f"rank {rank} emitted invalid JSON ({exc}): {stdout[-2000:]}"
 
 
+def _stop_failed_siblings(processes: list[subprocess.Popen[str]], *, comm_engine: str) -> None:
+    """Stop replay children after a failure, allowing bare peers to observe fail-stop first."""
+    if comm_engine == "bare":
+        # Bare workers publish failures through the rendezvous Store and exit
+        # themselves instead of destroying an NCCL communicator with pending
+        # work. Give that notification a short window to reach the peer; retain
+        # a hard parent-side bound if a worker is stuck in a backend call.
+        for process in processes:
+            if process.poll() is not None:
+                continue
+            try:
+                process.wait(timeout=BARE_FAILURE_CLEANUP_GRACE_S)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        return
+    for process in processes:
+        if process.poll() is None:
+            process.kill()
+
+
 def _option_was_set(name: str) -> bool:
     return any(token == name or token.startswith(name + "=") for token in sys.argv[1:])
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--policy", choices=("static_fifo", "static_ltf", "fifo", "ltf", "lookahead"), default="fifo")
-    parser.add_argument("--comm-engine", choices=("new", "old", "raw-ordered"), default="new")
+    parser.add_argument("--policy", choices=("static_fifo", "static_ltf", "fifo", "ltf", "lookahead", "bare"), default="fifo")
+    parser.add_argument("--comm-engine", choices=("new", "old", "raw-ordered", "bare"), default="new")
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--workload")
     source.add_argument("--dag", type=Path)
     parser.add_argument("--static-order", type=Path)
     parser.add_argument("--backend", choices=("gloo", "nccl"), default="gloo")
     parser.add_argument("--world-size", type=int, default=2)
+    parser.add_argument("--startup-attempts", type=int, choices=(1, 2, 3), default=RENDEZVOUS_STARTUP_MAX_ATTEMPTS)
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--setup-timeout", type=float, default=20.0)
     parser.add_argument("--epoch", type=int, default=0)
@@ -163,6 +218,12 @@ def main() -> int:
         parser.error("S lane requires linear NCCL, cuda-matmul, and precreate bindings")
     if args.epoch < 0 or args.world_size <= 0:
         parser.error("epoch must be non-negative and world-size positive")
+    if args.comm_engine == "bare" and (not args.dag or args.policy != "bare"):
+        parser.error("bare requires a schema-v2 DAG, --comm-engine bare, and --policy bare")
+    if args.comm_engine == "bare" and args.world_size != 2:
+        parser.error("bare-ordered-v2-layered-round-robin is validated only for a two-rank NCCL world")
+    if args.policy == "bare" and args.comm_engine != "bare":
+        parser.error("--policy bare requires --comm-engine bare")
     if args.backend == "nccl":
         try:
             validate_visible_cuda_devices(args.world_size)
@@ -197,6 +258,7 @@ def main() -> int:
     expected_nodes: dict[int, set[str]] | None = None
     digests: set[str] | None = None
     order: tuple[str, ...] = ()
+    bare_order = None
     if args.dag:
         try:
             dag = load_dag(args.dag, epoch=args.epoch, world_size=args.world_size)
@@ -210,11 +272,15 @@ def main() -> int:
                     parser.error("DAG schema-v2 uses frozen workload inputs; --compute-jitter is unsupported")
             if args.comm_engine != "new":
                 if dag.execution.schema_version != 2 or args.backend != "nccl":
-                    parser.error("old/raw-ordered communication adapters require a schema-v2 NCCL DAG")
+                    parser.error("old/raw-ordered/bare adapters require a schema-v2 NCCL DAG")
                 if args.comm_engine == "old" and args.policy not in {"static_fifo", "static_ltf"}:
                     parser.error("old scheduler arms require static_fifo or static_ltf")
                 if args.comm_engine == "raw-ordered" and args.policy != "static_fifo":
                     parser.error("raw-ordered uses the common static_fifo sequence")
+                if args.comm_engine == "bare" and args.policy != "bare":
+                    parser.error("bare uses direct DAG readiness and requires --policy bare")
+            if args.policy == "bare" and args.comm_engine != "bare":
+                parser.error("--policy bare requires --comm-engine bare")
             if args.comm_profile:
                 dag = apply_dag_profile(
                     dag, load_profile(args.comm_profile),
@@ -235,15 +301,28 @@ def main() -> int:
                 parser.error("schema-v2 static_ltf/ltf requires --compute-profile")
         except (OSError, ValueError) as exc:
             parser.error(str(exc))
-        if args.static_order and args.policy not in {"static_fifo", "static_ltf"}:
+        if args.static_order and args.policy not in {"static_fifo", "static_ltf", "bare"}:
             parser.error("--static-order requires a static policy")
         if args.static_order:
             try:
-                order = load_static_order(args.static_order, dag.graph)
+                order = load_static_order(args.static_order, dag.graph, extra_predecessors=dag.execution.submit_after)
             except (OSError, ValueError) as exc:
                 parser.error(str(exc))
         elif args.policy in {"static_fifo", "static_ltf"}:
-            order = build_static_order(dag.graph, args.policy)
+            order = build_static_order(
+                dag.graph, args.policy,
+                extra_predecessors=dag.execution.submit_after,
+            )
+        if args.comm_engine == "bare":
+            try:
+                from examples.jobpacer.runtime.dag_comm_adapters import build_bare_order
+                bare_order = build_bare_order(
+                    dag.graph, submit_after=dag.execution.submit_after, input_hash=dag.input_hash,
+                )
+                if args.static_order and tuple(order) != bare_order.sequence:
+                    raise ValueError("frozen bare order differs from the versioned default sequence")
+            except ValueError as exc:
+                parser.error(str(exc))
         expected_dag = expected_dag_results(dag.graph, args.world_size)
         expected = expected_dag["expected"]
         expected_nodes = expected_dag["expected_nodes"]
@@ -269,22 +348,47 @@ def main() -> int:
         if args.static_order:
             parser.error("--static-order requires --dag")
 
-    rendezvous_port, control_port = _free_port(), _free_port()
-    processes = [_start(rank, args, rendezvous_port, control_port) for rank in range(args.world_size)]
     results: list[dict[str, Any]] = []
     errors: list[str] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(processes)) as pool:
-        futures = [pool.submit(_collect, rank, process, args.setup_timeout + args.timeout + 5)
-                   for rank, process in enumerate(processes)]
-        for future in futures:
-            result, error = future.result()
-            if error:
-                errors.append(error)
-            elif result is not None:
-                results.append(result)
+    rendezvous_startup_attempts = []
+    for attempt_index in range(args.startup_attempts):
+        rendezvous_port = _free_port()
+        control_port = _free_port({rendezvous_port})
+        processes = [_start(rank, args, rendezvous_port, control_port)
+                     for rank in range(args.world_size)]
+        results = []
+        errors = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(processes)) as pool:
+            futures = [pool.submit(_collect, rank, process, args.setup_timeout + args.timeout + 5)
+                       for rank, process in enumerate(processes)]
+            while not all(future.done() for future in futures):
+                failed_children = [process for process in processes
+                                   if process.poll() is not None and process.returncode != 0]
+                if failed_children:
+                    _stop_failed_siblings(processes, comm_engine=args.comm_engine)
+                    break
+                time.sleep(0.02)
+            for future in futures:
+                result, error = future.result()
+                if error:
+                    errors.append(error)
+                elif result is not None:
+                    results.append(result)
+        rendezvous_startup_attempts.append({
+            "attempt": attempt_index + 1,
+            "rendezvous_port": rendezvous_port,
+            "control_port": control_port,
+            "errors": list(errors),
+        })
+        if attempt_index + 1 < args.startup_attempts and _should_retry_rendezvous_startup(results, errors, attempt_index):
+            continue
+        break
     results.sort(key=lambda item: item.get("rank", -1))
     expected_config = {
-            "epoch": args.epoch, "world_size": args.world_size, "max_inflight": 1,
+            "epoch": args.epoch, "world_size": args.world_size,
+            "max_inflight": None if args.comm_engine == "bare" else 1,
+            "process_group_timeout_s": (min(20.0, args.timeout)
+                                        if args.backend == "nccl" else None),
             "backend": args.backend, "completion_poll_interval_s": args.poll_interval,
             "comm_engine": args.comm_engine,
             "wake_completion_on_submit": args.wake_completion_on_submit,
@@ -315,6 +419,66 @@ def main() -> int:
                     f"actual={actual_projection}"
                 )
                 validation["status"] = "failed"
+    if args.dag and args.comm_engine == "bare" and len(results) == args.world_size:
+        assert bare_order is not None
+        task_group = {
+            f"{job.job_id}/{node.node_id}": node.group_id
+            for job in dag.graph.jobs for node in job.nodes
+            if isinstance(node, CommNode)
+        }
+        for result in results:
+            rank = int(result.get("rank", -1))
+            launch_order = tuple(result.get("launch_sequence", ()))
+            expected_tasks = tuple(result.get("expected_task_ids", ()))
+            expected_projection = tuple(
+                task_id for task_id in bare_order.sequence
+                if rank in dag.group_ranks[task_group[task_id]]
+            )
+            if launch_order != expected_projection:
+                validation["errors"].append(
+                    f"rank {rank} bare launch order differs from its common-order projection: "
+                    f"expected={expected_projection}, actual={launch_order}"
+                )
+                validation["status"] = "failed"
+            if len(launch_order) != len(expected_tasks) or set(launch_order) != set(expected_tasks):
+                validation["errors"].append(
+                    f"rank {rank} bare launch task set differs from its group membership"
+                )
+                validation["status"] = "failed"
+            if (result.get("bare_contract") != bare_order.contract_version
+                    or tuple(result.get("bare_default_order", ())) != bare_order.sequence
+                    or result.get("bare_default_order_digest") != bare_order.digest
+                    or result.get("bare_input_hash") != bare_order.input_hash):
+                validation["errors"].append(
+                    f"rank {rank} loaded a different bare order contract or digest"
+                )
+                validation["status"] = "failed"
+            if result.get("nccl_launch_order_implicit") != "1":
+                validation["errors"].append(
+                    f"rank {rank} did not enable NCCL_LAUNCH_ORDER_IMPLICIT=1"
+                )
+                validation["status"] = "failed"
+        group_order = {
+            group_id: tuple(task_id for _seq, task_id in sorted(
+                (node.group_seq, f"{job.job_id}/{node.node_id}")
+                for job in dag.graph.jobs for node in job.nodes
+                if isinstance(node, CommNode) and node.group_id == group_id
+            ))
+            for group_id in dag.group_ranks
+        }
+        for result in results:
+            launch_order = tuple(result.get("launch_sequence", ()))
+            for group_id, members in dag.group_ranks.items():
+                if result.get("rank") not in members:
+                    continue
+                projection = tuple(task_id for task_id in launch_order
+                                   if task_group.get(task_id) == group_id)
+                if projection != group_order[group_id]:
+                    validation["errors"].append(
+                        f"rank {result.get('rank')} bare group {group_id} order mismatch: "
+                        f"expected={group_order[group_id]}, actual={projection}"
+                    )
+                    validation["status"] = "failed"
     if args.backend == "nccl":
         uuids = [result.get("device_uuid") for result in results]
         if len(uuids) != args.world_size or any(not item for item in uuids) or len(set(uuids)) != len(uuids):
@@ -344,15 +508,27 @@ def main() -> int:
     config["compute_profile"] = str(args.compute_profile) if args.compute_profile else None
     config["profile_strict"] = args.profile_strict if args.comm_profile else None
     config["wait_budget_s"] = args.wait_budget_s
+    config["rendezvous_startup_attempts"] = rendezvous_startup_attempts
     config["communication_adapter"] = ("raw-ordered-static-fifo" if args.comm_engine == "raw-ordered"
                                        else args.comm_engine)
+    config["backend_ordering"] = ({
+        "nccl_launch_order_implicit": "1",
+        "contract_version": bare_order.contract_version,
+        "default_order_digest": bare_order.digest,
+    } if bare_order is not None else None)
     if args.dag:
         config["dag_input_hash"] = dag.input_hash
         config["estimate_view_hash"] = dag.estimate_view_hash
         config["execution_contract"] = ({
             "dependency_mode": "physical-completion",
             "compute_model": dag.execution.compute_model,
-            "max_inflight": 1,
+            "max_inflight": None if args.comm_engine == "bare" else 1,
+            "communication_capacity": "not_admission_limited" if args.comm_engine == "bare" else 1,
+            "communication_order": ("layered_topological_job_round_robin_projection"
+                                    if args.comm_engine == "bare" else None),
+            "communication_contract_version": (bare_order.contract_version
+                                                if bare_order is not None else None),
+            "communication_order_digest": bare_order.digest if bare_order is not None else None,
             "mode": dag.execution.mode,
         } if dag.execution.schema_version == 2 else None)
         config["static_order_sequence"] = list(order) if args.policy in {"static_fifo", "static_ltf"} else None
@@ -360,6 +536,8 @@ def main() -> int:
             hashlib.sha256(json.dumps(list(order), separators=(",", ":")).encode()).hexdigest()
             if args.policy in {"static_fifo", "static_ltf"} else None
         )
+        config["bare_default_order_sequence"] = (
+            list(bare_order.sequence) if bare_order is not None else None)
     config["device_mapping"] = ({
         "inherited_cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "rank_to_logical_device": list(range(args.world_size)),

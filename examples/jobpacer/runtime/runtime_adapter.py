@@ -627,7 +627,16 @@ def apply_dag_compute_profile(dag: DagInput, profile, *, device_uuids: tuple[str
                 nodes.append(node)
                 continue
             key = f"{job.job_id}/{node.node_id}"
-            program = dag.execution.compute_programs[key]
+            program = dict(dag.execution.compute_programs[key])
+            nominal = dag.execution.profiles.get("nominal_compute_repeats", {})
+            if nominal:
+                expected_keys = {name for name, item in dag.execution.compute_programs.items()
+                                 if item["op"] == "matmul"}
+                if set(nominal) != expected_keys or any(
+                        not _is_int(value) or value <= 0 for value in nominal.values()):
+                    raise ValueError("nominal compute repeats must cover every matmul with positive integers")
+                if program["op"] == "matmul":
+                    program["repeats"] = nominal[key]
             signature = dag_compute_profile_signature(program, dag.execution.buffers[job.job_id])
             samples = []
             for uuid in device_uuids:
@@ -654,12 +663,13 @@ def apply_dag_compute_profile(dag: DagInput, profile, *, device_uuids: tuple[str
                     estimate_view_hash=_estimate_view_hash(graph))
 
 
-def load_static_order(path: str | Path, graph: DagGraph) -> tuple[str, ...]:
+def load_static_order(path: str | Path, graph: DagGraph, *,
+                      extra_predecessors: Mapping[str, tuple[str, ...]] | None = None) -> tuple[str, ...]:
     try:
         values = json.loads(Path(path).read_text())
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"cannot load static order {path}: {exc}") from exc
-    return validate_static_order(values, graph)
+    return validate_static_order(values, graph, extra_predecessors=extra_predecessors)
 
 
 def sample_compute_duration(seed: int, epoch: int, job_id: str, node_id: str, rank: int,

@@ -85,8 +85,10 @@ Phase 3.2 是输入与推进模型的扩展，不能把另一张线性图的耗�
 2. 一般 DAG 运行 5 个新 runtime 策略，回答 DAG 上的策略问题。
 
 若需宣称“DAG 调度优于无调度”，必须额外实现共享 DAG runner、相同完成和消费语义的 bare
-入口，并独立验证跨成员 group 顺序。当前 CLI 没有 DAG bare；这项为可选扩展，未实现时明确
-不回答该问题。不能把 DAG 展平成串行链、改变 group 或删掉依赖后充当 bare 基线。
+入口，并独立验证跨成员 group 顺序。本文初次盘点时 CLI 尚无 DAG bare；后续已增加
+`BareDagAdapter` 并在双卡 L1/D1/D3 上诊断，但 L1 观察到 rank 间全局 launch 序列分歧，当前仍不回答
+bare 安全性/性能对照。不能把 DAG 展平成串行链、改变 group 或删掉依赖后充当 bare 基线；也不能将
+raw-ordered 的受控全序参考称作原始 bare。最新执行结果见[七臂 preflight 报告](../result/phase3-gpu-seven-arm-preflight-execution-20260928.md)。
 
 ## 3. 当前能力与正式实验前的准备
 

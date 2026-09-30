@@ -43,6 +43,9 @@ G5 的 bridge 批次成功执行，但尚不能认定为等价迁移：所选 [D
 
 上述是此前复核时的状态。2026-09-28 已继续实施 schema-v2 GPU 统一 DAG、old/new 通信 adapter 与 raw-ordered 受控参考；D0 双卡语义 smoke 和本轮 Gloo/NCCL 回归见[实施过程记录](docs/JobPacer/process/phase3-gpu-unified-dag-correction.md)及[结果记录](docs/JobPacer/result/phase3-gpu-unified-dag-correction-20260928.md)。原始 bare、六场景 pilot、重复 epoch、断连验收和正式 1,050 次性能矩阵仍未完成，不能据单次 smoke 判断收益。
 
+2026-09-29 七臂 v2 的当前准备进度、真实 backend 资格与放行门槛见[准备实施记录](docs/JobPacer/process/phase3-gpu-seven-arm-preparation-20260929.md)和[验证结果](docs/JobPacer/result/phase3-gpu-seven-arm-preparation-20260929.md)。本轮采用真实 `bare-ordered`；历史 raw 替代臂批次保持原定义。是否可放行以对应 revision 的机器可读审计为准。
+
+
 ## 目录与阅读顺序
 
 | 路径 | 职责 |

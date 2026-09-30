@@ -94,3 +94,7 @@ env PYTHONPATH=src:. .venv/bin/python -m examples.jobpacer.scripts.run_phase3 \
 
 最终 `py_compile` 与 `git diff --check` 通过。该结果只表示当前代码和上述小输入已验收；
 其他历史输入的 LTF 顺序按相应归档源码解释，需要性能对比时应冻结新 manifest 后重新运行。
+
+## 后续状态更正（2026-09-28）
+
+本报告中“原始 bare 没有实现”是本报告执行时的状态。随后已添加 `BareDagAdapter` 和共同 worker/runner 入口，并在真实双卡 L1/D1/D3 输入执行诊断。数值与 buffer 校验通过，但 L1 出现两 rank 全局 launch 顺序分歧；bare 仍未通过安全资格。正式替代臂 `raw-ordered-static-fifo` 的 G1 故障路径后来以 first-writer-wins failure signal 修复并重新验收通过。当前完整状态见[七臂 preflight 执行报告](phase3-gpu-seven-arm-preflight-execution-20260928.md)；P2 的 D1 多候选 gate 仍失败，正式矩阵没有启动。

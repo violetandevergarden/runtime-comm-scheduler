@@ -216,7 +216,8 @@ def _free_device(backend: str) -> str:
 
 
 def _new_groups(workload: Workload | DagInput, world_size: int,
-                setup_deadline: float | None = None) -> dict[str, Any]:
+                setup_deadline: float | None = None,
+                group_timeout_s: float | None = None) -> dict[str, Any]:
     if isinstance(workload, DagInput):
         group_defs = ((group.group_id, group.ranks) for group in workload.graph.groups)
     else:
@@ -228,7 +229,10 @@ def _new_groups(workload: Workload | DagInput, world_size: int,
             remaining = None if setup_deadline is None else _remaining(setup_deadline)
             if remaining is not None and remaining <= 0:
                 raise TimeoutError("setup deadline exceeded while creating process groups")
-            timeout = {} if remaining is None else {"timeout": timedelta(seconds=remaining)}
+            timeout_s = remaining
+            if timeout_s is not None and group_timeout_s is not None:
+                timeout_s = min(timeout_s, group_timeout_s)
+            timeout = {} if timeout_s is None else {"timeout": timedelta(seconds=timeout_s)}
             groups[group_id] = dist.new_group(list(ranks), **timeout)
     except BaseException:
         for group in reversed(list(groups.values())):
@@ -434,7 +438,7 @@ def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank
     diagnostic = getattr(args, "observation_mode", "full") != "minimal"
     lane = getattr(args, "lane", "H")
     comm_engine = getattr(args, "comm_engine", "new")
-    if comm_engine not in {"new", "old", "raw-ordered"}:
+    if comm_engine not in {"new", "old", "raw-ordered", "bare"}:
         raise ValueError(f"unsupported communication engine {comm_engine!r}")
     gpu_segments = gpu_segments or {}
     for index, comm in enumerate(job.communications):
@@ -679,7 +683,7 @@ def _run_dag_job(job: DagJob, *, dag: DagInput, args, runtime, groups, rank: int
         validation_records.append((task_result, binding.tensor, expected_result))
     result["gpu_resource_job_id"] = job.job_id if resources is not None else None
     result["completed_node_ids"] = [f"{job.job_id}/{node_id}" for node_id in runner.completed_node_ids]
-    result["job_end_ts"] = time.perf_counter_ns() // 1000
+    result["job_end_ts"] = result["physical_completion_observed_ts"]
     return result
 
 
@@ -687,7 +691,7 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     rank = int(os.environ["RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
     comm_engine = getattr(args, "comm_engine", "new")
-    if comm_engine not in {"new", "old", "raw-ordered"}:
+    if comm_engine not in {"new", "old", "raw-ordered", "bare"}:
         raise ValueError(f"unsupported communication engine {comm_engine!r}")
     if args.timeout <= 0 or args.setup_timeout <= 0 or args.poll_interval <= 0 or args.dag_poll_interval <= 0:
         raise ValueError("setup/replay timeouts and poll intervals must be positive")
@@ -725,11 +729,22 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     if gpu_program_dag and args.backend != "nccl":
         raise ValueError("DAG schema-v2 cuda-program execution requires --backend nccl")
     if comm_engine != "new" and (not gpu_program_dag or args.backend != "nccl"):
-        raise ValueError("old and raw-ordered adapters require a schema-v2 CUDA DAG on NCCL")
+        raise ValueError("old, raw-ordered, and bare adapters require a schema-v2 CUDA DAG on NCCL")
     if comm_engine == "old" and args.policy not in {"static_fifo", "static_ltf"}:
         raise ValueError("old scheduler adapter requires static_fifo or static_ltf")
     if comm_engine == "raw-ordered" and args.policy != "static_fifo":
         raise ValueError("raw-ordered adapter uses the common static_fifo sequence")
+    if comm_engine == "bare" and args.policy != "bare":
+        raise ValueError("bare adapter uses DAG readiness and requires the bare policy marker")
+    if comm_engine == "bare":
+        from examples.jobpacer.runtime.dag_comm_adapters import validate_bare_backend
+        validate_bare_backend(nccl_version=tuple(torch.cuda.nccl.version()), cuda_version=torch.version.cuda,
+                              implicit=os.environ.get("NCCL_LAUNCH_ORDER_IMPLICIT"),
+                              blocking_wait=os.environ.get("TORCH_NCCL_BLOCKING_WAIT"))
+    if comm_engine == "bare" and world_size != 2:
+        raise ValueError("bare-ordered-v2-layered-round-robin is validated only for a two-rank NCCL world")
+    if comm_engine == "bare" and os.environ.get("NCCL_LAUNCH_ORDER_IMPLICIT", "").strip() != "1":
+        raise ValueError("bare requires NCCL_LAUNCH_ORDER_IMPLICIT=1 for ordered multi-communicator NCCL issue")
     workload = None if dag else load_workload(args.workload or "balanced")
     profile = None
     if comm_profile:
@@ -763,14 +778,27 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     elif dag is not None and dag.execution.schema_version == 2 and args.policy in {"static_ltf", "ltf"}:
         raise ValueError("schema-v2 static_ltf/ltf requires --compute-profile")
     dag_tails = compute_tails(dag.graph) if dag is not None else None
-    if args.static_order and (dag is None or args.policy not in {"static_fifo", "static_ltf"}):
+    if args.static_order and (dag is None or args.policy not in {"static_fifo", "static_ltf", "bare"}):
         raise ValueError("--static-order is only valid with a DAG and static policy")
     if dag is not None:
-        order = (load_static_order(args.static_order, dag.graph) if args.static_order
-                 else build_static_order(dag.graph, args.policy, tails=dag_tails)
+        order = (load_static_order(args.static_order, dag.graph, extra_predecessors=dag.execution.submit_after) if args.static_order
+                 else build_static_order(
+                     dag.graph, args.policy, tails=dag_tails,
+                     extra_predecessors=(dag.execution.submit_after
+                                         if args.policy == "static_fifo" else None),
+                 )
                  if args.policy in {"static_fifo", "static_ltf"} else ())
+        bare_order = None
+        if comm_engine == "bare":
+            from examples.jobpacer.runtime.dag_comm_adapters import build_bare_order
+            bare_order = build_bare_order(
+                dag.graph, submit_after=dag.execution.submit_after, input_hash=dag.input_hash,
+            )
+            if args.static_order and tuple(order) != bare_order.sequence:
+                raise ValueError("frozen bare order differs from the versioned default sequence")
     else:
         order = ()
+        bare_order = None
     device = _free_device(args.backend)
     inputs = dag if dag is not None else workload
     from runtime_comm_scheduler.runtime.coordinator import CoordinatorState
@@ -784,11 +812,15 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     gpu_segments: dict[str, dict[str, Any]] = {}
     gpu_compute_preparation_start_ts = gpu_compute_preparation_end_ts = None
     try:
+        process_group_timeout_s = (
+            min(20.0, args.timeout) if args.backend == "nccl"
+            else _remaining(setup_deadline)
+        )
         init_kwargs = {
             "init_method": f"tcp://{os.environ['MASTER_ADDR']}:{os.environ['MASTER_PORT']}",
             "rank": rank,
             "world_size": world_size,
-            "timeout": timedelta(seconds=_remaining(setup_deadline)),
+            "timeout": timedelta(seconds=min(_remaining(setup_deadline), process_group_timeout_s)),
         }
         if args.backend == "nccl":
             init_kwargs["device_id"] = torch.device(device)
@@ -796,7 +828,21 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
         if comm_engine != "new":
             from examples.jobpacer.runtime.dag_comm_adapters import EpochFailureSignal
             failure_signal = EpochFailureSignal(args.epoch, rank, world_size)
-        groups = _new_groups(inputs, world_size, setup_deadline)
+        if comm_engine == "bare":
+            assert dag is not None and bare_order is not None and failure_signal is not None
+            failure_signal.verify_common_contract(
+                "bare-launch-order-v1",
+                {
+                    "input_hash": dag.input_hash,
+                    "manifest_digest": dag.manifest_digest,
+                    "estimate_view_hash": dag.estimate_view_hash,
+                    "order_digest": bare_order.digest,
+                    "order": list(bare_order.sequence),
+                },
+                setup_deadline,
+            )
+        groups = _new_groups(inputs, world_size, setup_deadline,
+                             group_timeout_s=process_group_timeout_s)
         local_jobs = ([job for job in workload.jobs if rank in ranks_for_job(job, world_size)]
                       if dag is None else _local_dag_jobs(dag, rank))
         if gpu_program_dag:
@@ -877,14 +923,29 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 failure_drain_timeout_s=args.timeout,
             )
             executor = runtime.executor
-        else:
+        elif comm_engine == "raw-ordered":
             from examples.jobpacer.runtime.dag_comm_adapters import RawOrderedDagAdapter
             if not order:
                 order = build_static_order(dag.graph, "static_fifo", tails=dag_tails)
+            raw_probe = (_FailingProbe() if args.fault == "completion_probe_failure" and rank == 0
+                         else None)
             runtime = RawOrderedDagAdapter(
                 dag.graph, order=order, rank=rank, group_ranks=dag.group_ranks, device=device,
                 deadline_s=args.timeout, poll_interval_s=args.poll_interval, event_log=runtime_event_log,
-                failure_signal=failure_signal, failure_drain_timeout_s=args.timeout,
+                failure_signal=failure_signal, completion_probe=raw_probe,
+                failure_drain_timeout_s=args.timeout,
+            )
+            executor = runtime.executor
+        else:
+            from examples.jobpacer.runtime.dag_comm_adapters import BareDagAdapter
+            bare_probe = (_FailingProbe() if args.fault == "completion_probe_failure" and rank == 0
+                          else None)
+            runtime = BareDagAdapter(
+                dag.graph, rank=rank, group_ranks=dag.group_ranks, device=device,
+                order=bare_order, submit_after=dag.execution.submit_after,
+                deadline_s=args.timeout, poll_interval_s=args.poll_interval,
+                event_log=runtime_event_log, failure_signal=failure_signal,
+                completion_probe=bare_probe, failure_drain_timeout_s=args.timeout,
             )
             executor = runtime.executor
         if dag is not None:
@@ -947,7 +1008,7 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             )
             jobs = _run_jobs(local_jobs, run_one, runtime=runtime, deadline=deadline,
                              stop_event=stop_event, thread_name_prefix="job")
-        application_end_ts = time.perf_counter_ns() // 1000
+        application_end_ts = max(job["job_end_ts"] for job in jobs) if dag is not None else time.perf_counter_ns() // 1000
         (communication_drain_end_ts, cpu_drain_end_s, usage_end,
          validation_start_ts, validation_end_ts) = _finish_epoch_then_validate(
             runtime, validation_records, deadline=deadline)
@@ -965,7 +1026,7 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
         output = {
             "rank": rank, "status": "ok", "mode": "runtime",
             "comm_engine": comm_engine,
-            "communication_adapter": ("raw-ordered" if comm_engine == "raw-ordered" else comm_engine),
+            "communication_adapter": comm_engine,
             "observation_mode": observation_mode,
             "input_mode": "dag" if dag is not None else "linear",
             "policy": args.policy, "backend": args.backend, "jobs": jobs,
@@ -975,12 +1036,15 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                                        "uuid", "")) or None) if args.backend == "nccl" else None,
             "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
             "torch_version": torch.__version__,
+            "torch_git_version": torch.version.git_version,
             "cuda_version": torch.version.cuda,
             "nccl_version": torch.cuda.nccl.version() if args.backend == "nccl" else None,
             "executor_type": type(executor).__name__,
             "completion_probe_type": type(getattr(runtime, "completion_probe", None)).__name__,
             "completion_source": ("cuda_event_query_after_backend_work_wait" if args.backend == "nccl"
                                   else "work_is_completed"),
+            "nccl_launch_order_implicit": (
+                os.environ.get("NCCL_LAUNCH_ORDER_IMPLICIT") if comm_engine == "bare" else None),
             "measurement_lane": lane,
             "offer_readiness_mode": "physical_ready",
             "compute_mode": compute_mode,
@@ -997,7 +1061,10 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 "all local DAG nodes have physical completion evidence" if dag is not None else
                 "all terminal consumer events physically completed" if lane == "S" else
                 "all local host waits returned"),
-            "epoch": args.epoch, "world_size": world_size, "max_inflight": 1,
+            "epoch": args.epoch, "world_size": world_size,
+            "max_inflight": None if comm_engine == "bare" else 1,
+            "process_group_timeout_s": (min(20.0, args.timeout)
+                                        if args.backend == "nccl" else None),
             "completion_poll_interval_s": args.poll_interval,
             "wake_completion_on_submit": getattr(args, "wake_completion_on_submit", False),
             "dag_poll_interval_s": args.dag_poll_interval,
@@ -1044,7 +1111,15 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             "execution_contract": ({
                 "dependency_mode": "physical-completion",
                 "compute_model": dag.execution.compute_model,
-                "max_inflight": 1,
+                "max_inflight": None if comm_engine == "bare" else 1,
+                "communication_capacity": "not_admission_limited" if comm_engine == "bare" else 1,
+                "communication_order": ("layered_topological_job_round_robin_projection"
+                                         if comm_engine == "bare"
+                                         else None),
+                "communication_contract_version": (bare_order.contract_version
+                                                    if comm_engine == "bare" else None),
+                "communication_order_digest": (bare_order.digest if comm_engine == "bare" else None),
+                "process_group_timeout_s": process_group_timeout_s,
                 "seed_derivation_version": "sha256-torch-generator-v1",
             } if gpu_program_dag else None),
             "input_hash": dag.input_hash if dag is not None else None,
@@ -1108,8 +1183,20 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
             elif comm_engine == "raw-ordered":
                 output["raw_ordered_sequence"] = list(runtime.launch_order)
                 output["raw_ordered_contract"] = "static_fifo-global-sequence-physical-serial"
+                output["raw_ordered_peak_inflight"] = runtime.peak_inflight
+                output["raw_ordered_static_head_wait_s"] = runtime.static_head_wait_s
+            elif comm_engine == "bare":
+                output["bare_launch_sequence"] = list(runtime.launch_order)
+                output["bare_contract"] = bare_order.contract_version
+                output["bare_default_order"] = list(bare_order.sequence)
+                output["bare_job_tie_order"] = list(bare_order.job_order)
+                output["bare_default_order_digest"] = bare_order.digest
+                output["bare_input_hash"] = bare_order.input_hash
+                output["bare_local_order"] = list(runtime.local_order)
+                output["bare_peak_inflight"] = runtime.peak_inflight
         if server is not None:
             output["decision_records"] = list(server.coordinator.records)
+            output["mechanism_counts"] = dict(server.coordinator.mechanism_counts)
         output["harness_end_ts"] = time.perf_counter_ns() // 1000
         output["harness_total_us"] = output["harness_end_ts"] - harness_start_ts
         return output
@@ -1122,14 +1209,27 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 if server is not None:
                     server.close()
             finally:
-                if failure_signal is not None and failure_signal.failure() is not None:
-                    failure_signal.publish_teardown_ready()
-                    teardown_deadline = replay_deadline
-                    if runtime is not None:
-                        adapter_deadline = getattr(runtime, "cleanup_deadline", None)
-                        if adapter_deadline is not None:
-                            teardown_deadline = min(teardown_deadline, adapter_deadline)
-                    failure_signal.wait_for_teardown_ready(teardown_deadline)
+                peer_or_local_failure = (failure_signal.failure()
+                                         if failure_signal is not None else None)
+                if peer_or_local_failure is not None:
+                    # The default TCPStore is hosted by rank 0. A failing
+                    # rank 0 must keep it alive until peers have read the
+                    # first failure and acknowledged their own teardown.
+                    if comm_engine == "bare" and failure_signal is not None:
+                        try:
+                            failure_signal.publish_teardown_ready()
+                            failure_signal.wait_for_teardown_ready(time.monotonic() + 2.0)
+                        except BaseException:
+                            pass
+                    # NCCL has no safe cancellation for a host launch blocked
+                    # without its peer. Exit this rank process and let the
+                    # parent harness bound sibling cleanup instead of entering
+                    # a communicator destroy path that can wait for watchdog
+                    # timeout. Only this replay child is terminated here.
+                    sys.stderr.write(f"rank {rank} fail-stop after collective error: "
+                                     f"{peer_or_local_failure}\n")
+                    sys.stderr.flush()
+                    os._exit(1)
                 for group in reversed(list(groups.values())):
                     try:
                         dist.destroy_process_group(group)
@@ -1141,8 +1241,8 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--policy", choices=("static_fifo", "static_ltf", "fifo", "ltf", "lookahead"), default="fifo")
-    parser.add_argument("--comm-engine", choices=("new", "old", "raw-ordered"), default="new")
+    parser.add_argument("--policy", choices=("static_fifo", "static_ltf", "fifo", "ltf", "lookahead", "bare"), default="fifo")
+    parser.add_argument("--comm-engine", choices=("new", "old", "raw-ordered", "bare"), default="new")
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--workload")
     source.add_argument("--dag", type=Path)

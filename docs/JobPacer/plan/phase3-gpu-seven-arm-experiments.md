@@ -1,6 +1,25 @@
+# Phase 3 GPU 七臂实验计划：v2 当前合同
+
+2026-09-29 修订。下一轮以[完整实施要求](../process/phase3-gpu-seven-arm-implementation-20260928.md)为执行合同。软件准备不等于 backend、机制、测量或正式资格已通过。
+
+- 七臂固定为 `bare-ordered`、`old-static-fifo`、`old-static-ltf`、`new-static-fifo`、`new-static-ltf`、`new-dynamic-fifo`、`new-dynamic-ltf`。`raw-ordered-static-fifo` 仅用于同顺序串行诊断。
+- Bare 使用共同分层轮转默认顺序、唯一异步 dispatcher、独立完成观察，不施加 admission 单在途限制；旧路径为本地单在途，新 runtime 为全成员物理完成释放的全局单在途。
+- 新输入位于 `benchmark/phase3/experiments/gpu-seven-arm-v2/revision-0/`。L0/L1 是链式 DAG，D0–D3 为不同一般 DAG；三 pilot seeds 为 9101–9103，五 formal seeds 为 8101–8105。真实执行 repeats 与名义 profile 签名独立保存。
+- 六场景三 pilot seeds 三 repeats 的六 scheduler 机制诊断为 54 块、324 replay；七臂全覆盖则为 378 replay。D1/L1 各要求至少两个 seeds 在三次中至少两次触发。输入参数最多修订两轮，另起目录与源码 revision。
+- 正式仍是 150 完整块、1,050 replay，采用经诊断的 minimal 模式；A/A 与 minimal/full 独立诊断不并入正式统计。缺任一 readiness gate 时拒绝正式启动。
+- 当前实施和验证边界见[准备记录](../process/phase3-gpu-seven-arm-preparation-20260929.md)。没有启动正式采集，不能将生成输入、通过单元测试或一次 smoke 写成有效实验或净收益。
+
+## 历史：2026-09-28 串行 raw 替代版本
+
+以下保留旧批次定义与研究上下文，其 raw 替代授权、单 seed pilot 和旧资格流程不适用于 v2。旧原始结果需使用各自归档源码解释，不与 v2 拼接。
+
 # Phase 3：GPU 七配置重测与线性 / DAG 实验计划
 
-日期：2026-09-27。状态：待实施计划；本文不代表下述入口、基线适配、输入或验收已完成。本次工作仅编写计划，不启动实验矩阵。
+日期：2026-09-27；修订：2026-09-28。状态：**已修订第七臂定义；原始 bare 已有直接提交实现和双卡诊断，但没有通过全局顺序安全验收，仍不纳入本版矩阵。执行事实以 preflight 结果记录为准。** 本修订本身不代表替代 arm 已通过双卡资格或启动正式矩阵。
+
+实现状态更新（2026-09-28）：`BareDagAdapter` 已在共同 DAG 路径上实现绕过 admission 的 ready-task 直接提交，并通过真实双卡 L1/D1/D3 诊断。L1 的一轮实测出现两 rank 不同的全局 launch 序列；数值检查通过不消除这一顺序安全失败。原始 bare 因此仍为未资格认证配置；正式矩阵保留修订后的 `raw-ordered-static-fifo`。
+
+2026-09-29 顺序基线补记：为避免手写 DAG 的确定性 tie-break 把一个 job 的通信链全部排在另一个 job 之前，预检冻结 `topological-layer-job-round-robin-v1`：完整 DAG（含 `group_seq` 和 `submit_after`）决定层级，先浅层，同层按固定输入 job 顺序轮转，同 job 按输入节点顺序打破平局，再取通信投影。bare 与旧/新 static FIFO 共用该序列；dynamic FIFO 仍按首次 eligible 排序。L1/D1 双卡 pilot 的默认和反转 job 起始顺序共 16 次 replay 已通过顺序与数值检查，详细记录见[分层轮转 pilot 结果](../result/phase3-gpu-layered-fifo-pilot-20260929.md)。此规则不宣称最优、公平无偏或代表 Megatron 实际调用顺序；pilot 不覆盖历史记录、不解除 D1 机制门槛，也不自动放行正式矩阵。
 
 配套设计：[GPU workload、执行契约与通信调度](phase3-gpu-workload-and-scheduling.md)。核心约束继续遵循 [Phase 3.1](phase3.1.md) 和 [Phase 3.2](phase3.2.md)。历史依据为[首轮 GPU 实验](../result/phase3-gpu-20260927.md)，历史 raw 与结果不覆盖。
 
@@ -8,7 +27,7 @@
 
 在新的、明确描述真实 GPU 工作量的输入上重新建立七种配置的完整对照：
 
-1. bare 裸发。
+1. `raw-ordered-static-fifo`：共同静态 FIFO 全序、无 policy admission 的受控参考。原始 `bare` 已实现但未通过顺序安全资格，不纳入本版矩阵。
 2. 旧 scheduler + 静态 FIFO Plan。
 3. 旧 scheduler + 静态 LTF Plan。
 4. 新 scheduler + static FIFO。
@@ -26,13 +45,13 @@
 
 | 问题 | 主要对照 | 可得结论的范围 |
 | --- | --- | --- |
-| 裸发系统表现如何 | bare 与其余各 arm | 完整执行路径和实际并发差异，不单独归因调度策略 |
+| 共同静态发射顺序下、绕过 admission policy 的系统表现如何 | raw-ordered-static-fifo 与 old/new scheduler 各 arm | 含固定全局发射次序的受控参考；不能推断原始裸发行为 |
 | 新旧执行路径有什么差别 | old-static-FIFO vs new-static-FIFO；old-static-LTF vs new-static-LTF | 在共同 Plan / 合同下的系统差异；容量差异仍须说明 |
 | 在线选择有没有价值 | new-static-FIFO vs new-dynamic-FIFO；new-static-LTF vs new-dynamic-LTF | 同 runtime 下的在线准入选择效果 |
 | LTF 是否优于 FIFO | 同一执行类别内 FIFO vs LTF | 给定估计定义与目标指标下的策略效果 |
 | 对不同 GPU 工作量是否稳健 | 同场景不同 workload seed | 有限样例范围内的稳定性，不外推平台普适结论 |
 
-预先将 new static→同策略 new dynamic 的 makespan、run 内平均 JCT 配对结果列为主要对照。新旧静态与 bare 对照列为系统基线；其他交叉比较列为次要探索，不能从所有两两组合中事后挑一个“赢家”代替主要结论。
+预先将 new static→同策略 new dynamic 的 makespan、run 内平均 JCT 配对结果列为主要对照。新旧静态与 raw-ordered 受控参考列为系统基线；原始 bare 诊断单独报告，不属于本版正式 arm。其他交叉比较列为次要探索，不能从所有两两组合中事后挑一个“赢家”代替主要结论。
 
 同时报告逐 job JCT，避免平均值改善掩盖某个 job 被持续推迟。LTF 是启发式，不预设它一定改善平均 JCT 或 makespan。
 
@@ -56,7 +75,7 @@
 
 | arm ID（拟议） | 提交与选择 | 必须记录 |
 | --- | --- | --- |
-| `bare` | 绕过 admission scheduler，遵守 backend 所需共同发射约束 | 实际发射机制、是否有协调/排队/同步、峰值在途数 |
+| `raw-ordered-static-fifo` | 绕过 admission policy；所有 rank 按同一静态 FIFO 全序直接提交通信 | 全序 hash、逐 rank 实际发射投影、串行 dispatcher 与 NCCL 顺序成本、峰值在途数 |
 | `old-static-fifo` | 旧 scheduler 执行预构造 FIFO Plan | Plan hash、旧容量参数、实际 group 投影 |
 | `old-static-ltf` | 旧 scheduler 执行预构造 LTF Plan | Plan hash、评分版本、旧容量参数 |
 | `new-static-fifo` | 新 runtime 忠实执行同一规范 FIFO 序列 | 序列 hash、静态队首等待、全局容量 |
@@ -64,11 +83,11 @@
 | `new-dynamic-fifo` | 按首次 eligible 顺序选择 | eligible 次序、选择、等待原因 |
 | `new-dynamic-ltf` | 从合法 eligible 候选按版本化 LTF 评分选择 | 候选评分、选择及估计来源 |
 
-新 runtime 保持全局 `max_inflight=1`；旧 scheduler 固定既有 `max_outstanding=1` 作为首轮配置。两者不能仅因参数都为 1 就宣称容量等价，需检查实际释放条件与跨 rank 约束。bare 不为凑一致而偷偷套上中央 admission；允许其不同的实际在途行为，但必须通过目标 backend 顺序与完成验收，并作为系统对照解释。
+新 runtime 保持全局 `max_inflight=1`；旧 scheduler 固定既有 `max_outstanding=1` 作为首轮配置。两者不能仅因参数都为 1 就宣称容量等价，需检查实际释放条件与跨 rank 约束。raw-ordered 不使用 admission policy，但保留共同静态全序及串行 dispatcher；它的容量和执行时间差异须按受控参考解释。
 
-### 3.3 bare 的实现与验收门槛
+### 3.3 原始 bare 的资格门槛与本版替代定义
 
-裸发是本轮必须解决的基线，不默认为已有可用能力。当前旧入口限制 bare + S lane，且多 job/thread、多 group 的自由发射没有充分的设备排序保证。
+裸发是本轮必须解决的基线，不默认为已有可用能力。此前入口仅支持 bare + S lane；本轮已增加 DAG 直接提交适配器，但多 job/thread、多 group 的自由发射仍没有跨 rank 全局顺序保证。
 
 实施前先交付 bare 合同说明，回答：
 
@@ -77,7 +96,9 @@
 3. 目标 PyTorch/NCCL 配置要求的 host/device 同步由谁建立？
 4. 若本地 launcher 排队，是否阻塞计算推进？同步与协调成本是否进入应用指标？
 
-如果目标环境下无法安全实现原始多线程自由裸发，不能硬跑或悄悄改名。可设计带共同发射顺序的 `raw-ordered` 参考，明确它有顺序控制但无 policy admission；该替代须在正式矩阵冻结前明确，并将“原始 bare 未支持”保留为缺口。受控 raw 不等于原始 bare，不能声称完成了后者的验收。
+若目标环境无法安全运行原始多线程自由裸发，不能硬跑或悄悄改名。当前已实现的 `BareDagAdapter` 在真实双卡 L1/D1/D3 诊断中出现跨 rank 全局 launch 顺序分歧，仍不合格。可采用带共同发射顺序的 `raw-ordered` 受控参考，明确它有顺序控制但无 policy admission；受控 raw 不等于原始 bare，不能声称完成了后者的验收。
+
+**2026-09-28 正式计划修订：**根据 [bare 合同评估](../process/phase3-gpu-seven-arm-bare-contract-20260928.md)，当前目标环境的 NCCL 多 communicator 使用要求各设备上的 host 发射顺序一致；shared DAG runner 的不同 job 由独立线程推进，无法在不加共同全序的情况下证明此条件。加共同全序会得到已有 `raw-ordered` 语义。因此本矩阵的第七臂正式改为 `raw-ordered-static-fifo`，研究问题相应收窄为“无 admission policy 的共同顺序参考”。本修订不把替代臂标为 qualified；它仍须通过 P3 目标双卡资格与 P4 七臂彩排。随后实现并诊断的原始 `bare` 曾观测到跨 rank 全序分歧，故仍不符合本矩阵安全合同；所有结果需明确区分直接裸发诊断与正式替代臂。
 
 没有合格 bare 时可以继续其余配置的语义开发，但不得把六配置批次写成七配置完整交付。不得以复用新 coordinator、再关闭日志的方式伪造裸发。
 
@@ -87,7 +108,7 @@
 
 ```text
 统一 workload / DAG runner
-    ├─ bare 通信提交绑定
+    ├─ raw-ordered 静态全序直接提交绑定
     ├─ 旧 scheduler 通信提交与完成绑定
     └─ 新 RankRuntime 通信提交与完成绑定
 ```
@@ -266,7 +287,7 @@ benchmark/phase3/results/gpu-seven-arm/<batch-id>/
   manifest.json runs.jsonl analysis.md
 ```
 
-batch manifest 至少包含：七 arm 实际实现与语义、静态 Plan/估计版本、环境与 GPU UUID、源码归档及 hash、输入与 profile hash、完整运行顺序、seed 和 PRNG 规则、warmup、poll、timeout、目标数量和阶段 gate 结果。
+batch manifest 至少包含：七 arm 实际实现与语义（含第七臂的计划修订及资格证据；明确 original bare 未支持）、静态 Plan/估计版本、环境与 GPU UUID、源码归档及 hash、输入与 profile hash、完整运行顺序、seed 和 PRNG 规则、warmup、poll、timeout、目标数量和阶段 gate 结果。
 
 每 run 保存完整命令、stdout/stderr、耗时、退出码、run/block/attempt ID、实际 contract、验证摘要、原始任务数据及 hash。源码不能只记 dirty HEAD；要包含未提交实现和未跟踪依赖文件。
 
@@ -276,7 +297,7 @@ batch manifest 至少包含：七 arm 实际实现与语义、静态 Plan/估计
 
 ## 11. 交付与完成标准
 
-- 七配置在六个场景上使用明确且可解释的 GPU 执行合同；任何 bare 替代或容量差异明确标识。
+- 七配置在六个场景上使用明确且可解释的 GPU 执行合同；本版 `raw-ordered-static-fifo` 替代及容量差异明确标识，原始 bare 不得宣称已测。
 - 两个线性场景、四个 DAG 场景均有五个可复现工作量样例，各 arm 每样例五次完整正式测量。
 - 1,050 次有效正式 replay 的配对完整性与全部尝试 ledger 一致；缺失时明确批次未完成，不以均值填补。
 - 新旧静态 Plan 序列一致，GPU LTF 估计版本与实际程序匹配，历史旧算法保持可追溯。
@@ -284,4 +305,4 @@ batch manifest 至少包含：七 arm 实际实现与语义、静态 Plan/估计
 - 报告包括全部场景的原始点、主要配对结果、逐 job JCT、失败与重试、样例限制和未支持范围。
 - 无收益也是有效实验结果；没有重叠不自动归因 runtime 缺陷；不把有限场景结论推广为 GPU 普遍规律。
 
-实施过程写在 `docs/JobPacer/process/`，最终验收写在 `docs/JobPacer/result/`。本计划中的 DAG/旧 scheduler 适配、bare 与 GPU LTF 工作优先于启动正式矩阵；此前设计先 FIFO 后 LTF 的实施顺序仍成立，但本轮最终交付包含全部七配置。
+实施过程写在 `docs/JobPacer/process/`，最终验收写在 `docs/JobPacer/result/`。本计划中的 DAG/旧 scheduler 适配、替代 arm 的 GPU 资格与 GPU LTF 工作优先于启动正式矩阵；此前设计先 FIFO 后 LTF 的实施顺序仍成立，但本轮最终交付包含全部七配置（原始 bare 除外）。

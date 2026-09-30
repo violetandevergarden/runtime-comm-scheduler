@@ -610,3 +610,19 @@ def test_device_compute_query_failure_aborts_without_unblocking_successor():
     assert runtime.submitted == []
     assert len(runtime.aborts) == 1
     assert runner.states["producer"] is NodeState.FAILED
+
+
+def test_static_file_validation_includes_acceptance_predecessors(tmp_path):
+    from examples.jobpacer.runtime.runtime_adapter import load_static_order
+    nodes = [_comm("first", 0), _compute("gate"),
+             _comm("second", 0, ["gate"], group="other", estimated=0.02)]
+    dag = parse_dag(_payload(nodes, groups=[
+        {"group_id": "g", "ranks": [0, 1]}, {"group_id": "other", "ranks": [0, 1]}]))
+    path = tmp_path / "order.json"
+    path.write_text(json.dumps(["job/second", "job/first"]))
+    assert load_static_order(path, dag.graph) == ("job/second", "job/first")
+    constraints = {"job/gate": ("job/first",)}
+    with pytest.raises(ValueError, match="communication dependency"):
+        load_static_order(path, dag.graph, extra_predecessors=constraints)
+    assert build_static_order(dag.graph, "static_ltf", extra_predecessors=constraints) == (
+        "job/first", "job/second")

@@ -15,6 +15,7 @@ from examples.jobpacer.comm_profile import CommunicationProfile, ProfileRecord
 from examples.jobpacer.runtime.runtime_adapter import apply_dag_profile, load_dag, make_replay_compute
 from examples.jobpacer.scripts.run_experiments import _attach_isolated, _command, _mechanism_row, _paired_rows
 from examples.jobpacer.scripts import run_experiments as experiment_batch
+from examples.jobpacer.scripts import run_phase3 as phase3_replay
 from examples.jobpacer.scripts import run_control_path_diagnostic as control_path_batch
 from examples.jobpacer.scripts import run_interleaved_isolated as isolated_batch
 from examples.jobpacer.scripts import run_compact_suite as compact_suite
@@ -28,6 +29,60 @@ from runtime_comm_scheduler.runtime.policy import Candidate, select_fifo, select
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPERIMENTS = ROOT / "benchmark/phase3/experiments"
+
+
+def test_bare_failure_gives_peer_a_bounded_chance_to_observe_shared_failure():
+    class Child:
+        def __init__(self, returncode=None, *, wait_error=None):
+            self.returncode = returncode
+            self.wait_error = wait_error
+            self.wait_timeouts = []
+            self.killed = False
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            self.wait_timeouts.append(timeout)
+            if self.wait_error is not None:
+                raise self.wait_error
+            self.returncode = 1
+            return self.returncode
+
+        def kill(self):
+            self.killed = True
+            self.returncode = -9
+
+    failed = Child(returncode=1)
+    peer = Child()
+    phase3_replay._stop_failed_siblings([failed, peer], comm_engine="bare")
+    assert peer.wait_timeouts == [phase3_replay.BARE_FAILURE_CLEANUP_GRACE_S]
+    assert not peer.killed
+
+    timed_out_peer = Child(wait_error=subprocess.TimeoutExpired("worker", 5.0))
+    phase3_replay._stop_failed_siblings([failed, timed_out_peer], comm_engine="bare")
+    assert timed_out_peer.killed
+
+    raw_peer = Child()
+    phase3_replay._stop_failed_siblings([failed, raw_peer], comm_engine="raw-ordered")
+    assert raw_peer.wait_timeouts == []
+    assert raw_peer.killed
+
+
+def test_rendezvous_retry_is_bounded_to_pre_task_tcpstore_bind_conflicts():
+    conflict = (
+        "rank 0 exited 1: DistNetworkError: The server socket has failed to listen "
+        "on any local network address. code: -98, name: EADDRINUSE, "
+        "message: address already in use"
+    )
+    assert phase3_replay._is_rendezvous_bind_conflict([conflict])
+    assert phase3_replay._should_retry_rendezvous_startup([], [conflict], 0)
+    assert not phase3_replay._should_retry_rendezvous_startup(
+        [], [conflict], phase3_replay.RENDEZVOUS_STARTUP_MAX_ATTEMPTS - 1)
+    assert not phase3_replay._should_retry_rendezvous_startup(
+        [{"rank": 0}], [conflict], 0)
+    assert not phase3_replay._should_retry_rendezvous_startup(
+        [], ["application failed: address already in use"], 0)
 
 
 def _profile(*sizes: int) -> CommunicationProfile:
