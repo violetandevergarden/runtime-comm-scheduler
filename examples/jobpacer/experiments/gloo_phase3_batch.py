@@ -80,7 +80,7 @@ SOURCE_SNAPSHOT_ROOTS = (
     ROOT / "examples/jobpacer/scripts/run_phase1.py",
     ROOT / "examples/jobpacer/runtime/runtime_worker.py",
     ROOT / "examples/jobpacer/analysis/runtime_results.py",
-    ROOT / "examples/jobpacer/analysis/phase3.py",
+    ROOT / "examples/jobpacer/analysis/phase3_results.py",
     ROOT / "examples/jobpacer/analysis/visualize_phase3.py",
     ROOT / "examples/jobpacer/runtime/runtime_adapter.py",
     ROOT / "examples/jobpacer/gpu/gpu_compute_profile.py",

@@ -53,7 +53,7 @@ SOURCE_PATHS = (
     ROOT / "examples/jobpacer/scripts",
     ROOT / "examples/jobpacer/experiments",
     ROOT / "examples/jobpacer/analysis/runtime_results.py",
-    ROOT / "examples/jobpacer/analysis/phase3.py",
+    ROOT / "examples/jobpacer/analysis/phase3_results.py",
     ROOT / "examples/jobpacer/paths.py",
     ROOT / "examples/jobpacer/runtime/comm_profile.py",
     ROOT / "examples/jobpacer/gloo/workloads.py",

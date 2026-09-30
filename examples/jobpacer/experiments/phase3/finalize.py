@@ -9,7 +9,7 @@ from examples.jobpacer.experiments.phase3.batch import (
     _canonical, _sha, _verify_bare_qualification, _verify_frozen_inputs,
     _write_json, source_snapshot,
 )
-from examples.jobpacer.analysis.phase3 import analyze_batch
+from examples.jobpacer.analysis.phase3_results import analyze_batch
 from examples.jobpacer.experiments.phase3.suite import ARMS, MECHANISM_PILOT_ARMS
 
 

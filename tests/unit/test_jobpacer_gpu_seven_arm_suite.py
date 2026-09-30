@@ -46,7 +46,7 @@ from examples.jobpacer.experiments.phase3.batch import (
     run_batch,
     source_snapshot,
 )
-from examples.jobpacer.analysis.phase3 import (
+from examples.jobpacer.analysis.phase3_results import (
     _dynamic_fifo_bypass,
     _formal_matrix_checks,
     _ltf_frontier_choice,
@@ -785,7 +785,7 @@ def test_plan_interruption_recovery_and_analysis_use_whole_paired_attempts(tmp_p
         "expected": {}, "expected_nodes": []})
     monkeypatch.setattr(runtime_results, "validate_results", lambda *args, **kwargs: {
         "status": "ok", "errors": []})
-    from examples.jobpacer.analysis.phase3 import analyze_batch
+    from examples.jobpacer.analysis.phase3_results import analyze_batch
     analysis = analyze_batch(batch_dir, bootstrap_samples=0)
     assert analysis["accepted_complete_blocks"] == 1
     assert analysis["attempted_runs"] == 8

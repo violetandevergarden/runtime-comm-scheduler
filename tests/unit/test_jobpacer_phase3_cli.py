@@ -70,7 +70,7 @@ def test_run_plan_only_creates_a_plan_and_never_calls_batch_executor(tmp_path, m
 
 def test_analyze_dispatch_never_calls_batch_executor(monkeypatch, capsys, tmp_path):
     batch_dir = tmp_path / "existing-batch"
-    from examples.jobpacer.analysis import phase3 as analysis_module
+    from examples.jobpacer.analysis import phase3_results as analysis_module
     monkeypatch.setattr(analysis_module, "analyze_batch", lambda *_args, **_kwargs: {
         "accepted_complete_blocks": 2, "planned_blocks": 3,
         "complete_formal_matrix": False, "validation_errors": [],

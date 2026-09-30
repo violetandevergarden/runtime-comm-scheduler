@@ -63,7 +63,7 @@ class _Task:
 class Outbound:
     """准备发出的信息"""
 
-    endpoint: int  # 现在就是目标rank
+    endpoint: int  # 目标rank
     kind: str
     payload: dict[str, Any]
 

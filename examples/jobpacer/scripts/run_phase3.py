@@ -212,7 +212,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "analyze":
         if args.bootstrap_samples < 0:
             parser.error("bootstrap samples must be non-negative")
-        from examples.jobpacer.analysis.phase3 import analyze_batch
+        from examples.jobpacer.analysis.phase3_results import analyze_batch
         try:
             analysis = analyze_batch(args.batch_dir, bootstrap_samples=args.bootstrap_samples,
                                      analysis_seed=args.analysis_seed)

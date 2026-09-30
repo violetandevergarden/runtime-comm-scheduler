@@ -364,7 +364,7 @@ old 和 raw-ordered 各注入一次 `binding_failure`。首次 old 故障复现�
 - Phase 3 父入口、直接 rank worker、NCCL 通信 profiling 和 GPU compute profiling 均检查 schema-v2 GPU DAG 合同；该合同要求输入显式列出每个 job 的 `application_terminals`。旧输入不转换成新语义。NCCL 集成继续覆盖旧线性/schema-v1 输入的前置拒绝。
 - 退役 `gpu_compute.py`、`CudaMatmulProgram` 和 `_prepare_dag_gpu_compute()`。所有 GPU DAG 计算仅通过 `GpuDagResources` 的输入绑定执行。compute profile 按输入 `compute_programs` 的精确签名匹配，只更新估计时长；移除了旧 `nominal_compute_repeats` 对 program repeats 的运行时覆盖。七臂生成器将每个 matmul 的 repeats 保存在该节点 program 中。
 - `workloads.py`、`workload_builder.py`、`plan_builder.py`、`replay_worker.py` 分别移入 `gloo/`。旧 Gloo `Workload` 映射和线性采样绑定移入 `gloo/runtime_adapter.py`；通用通信 profile 数据模型移入 `runtime/comm_profile.py`，Gloo Workload 应用层留在 `gloo/comm_profile.py`。
-- 共享路径工具移入 `examples/jobpacer/paths.py`。Phase 3 replay launcher 实现位于 `runtime/replay_launcher.py`；旧 Phase 3 与 compact-suite 批次实现移入 `experiments/`，GPU Phase 3 统计和证据校验位于 `analysis/phase3.py`，Phase 1.2 批次实现移入 `experiments/runner_batch.py`。`analysis/` 和 `diagnostics/` 不再导入 `scripts/`。
+- 共享路径工具移入 `examples/jobpacer/paths.py`。Phase 3 replay launcher 实现位于 `runtime/replay_launcher.py`；旧 Phase 3 与 compact-suite 批次实现移入 `experiments/`，GPU Phase 3 统计和证据校验位于 `analysis/phase3_results.py`，Phase 1.2 批次实现移入 `experiments/runner_batch.py`。`analysis/` 和 `diagnostics/` 不再导入 `scripts/`。
 - 为保留 NCCL 多 communicator 的真实检查，新建 `gpu-v2-multi-group.json` schema-v2 DAG smoke。历史 GPU-linear 输入、旧报告和既有结果未改写。源码目录与源码快照清单已同步；旧 source digest 的资格不能用于当前树。本轮没有创建/执行正式采集矩阵。
 
 本轮验证：针对性回归 107 passed；完整单元测试 315 passed、3 skipped（checkout 不包含历史迁移 map/结果夹具）；Gloo 双 rank runtime 集成 47 passed；双卡 RTX 4090 NCCL 语义套件 7 passed；六个七臂子命令、公开 Phase 3/Phase 1–3 命令的 `--help` 检查通过。初次全量 `pytest -q` 曾递归收集 `benchmark/phase3/results/**/source_snapshot/tests` 下的历史源码副本并触发重复模块名；`pyproject.toml` 现将默认 `testpaths` 限定为 `tests/`，历史快照保持原样。最终 `PYTHONPATH=src:. .venv/bin/python -m pytest -q` 为 327 passed、52 skipped，33.82 秒。没有执行正式实验矩阵；最终 `git diff --check` 与源码扫描通过。
@@ -381,7 +381,7 @@ old 和 raw-ordered 各注入一次 `binding_failure`。首次 old 故障复现�
 
 ## 24. 2026-09-30 将七臂 GPU study 命名为 Phase 3 实验
 
-用户入口由 `scripts/run_gpu_seven_arm.py` 改为 `scripts/run_phase3.py`；原六个子命令及各自执行语义保持不变。实现包从 `experiments/seven_arm/` 移至 `experiments/phase3/`，批次分析从 `analysis/seven_arm.py` 移至 `analysis/phase3.py`。`runtime/replay_launcher.py` 继续负责单次底层 replay，因此顶层 Phase 3 实验命令与 replay CLI 含义分开。原 CPU/Gloo Phase 3 批次模块另改名为 `experiments/gloo_phase3_batch.py`，与 GPU Phase 3 study 区分。七臂作为当前 Phase 3 study 的 arm 设计保留在 schema、manifest 和历史结果术语中。源码快照和当前操作说明已同步。
+用户入口由 `scripts/run_gpu_seven_arm.py` 改为 `scripts/run_phase3.py`；原六个子命令及各自执行语义保持不变。实现包从 `experiments/seven_arm/` 移至 `experiments/phase3/`，批次分析从 `analysis/seven_arm.py` 移至 `analysis/phase3_results.py`。`runtime/replay_launcher.py` 继续负责单次底层 replay，因此顶层 Phase 3 实验命令与 replay CLI 含义分开。原 CPU/Gloo Phase 3 批次模块另改名为 `experiments/gloo_phase3_batch.py`，与 GPU Phase 3 study 区分。七臂作为当前 Phase 3 study 的 arm 设计保留在 schema、manifest 和历史结果术语中。源码快照和当前操作说明已同步。
 
 验证：`PYTHONPATH=src:. .venv/bin/python -m examples.jobpacer.scripts.run_phase3 --help` 显示六个实验子命令；`gloo_phase3_batch --help`、`compileall` 和 `git diff --check` 通过；`PYTHONPATH=src:. .venv/bin/python -m pytest -q` 为 327 passed、52 skipped（36.05 秒）。当前 Python 源码、测试与操作说明不再调用旧入口名或旧包路径；历史过程记录保留旧名称作为当时状态。
 
@@ -390,5 +390,11 @@ old 和 raw-ordered 各注入一次 `binding_failure`。首次 old 故障复现�
 应用户要求，将 `runtime/gloo_runtime_adapter.py` 移回 `gloo/runtime_adapter.py` 并恢复原模块名。通用 DAG 适配器仍为 `runtime/runtime_adapter.py`；两者分别负责旧 Gloo workload 映射与 DAG schema/runtime 绑定。Phase 3 worker、replay launcher、测试和源码快照均引用新的 Gloo 路径。
 
 验证：完整测试为 327 passed、52 skipped（38.35 秒）；`compileall` 与 `git diff --check` 通过，代码和测试不再引用 `runtime.gloo_runtime_adapter`。
+
+## 26. 2026-09-30 重命名 Phase 3 结果分析模块
+
+按用户要求将 `analysis/phase3.py` 改为 `analysis/phase3_results.py`，并同步更新批次源码快照、finalize、CLI、测试和文档引用。模块仍只读取 replay 结果并进行校验与统计，不启动 replay。
+
+验证：`compileall`、`git diff --check` 通过；完整测试为 327 passed、52 skipped（31.43 秒）。
 
 验证：`PYTHONPATH=src:. .venv/bin/python -m pytest -q` 为 327 passed、52 skipped（34.65 秒）；最终 `compileall`、Phase 2 `--help`、Python 调用路径扫描与 `git diff --check` 通过。全仓初次收集发现两个单元测试仍从旧 `gloo` 包导入 `replay_worker`；已更新为 `runtime.replay_worker`，随后完整测试通过。
