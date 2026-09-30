@@ -1,7 +1,8 @@
-"""Run a small two-GPU NCCL mechanism check for the bare-ordered contract."""
+"""Repeatable two-GPU NCCL mechanism diagnostic for bare-ordered execution."""
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
@@ -231,3 +232,26 @@ def run_mechanism_check(output: Path, *, message_bytes: int = 1 << 20,
     path = output / "mechanism-summary.json"
     path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     return {"status": "ok", "summary": str(path), "source_sha256": source_digest}
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--message-bytes", type=int, default=1 << 20)
+    parser.add_argument("--repeats", type=int, default=5)
+    parser.add_argument("--warmup", type=int, default=5)
+    parser.add_argument("--timeout", type=float, default=30.0)
+    args = parser.parse_args(argv)
+    try:
+        result = run_mechanism_check(
+            args.output, message_bytes=args.message_bytes, repeats=args.repeats,
+            warmup=args.warmup, timeout=args.timeout,
+        )
+    except (FileExistsError, RuntimeError, ValueError) as exc:
+        parser.error(str(exc))
+    print(json.dumps(result, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

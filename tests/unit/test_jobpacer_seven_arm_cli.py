@@ -90,6 +90,11 @@ def test_source_snapshot_hashes_new_implementation_and_entrypoint_only():
     assert "examples/jobpacer/experiments/seven_arm/batch.py" in paths
     assert "examples/jobpacer/experiments/seven_arm/checks.py" in paths
     assert "examples/jobpacer/experiments/seven_arm/suite.py" in paths
+    assert "examples/jobpacer/diagnostics/bare_nccl_mechanism.py" in paths
+    assert "examples/jobpacer/diagnostics/gpu_measurement.py" in paths
+    assert "examples/jobpacer/diagnostics/gpu_recovery.py" in paths
+    assert "examples/jobpacer/diagnostics/layered_fifo_pilot.py" in paths
+    assert "examples/jobpacer/diagnostics/interleaved_isolated.py" in paths
     assert "examples/jobpacer/experiments/__init__.py" in paths
     assert "examples/jobpacer/gpu/gpu_dag_resources.py" in paths
     assert "examples/jobpacer/scripts/run_gpu_seven_arm.py" in paths

@@ -115,7 +115,7 @@ def check_status(suite_manifest_path: Path, *,
 def run_measurement_check(action: str, *, output: Path,
                           suite_manifest: Path | None = None,
                           pairs: int = 5, timeout: float = 60.0) -> dict[str, Any]:
-    from examples.jobpacer.experiments.seven_arm import measurement
+    from examples.jobpacer.diagnostics import gpu_measurement as measurement
 
     if action == "plan":
         if suite_manifest is None:
@@ -129,7 +129,7 @@ def run_measurement_check(action: str, *, output: Path,
 
 
 def run_recovery_check(suite_manifest: Path, output: Path) -> dict[str, Any]:
-    from examples.jobpacer.experiments.seven_arm.recovery import run
+    from examples.jobpacer.diagnostics.gpu_recovery import run
 
     return run(suite_manifest.resolve(), output.resolve())
 
@@ -137,7 +137,7 @@ def run_recovery_check(suite_manifest: Path, output: Path) -> dict[str, Any]:
 def run_mechanism_check(output: Path, *, message_bytes: int = 1 << 20,
                         repeats: int = 5, warmup: int = 5,
                         timeout: float = 30.0) -> dict[str, Any]:
-    from examples.jobpacer.experiments.seven_arm.mechanism import run_mechanism_check as run
+    from examples.jobpacer.diagnostics.bare_nccl_mechanism import run_mechanism_check as run
 
     return run(output, message_bytes=message_bytes, repeats=repeats,
                warmup=warmup, timeout=timeout)

@@ -2,7 +2,9 @@
 
 import pytest
 
-from examples.jobpacer.scripts.batch_runner import scenario_matrix
+from examples.jobpacer.scripts import runner_batch as batch_runner
+
+scenario_matrix = batch_runner.scenario_matrix
 
 
 def test_capacity_scan_matrix_has_bare_and_eight_static_capacity_scenarios():
@@ -33,3 +35,9 @@ def test_srjf_requires_k1_and_unbounded_and_rejects_unknown_capacity():
         scenario_matrix("srjf", [2, 3])
     with pytest.raises(ValueError, match="unique values"):
         scenario_matrix("srjf", [1, 4, 0])
+
+
+def test_phase1_2_batch_runner_root_tracks_its_internal_package_location():
+    from pathlib import Path
+
+    assert batch_runner.ROOT == Path(batch_runner.__file__).resolve().parents[3]

@@ -203,7 +203,7 @@ Visualizer 只接受完整 batch manifest 列出的 schema-v2 trace，并拒绝�
 | `scripts/run_phase2.py` | 启动各 rank、回收超时进程、汇总和验证输出 |
 | `runtime/replay_worker.py` | 单 rank ProcessGroup、job 线程、scheduler 和 collective 执行 |
 | `scripts/run_phase1_2_experiments.py` | Phase 1/2 的批次编排入口（原 benchmark 下的 `run_experiments.py`） |
-| `scripts/batch_runner.py` | Phase 1/2 容量、轮询和优先级矩阵执行与分析 |
+| `scripts/runner_batch.py` | Phase 1/2 容量、轮询和优先级矩阵的执行与分析实现 |
 | `analysis/visualize.py` | Phase 1/2 历史 batch 的 trace 读取与绘图 |
 | `analysis/visualize_phase3.py` | Phase 3 两类对比图：suite 总览及各多策略批次的 makespan、时间线 SVG |
 
@@ -258,13 +258,37 @@ PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
 | `scripts/run_phase3.py` | CLI、输入预检、rank 子进程启动/回收 |
 | `scripts/run_experiments.py` | 串行运行线性/DAG pilot，保存 manifest、原始 JSON 和 summary CSV |
 | `scripts/run_compact_suite.py` | compact suite 预览、分阶段编排和语义分类归档 |
-| `scripts/run_interleaved_isolated.py` | shared/isolated 交错诊断批次 |
 | `workloads.py`、`runtime/plan_builder.py` | Phase 2 线性输入和静态 Plan；新 runtime 的静态线性桥接只在 adapter 中使用 |
 
 Phase 1/2 批次入口现位于 `scripts/run_phase1_2_experiments.py`，内部矩阵执行器为
-`scripts/batch_runner.py`；实验输入和结果索引见 [`benchmark/phase1.2`](../../benchmark/phase1.2/README.md)。
+`scripts/runner_batch.py`；实验输入和结果索引见 [`benchmark/phase1.2`](../../benchmark/phase1.2/README.md)。
 Phase 3 的 compact suite 输出必须放在 `benchmark/phase3/results/suites/<suite-id>/`，并由入口按语义类别写入
 相应场景结果目录；suite 执行说明见 [`benchmark/phase3/experiments/suites/README.md`](../../benchmark/phase3/experiments/suites/README.md)。
+
+## 可重复诊断
+
+诊断脚本保存在 `diagnostics/`，用于采集机制、设备干扰、顺序敏感性、shared/isolated 干扰和恢复彩排证据；它们不属于性能矩阵
+的实验臂。固定不变量由 `tests/` 覆盖。七臂测量、恢复和机制诊断仍通过统一入口选择，由诊断模块产出独立
+证据，再由七臂 readiness 检查决定是否满足实验合同。
+
+```bash
+# NCCL bare 机制证据；要求两张可见 CUDA GPU
+PYTHONPATH=src:. python -m examples.jobpacer.diagnostics.bare_nccl_mechanism \
+  --output /tmp/jobpacer-bare-mechanism
+
+# 计算与通信干扰诊断；输出独立的 rank 记录和汇总
+PYTHONPATH=src:. python -m examples.jobpacer.diagnostics.gpu_interference_profile \
+  --output /tmp/jobpacer-gpu-interference
+
+# shared/isolated 交错诊断批次
+PYTHONPATH=src:. python -m examples.jobpacer.diagnostics.interleaved_isolated --help
+
+# 默认/反转 job 起始顺序敏感性诊断
+PYTHONPATH=src:. python -m examples.jobpacer.diagnostics.layered_fifo_pilot --help
+```
+
+`python -m examples.jobpacer.scripts.run_gpu_seven_arm check --kind measurement|recovery|mechanism` 显式启动对应诊断；`check --status` 只读取已有
+证据。历史 CPU/Gloo 控制路径诊断入口已退役，其源代码快照保存在 [`JobPacer 历史归档`](../../docs/JobPacer/archive/phase3-control-path-diagnostic-20260925/README.md)。
 
 正式库入口分别为 `runtime_comm_scheduler.runtime` 和 `runtime_comm_scheduler.dag`；包根
 `runtime_comm_scheduler` 保留旧 Plan/TaskKey 等历史导出。

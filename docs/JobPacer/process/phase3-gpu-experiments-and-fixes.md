@@ -467,7 +467,7 @@ G1–G3 默认最小为 **178 replay**（10+30+30+18+90），不含 profile、G0
 
 保留现有入口职责：`run_phase1/2/3.py` 单 replay，`run_comm_profile.py` 校准。拟新增一个薄的 GPU 阶段编排入口 `examples/jobpacer/scripts/run_phase3_gpu_experiments.py`，复用 `run_experiments.py` 的命令/manifest/顺序逻辑，不复制整套 batch runner。
 
-不要把硬编码 Gloo 的 `run_control_path_diagnostic.py` 默默切成 NCCL；如抽公共分析/配对能力，保留 E/F 原命令与输出含义。
+硬编码 Gloo 的 E/F 控制路径诊断入口已退役；历史源码快照见[归档说明](../archive/phase3-control-path-diagnostic-20260925/README.md)。保留 Gloo 线性 replay 不要求保留这套专项诊断，也不要把它改成 NCCL runner。
 
 拟新增阶段接口（只有实现并通过测试后才可执行）：
 

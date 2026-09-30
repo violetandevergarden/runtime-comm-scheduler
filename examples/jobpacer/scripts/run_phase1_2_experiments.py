@@ -517,7 +517,7 @@ def main() -> int:
                 parser.error(f"invalid --poll-sensitivity-pair {pair!r}; expected CURRENT:BASELINE")
             pairs.append((current, baseline))
         try:
-            from examples.jobpacer.scripts.batch_runner import run_poll_sensitivity_batch
+            from examples.jobpacer.scripts.runner_batch import run_poll_sensitivity_batch
 
             batch = run_poll_sensitivity_batch(
                 source_batch=args.poll_sensitivity_source_batch,
@@ -549,7 +549,7 @@ def main() -> int:
         if not matrix_experiment:
             parser.error("--capacity-selection requires --experiment srjf")
         try:
-            from examples.jobpacer.scripts.batch_runner import run_experiment
+            from examples.jobpacer.scripts.runner_batch import run_experiment
 
             batch = run_experiment(
                 experiment=matrix_experiment,

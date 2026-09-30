@@ -66,6 +66,38 @@ def test_two_rank_phase3_collectives_have_matching_group_order(policy, tmp_path)
 
 @pytest.mark.skipif(os.environ.get("RUN_JOBPACER_RUNTIME_NCCL") != "1",
                     reason="set RUN_JOBPACER_RUNTIME_NCCL=1 to run the dual-GPU NCCL test")
+def test_two_rank_bare_uses_common_layered_order_and_correct_collectives(tmp_path):
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "src"), str(ROOT), env.get("PYTHONPATH", "")))
+    env["NCCL_LAUNCH_ORDER_IMPLICIT"] = "1"
+    output_path = tmp_path / "phase3-bare-multi-group.json"
+    dag_path = ROOT / "benchmark/phase3/experiments/dag-semantics/smoke/multi-group.json"
+    command = [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+               "--dag", str(dag_path), "--comm-engine", "bare", "--policy", "bare",
+               "--backend", "nccl", "--world-size", "2", "--warmup-iterations", "1",
+               "--setup-timeout", "60", "--timeout", "30", "--output", str(output_path)]
+    result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True,
+                            text=True, timeout=90, check=False)
+    assert result.returncode == 0, (
+        f"bare NCCL replay failed ({result.returncode})\n"
+        f"stdout:\n{result.stdout[-6000:]}\nstderr:\n{result.stderr[-6000:]}"
+    )
+    payload = json.loads(output_path.read_text())
+    ranks = payload["ranks"]
+    assert payload["validation"]["all_collectives_correct"] is True
+    assert payload["validation"]["rank_count"] == 2
+    assert len({rank["device_uuid"] for rank in ranks}) == 2
+    for rank in ranks:
+        assert rank["comm_engine"] == "bare"
+        assert rank["bare_contract"] == "bare-ordered-v2-layered-round-robin"
+        assert rank["nccl_launch_order_implicit"] == "1"
+        assert rank["bare_launch_sequence"] == rank["bare_default_order"]
+        assert rank["completion_source"] == "cuda_event_query_after_backend_work_wait"
+    assert ranks[0]["bare_launch_sequence"] == ranks[1]["bare_launch_sequence"]
+
+
+@pytest.mark.skipif(os.environ.get("RUN_JOBPACER_RUNTIME_NCCL") != "1",
+                    reason="set RUN_JOBPACER_RUNTIME_NCCL=1 to run the dual-GPU NCCL test")
 def test_two_rank_gpu_dag_waits_for_compute_event_before_dependent_comm(tmp_path):
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "src"), str(ROOT), env.get("PYTHONPATH", "")))

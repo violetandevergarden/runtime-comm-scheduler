@@ -4,6 +4,8 @@
 
 七臂操作统一从仓库根目录使用 `python -m examples.jobpacer.scripts.run_gpu_seven_arm`：顶层命令为 `prepare`、`qualify`、`check`、`run`、`analyze`、`finalize`。准备动作使用 `prepare generate/freeze/order/preview`；`run --plan-only` 只建批次计划，`run --resume` 恢复同一批次；pilot 封存和 readiness 封存分别使用 `finalize pilot`、`finalize formal`。
 
+2026-09-30 后续目录整理将测量、恢复、bare 机制、层序敏感性等实现移入 `examples/jobpacer/diagnostics/`，退役 CPU/Gloo 控制路径诊断入口并归档其源码，且将诊断目录加入源码快照。旧 revision-1 审计仍保留作历史证据，但其源码摘要不匹配当前树，不能用于当前正式放行；按当前源码重新审核。
+
 `check --status --suite-manifest PATH` 只读现有资格与放行证据；测量、恢复和 NCCL mechanism 诊断必须显式选择 `check --kind ...`。`analyze` 只分析已有批次。正式数据仍未放行，本记录中的 D1 门槛结论不变；这些入口不自动封存或启动正式采集。
 
 ## 当前结论

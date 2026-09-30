@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from examples.jobpacer.scripts.run_layered_fifo_pilot import _head_wait
+from examples.jobpacer.diagnostics.layered_fifo_pilot import _head_wait
 
 
 def test_pilot_head_wait_reports_uninstrumented_old_path_as_missing():

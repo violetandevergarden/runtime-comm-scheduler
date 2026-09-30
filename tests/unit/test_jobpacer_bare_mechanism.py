@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import torch
 
-from examples.jobpacer.experiments.seven_arm import mechanism
+from examples.jobpacer.diagnostics import bare_nccl_mechanism as mechanism
 
 
 def test_completion_serial_preserves_first_a_completion_observation(monkeypatch):

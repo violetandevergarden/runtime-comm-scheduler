@@ -366,7 +366,7 @@ GPU 可能出现相反结果：通信更快使固定 host 开销占比更高；�
 | P1 | 线性 precreate 用 `torch.full`，初始化在 GPU 上可能异步 | 初始化必须在 release 前完成，或有明确依赖；准备与内存成本单列 |
 | P1 | `run_phase3._start()` 按 rank 覆盖 `CUDA_VISIBLE_DEVICES`，子进程 LOCAL_RANK 固定为 0 | 检查是否符合目标机器/集群分配的可见设备集合；不能默认物理 GPU 0/1 就是获准使用的两卡 |
 | P1 | DAG compute future 返回就解锁后继 | 真实 GPU compute 要用实际完成事件或已定义的设备依赖，不能把 kernel enqueue 当完成 |
-| P1 | CPU 诊断入口硬编码 Gloo/world size 2 | `run_control_path_diagnostic.py` 不能直接当 GPU 批处理入口；先做明确的 runner 适配 |
+| P1 | CPU 诊断入口硬编码 Gloo/world size 2 | 该专项诊断入口已退役，不能直接当 GPU 批处理入口；[历史源码快照](../archive/phase3-control-path-diagnostic-20260925/README.md)保留原实现 |
 | P1 | 线性 LTF 评分不一致 | 在进入 LTF 性能矩阵前统一契约、测试及配置摘要 |
 
 旧 [`tests/gpu/test_cuda_semantics.py`](../../../tests/gpu/test_cuda_semantics.py) 可借鉴测试思想，但其中使用旧 scheduler，fixture 为 world size 1；通过也不能替代新 runtime 双 rank NCCL 验收。
@@ -568,6 +568,6 @@ manifest 除输入、命令、退出码、哈希外，还需包括源码快照/p
 - [Phase 3.1 CPU 验收](phase3.1.md)、[Phase 3.2 CPU/DAG 验收](phase3.2.md)。
 - [Phase 3 pilot/screening/compact 及勘误](phase3experiments.md)、[A–F 开销结果](phase3-runtime-overhead-20260924.md)。
 - [E2 分段复核及 DECLARE 锁等待](../../../benchmark/phase3/results/runtime-overhead/instrumentation/20260925-E1-declare-send-lock/followup-analysis.md)。
-- [F4 统计与原始批次](../../../benchmark/phase3/results/runtime-overhead/control-path/20260925-F-declaration-mode/application-L0-L1/)、[F4 汇总代码](../../../examples/jobpacer/scripts/run_control_path_diagnostic.py)。
+- [F4 统计与原始批次](../../../benchmark/phase3/results/runtime-overhead/control-path/20260925-F-declaration-mode/application-L0-L1/)、[F4 历史汇总代码快照](../archive/phase3-control-path-diagnostic-20260925/README.md)。
 
 以上本地 raw/派生统计链接依赖当前工作区保留的忽略目录；历史测试数和耗时以其原批次为准。本文新增结论中的代码差距属于 2026-09-26 阅读现状所得，未声称已经修复或 GPU 实测复现。

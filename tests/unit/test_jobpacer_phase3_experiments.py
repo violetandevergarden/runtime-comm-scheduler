@@ -16,8 +16,7 @@ from examples.jobpacer.runtime.runtime_adapter import apply_dag_profile, load_da
 from examples.jobpacer.scripts.run_experiments import _attach_isolated, _command, _mechanism_row, _paired_rows
 from examples.jobpacer.scripts import run_experiments as experiment_batch
 from examples.jobpacer.scripts import run_phase3 as phase3_replay
-from examples.jobpacer.scripts import run_control_path_diagnostic as control_path_batch
-from examples.jobpacer.scripts import run_interleaved_isolated as isolated_batch
+from examples.jobpacer.diagnostics import interleaved_isolated as isolated_batch
 from examples.jobpacer.scripts import run_compact_suite as compact_suite
 from examples.jobpacer.scripts.run_compact_suite import (
     _check_lookahead_evidence, _check_mechanism_evidence, _suite, _validate_profile,
@@ -262,88 +261,6 @@ def test_schema_v2_dag_arms_share_runtime_worker_and_keep_raw_ordered_explicit()
     assert command[command.index("--dag") + 1] == "fork-join.json"
     assert command[command.index("--compute-profile") + 1] == "compute.json"
 
-    workloads = {"4KiB-32x": Path("4k.json"), "1MiB-32x": Path("1m.json")}
-    control = control_path_batch._plan(6200, 5, 91, workloads)
-    assert len(control) == 20
-    for repeat in range(5):
-        block = [item for item in control if item["repeat"] == repeat]
-        assert {(item["workload_name"], item["arm"]) for item in block} == {
-            (workload, arm) for workload in workloads for arm in ("old-fifo", "new-static_fifo")
-        }
-        assert len({tuple(item["block_order"]) for item in block}) == 1
-
-    optimization = control_path_batch._plan(6200, 5, 91, workloads, stage="E3")
-    assert len(optimization) == 20
-    assert {item["arm"] for item in optimization} == {"new-poll", "new-wakeup"}
-    assert {item["completion_wakeup_on_submit"] for item in optimization} == {False, True}
-    for repeat in range(5):
-        block = [item for item in optimization if item["repeat"] == repeat]
-        assert {(item["workload_name"], item["arm"]) for item in block} == {
-            (workload, arm) for workload in workloads for arm in ("new-poll", "new-wakeup")
-        }
-        assert len({tuple(item["block_order"]) for item in block}) == 1
-
-    declaration_workload = {"4KiB-32x": Path("4k.json")}
-    for stage, observation in (("F1", "minimal"), ("F2", "diagnostic"),
-                               ("F3", "minimal")):
-        stage_workload = ({"1MiB-32x": Path("1m.json")} if stage == "F3"
-                          else declaration_workload)
-        declaration = control_path_batch._plan(
-            6300, 5, 20260925, stage_workload, stage=stage)
-        assert len(declaration) == 10
-        assert {item["arm"] for item in declaration} == {"before-producer", "on-submit"}
-        assert {item["observation_mode"] for item in declaration} == {observation}
-        for repeat in range(5):
-            block = [item for item in declaration if item["repeat"] == repeat]
-            assert {item["arm"] for item in block} == {"before-producer", "on-submit"}
-            assert len({tuple(item["block_order"]) for item in block}) == 1
-            order = [entry.split(":", 1)[1] for entry in block[0]["block_order"]]
-            assert order in (["before-producer", "on-submit"],
-                             ["on-submit", "before-producer"])
-
-    f4_workloads = {"L0-balanced": Path("L0.json"),
-                    "L1-head-misalignment": Path("L1.json")}
-    f4 = control_path_batch._plan(
-        5300, 3, 20260925, f4_workloads, stage="F4",
-        seed_blocks=(5300, 5301, 5302, 5303, 5304))
-    assert len(f4) == 60
-    assert {item["observation_mode"] for item in f4} == {"minimal"}
-    for workload in f4_workloads:
-        for seed in range(5300, 5305):
-            for repeat in range(3):
-                block = [item for item in f4 if item["workload_name"] == workload
-                         and item["seed"] == seed and item["repeat"] == repeat]
-                assert {item["arm"] for item in block} == {"before-producer", "on-submit"}
-                assert block[0]["block_order"] == block[1]["block_order"]
-
-    synthetic_summary = [
-        {"workload": "L0", "seed": 1, "repeat": repeat, "arm": arm,
-         "status": "ok", "makespan_s": seconds}
-        for repeat in range(3)
-        for arm, seconds in (("before-producer", 1 + repeat / 10), ("on-submit", 0.9 + repeat / 10))
-    ]
-    pairs, pair_stats, seed_rows = control_path_batch._paired_declaration_rows(
-        synthetic_summary, ("L0",), (1,), 3)
-    assert len(pairs) == 3
-    assert pair_stats[0]["successful_repeat_pairs"] == 3
-    assert seed_rows[0]["candidate_minus_baseline_median_ms"] == pytest.approx(-100)
-
-    synthetic_loaded = []
-    for arm, value in (("before-producer", 0.1), ("on-submit", 0.1)):
-        synthetic_loaded.append((
-            {"run_id": arm, "workload_name": "L0", "seed": 1, "repeat": 0,
-             "arm": arm},
-            {"ranks": [{"rank": 0, "jobs": [{"job_id": "job-0",
-                                                   "compute_samples_s": {"comm-0/producer": value}}]}]},
-            Path("unused.json"),
-        ))
-    sample_pairs = control_path_batch._compute_sample_pair_rows(synthetic_loaded, {"L0": 1})
-    assert sample_pairs == [{"workload": "L0", "seed": 1, "repeat": 0,
-                             "sample_count": 1, "mismatch_count": 0,
-                             "expected_sample_count": 1,
-                             "sample_count_matches_expected": True,
-                             "samples_match": True, "status": "ok"}]
-
     command = _command(
         Namespace(dag=None, workload="chain.json", backend="gloo", world_size=2,
                   epoch=6300, compute_jitter=0.0, wait_budget_s=0.02,
@@ -401,40 +318,6 @@ def test_task_timing_rows_export_common_admission_and_completion_boundaries():
     assert rows[0]["binding_create_us"] == 5
     assert rows[0]["completion_probe_count"] == 4
     assert rows[0]["declaration_mode"] == "before-producer"
-
-
-def test_declaration_segment_summary_reduces_inside_each_run_and_clock_domain():
-    tasks = [
-        {"run_id": "r0", "rank": 0, "application_wait_return_to_next_declare_start_us": 3,
-         "previous_wait_return_to_next_submit_call_us": 9},
-        {"run_id": "r0", "rank": 0, "application_wait_return_to_next_declare_start_us": 5,
-         "previous_wait_return_to_next_submit_call_us": 11},
-        {"run_id": "r0", "rank": 1, "application_wait_return_to_next_declare_start_us": 7,
-         "previous_wait_return_to_next_submit_call_us": 12},
-    ]
-    coordinator = [
-        {"run_id": "r0", "candidate_ready_after_capacity_release_us": 30},
-        {"run_id": "r0", "candidate_ready_after_capacity_release_us": 50},
-    ]
-    rows = control_path_batch._declaration_segment_rows(tasks, coordinator)
-    rank0 = next(row for row in rows if row["rank"] == 0)
-    central = next(row for row in rows if row["scope"] == "coordinator_clock")
-    assert rank0["application_wait_return_to_next_declare_start_us_median_us"] == 4
-    assert rank0["previous_wait_return_to_next_submit_call_us_p90_us"] == 11
-    assert central["candidate_ready_after_capacity_release_us_median_us"] == 40
-
-    paired, statistics_rows = control_path_batch._paired_declaration_segment_rows(
-        [
-            {"run_id": "b0", "scope": "rank_local", "rank": 0,
-             "wait_us_median_us": 10, "wait_us_p90_us": 12},
-            {"run_id": "d0", "scope": "rank_local", "rank": 0,
-             "wait_us_median_us": 7, "wait_us_p90_us": 9},
-        ],
-        [{"run_id": "b0", "repeat": 0, "arm": "before-producer"},
-         {"run_id": "d0", "repeat": 0, "arm": "on-submit"}],
-    )
-    assert paired[0]["on_submit_minus_before_median_us"] == -3
-    assert statistics_rows[0]["median_delta_us"] == -3
 
 
 def test_coordinator_instrumentation_exports_measured_policy_duration():

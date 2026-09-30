@@ -49,6 +49,7 @@ SOURCE_PATHS = (
     ROOT / "src/runtime_comm_scheduler",
     ROOT / "examples/jobpacer/runtime",
     ROOT / "examples/jobpacer/gpu",
+    ROOT / "examples/jobpacer/diagnostics",
     ROOT / "examples/jobpacer/scripts",
     ROOT / "examples/jobpacer/experiments",
     ROOT / "examples/jobpacer/analysis/runtime_results.py",

@@ -64,24 +64,32 @@ def _worker(rank: int, port: int, output: str) -> None:
         dist.destroy_process_group()
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
-    if args.output.exists():
-        parser.error("refusing to overwrite output")
-    if torch.cuda.device_count() != 2:
-        parser.error("exactly two visible GPUs required")
-    args.output.mkdir(parents=True)
+def run_diagnostic(output: Path) -> dict[str, object]:
+    if output.exists():
+        raise FileExistsError(f"refusing to overwrite output: {output}")
+    if not torch.cuda.is_available() or torch.cuda.device_count() != 2:
+        raise RuntimeError("exactly two visible CUDA devices are required")
+    output.mkdir(parents=True)
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
-    mp.spawn(_worker, args=(port, str(args.output.resolve())), nprocs=2, join=True)
-    ranks = [json.loads((args.output / f"rank-{rank}.json").read_text()) for rank in range(2)]
+    mp.spawn(_worker, args=(port, str(output.resolve())), nprocs=2, join=True)
+    ranks = [json.loads((output / f"rank-{rank}.json").read_text()) for rank in range(2)]
     report = {"passed": all(row["numeric"] for rank in ranks for row in rank["samples"]),
               "ranks": ranks, "warmup_per_configuration": 2, "repeats": 5,
               "interpretation": "device duration includes resource interference; concurrent submission does not prove kernel overlap"}
-    (args.output / "interference.json").write_text(json.dumps(report, indent=2) + "\n")
+    (output / "interference.json").write_text(json.dumps(report, indent=2) + "\n")
+    return report
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args(argv)
+    try:
+        report = run_diagnostic(args.output)
+    except (FileExistsError, RuntimeError) as exc:
+        parser.error(str(exc))
     print(json.dumps({"passed": report["passed"], "output": str(args.output)}))
     return 0 if report["passed"] else 1
 

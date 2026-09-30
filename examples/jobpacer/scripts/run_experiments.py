@@ -89,9 +89,8 @@ SOURCE_SNAPSHOT_ROOTS = (
     ROOT / "examples/jobpacer/workloads.py",
     ROOT / "examples/jobpacer/comm_profile.py",
     ROOT / "examples/jobpacer/scripts/run_experiments.py",
-    ROOT / "examples/jobpacer/scripts/run_control_path_diagnostic.py",
     ROOT / "examples/jobpacer/scripts/run_compact_suite.py",
-    ROOT / "examples/jobpacer/scripts/run_interleaved_isolated.py",
+    ROOT / "examples/jobpacer/diagnostics/interleaved_isolated.py",
 )
 
 
