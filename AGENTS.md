@@ -21,7 +21,7 @@
 - `src/runtime_comm_scheduler/runtime/`：新 runtime 核心，包括模型、coordinator、policy、本地执行、控制通道和观测。
 - `src/runtime_comm_scheduler/dag/`：runtime 上层的图模型、校验和节点推进；不把计算调度塞入 coordinator。
 - `examples/jobpacer/runtime/runtime_adapter.py`：workload 到新模型的映射。
-- `examples/jobpacer/gpu/`：GPU 工作量规格、CUDA compute/DAG 资源、compute profile 与可见设备辅助；`gpu_workload.py` 中的线性输入解析保留作历史兼容。
+- `examples/jobpacer/gpu/`：GPU DAG 的 CUDA compute/resources、compute profile 与可见设备辅助；GPU 工作量由 DAG execution schema 描述。
 - `examples/jobpacer/runtime/runtime_worker.py`、`examples/jobpacer/scripts/run_phase3.py`：新 runtime 的 rank harness 与启动、汇总入口。
 - `tests/unit/runtime/`、`tests/integration/test_runtime_replay.py`、`tests/integration/test_runtime_replay_nccl.py`：新 runtime 的单元、Gloo 与 opt-in 双卡 NCCL 检查。
 - 包根目录的 `plan.py`、`scheduler.py`、`work.py` 等及旧 replay 属于历史路径，仍可用于基线和回归。
@@ -30,7 +30,7 @@
 
 ## 实现范围与原则
 
-当前通信核心仍限定 all-reduce、单个全局通信容量（`max_inflight=1`）和中心化 coordinator。线性 workload 与 Phase 3.2 DAG 共用新 runtime；CPU/Gloo、GPU/NCCL、DAG 设备完成及性能收益分别验收。已有双卡成功记录不覆盖所有故障路径。
+当前通信核心仍限定 all-reduce、单个全局通信容量（`max_inflight=1`）和中心化 coordinator。Gloo 保留线性 workload 与 DAG；GPU/NCCL 只接受 DAG 输入。CPU/Gloo、GPU/NCCL、DAG 设备完成及性能收益分别验收。已有双卡成功记录不覆盖所有故障路径。
 
 - 根据实际调用链和失败路径修复问题，不只针对一个示例补丁。
 - 保持任务规范、策略估计和本地执行绑定分离。tensor、ProcessGroup、CUDA event、closure 留在本地。
@@ -88,16 +88,16 @@ git diff --check
 
 按改动风险选择验证范围。协议、线程、完成或关闭流程修改必须检查相应异常路径；需要真实通信的结论不能只靠 mock。Socket 被沙箱拒绝属于环境限制，按工具权限流程处理，不改代码绕过、不报告为逻辑回归。GPU 不可用或路径未验收时如实标注，不默认切换到其他设备或扩大实验规模。
 
-GPU rank 按继承的 `CUDA_VISIBLE_DEVICES` 命名空间映射到逻辑 `cuda:rank`；不要覆盖分配的可见设备或停止其他用户进程。H lane 的 host 物理完成与 S lane 的 consumer stream 依赖、末端设备完成须分别核验；producer 初始化、warmup 与独立 compute 之间也必须建立跨 stream 依赖。
+GPU rank 按继承的 `CUDA_VISIBLE_DEVICES` 命名空间映射到逻辑 `cuda:rank`；不要覆盖分配的可见设备或停止其他用户进程。GPU DAG 的 producer 初始化、warmup、compute 与 consumer stream 依赖须明确建立；host 完成等待和设备物理完成分别核验。已退役的 GPU 线性 S lane 不属于当前执行路径。
 
 ## 实验与文档
 
 - 静态/动态策略的主要对照共用新 runtime 执行路径；StaticOrder 队首未 eligible 时必须等待，不能动态跳过。
-- 比较时固定 workload、profiling 估计、扰动样本、group 成员、backend、并发限制及计算/消费语义。linear→DAG bridge 须逐项对齐 producer、独立计算、consumer、依赖与终点；相同算子尺寸和通信任务集合不足以证明等价。
+- 比较时固定 workload、profiling 估计、扰动样本、group 成员、backend、并发限制及计算/消费语义。当前 GPU/NCCL 比较统一使用 DAG；历史 Gloo 线性输入不能作为 GPU DAG 的直接配对输入。
 - 策略估计不得读取真实未来扰动。固定计算时长样本，不固定所有任务绝对 ready 时间。
 - 不直接相减未同步的不同 rank 时钟。区分本地执行时间、中央接收时间、完成探测时间及设备完成时间。
 - 检查实际 launch 投影、成员覆盖和 tensor 结果，不能只检查 grant 日志或进程退出码。
-- 最终实现变更后重新运行相应回归；早于最后一次改动的通过记录不能证明当前工作树通过。修改共用 replay worker 时同时检查旧 H lane 和新增 S lane。
+- 最终实现变更后重新运行相应回归；早于最后一次改动的通过记录不能证明当前工作树通过。修改共用 replay worker 时分别检查 Gloo 线性和 GPU DAG 路径。
 - 记录命令、软件/硬件环境、通过/失败/跳过、时长及结果路径。一次运行的顺序或性能不能写成稳定结论。
 - `benchmark/phase3/results/` 被 Git 忽略；原始数据、manifest、命令、源码快照和哈希需独立保存，普通提交不会携带它们。使用与各批次对应的源码复现，不假设最终源码能复现全部早期批次。
 - 结果文档只记录已验证事实。单元测试通过、Gloo 集成通过、GPU 语义通过和性能收益分别报告。

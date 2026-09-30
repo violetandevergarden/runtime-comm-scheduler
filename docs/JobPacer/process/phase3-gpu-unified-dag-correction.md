@@ -340,3 +340,19 @@ old 和 raw-ordered 各注入一次 `binding_failure`。首次 old 故障复现�
 - 确定性交错测试覆盖 old submit 正在进入 scheduler 时 abort 开始，以及 raw dispatcher join 期间才绑定的第三个 Work；逐 Work timeout 递减并且所有操作总预算不增长。
 
 修复后的针对性命令 `PYTHONPATH=src:. .venv/bin/python -m pytest -q tests/unit/test_jobpacer_runtime_adapter.py tests/unit/test_jobpacer_dag_comm_adapters.py tests/unit/test_jobpacer_runtime_worker.py tests/unit/test_scheduler.py tests/unit/test_jobpacer_dag.py tests/unit/runtime`：最终代码 125 passed，3.99 秒。`PYTHONPATH=src RUN_JOBPACER_RUNTIME_REPLAY=1 .venv/bin/python -m pytest -q tests/integration/test_runtime_replay.py`：47 passed，134.06 秒（在最后仅影响 old/raw close 的边界调整前；该 Gloo 路径不使用这两个 adapter）。随后在两张 RTX 4090 上针对 D0 输入分别运行 old/raw-ordered `binding_failure`；两个 worker 均按预期以 Python 错误退出，没有父进程超时或信号退出。最终 close 边界调整后再次以 `static_fifo` 正常运行 old 与 raw-ordered，两者均通过两 rank 通信/缓冲区数值校验，launch 投影与共同静态序列一致。这些只是双卡语义与故障 smoke，不是性能实验；不证明多 Work backend drain 的所有 NCCL 故障交错，后者由确定性 adapter 测试覆盖。
+
+## 20. 2026-09-30 退役 GPU 线性执行路线
+
+当前边界为：Gloo 保留旧 `Workload` 线性 replay 和 DAG replay；GPU/NCCL replay 只接受 DAG 输入。历史 Phase 2 `run_phase2.py` 与 `runtime/replay_worker.py` 限定 Gloo，移除了 S lane 的 CUDA producer/independent/consumer streams、warmup、完成事件及输出字段。新 `runtime_worker.py` 保留 Gloo 线性和 GPU DAG；直接以 NCCL 启动线性 workload 会在 ProcessGroup 初始化前拒绝。`run_phase3.py` 对 `--backend nccl --workload ...` 作同样的前置拒绝。
+
+移除了 `gpu/gpu_workload.py` 中的 GPU 线性模型和 schema-v1 parser，并删除对应专用单测；`gpu_compute_profile.py` 现在只接受签名 mapping，不再依赖 `GpuComputeSpec`。旧 compute profile v2 的校验形式保留为通用 mapping 校验，DAG profile v3 的签名、加载与校验保持不变。`gpu_compute.py` 与 `_prepare_dag_gpu_compute()` 的旧 DAG matmul 能力、schema-v2 `gpu_dag_resources.py` 均保留。`run_experiments.py` 源码快照清单和 workload 注释已同步。
+
+`benchmark/phase3/experiments/gpu-linear/` 的输入、历史运行结果及 2026-09-27 实施/结果记录保留。早期实施说明已标为历史；根 README 与 JobPacer README 改为推荐 DAG/NCCL 用法。
+
+最终复核：`PYTHONPATH=src:. .venv/bin/python -m py_compile` 覆盖本轮改动的 GPU profile、两个 worker、Phase 2/3 CLI 和对应测试，退出码为 0；四个入口的 `--help` 均正常，Phase 2/replay worker help 只列出 Gloo backend，Phase 3 help 不再含 `--lane`。`git diff --check` 通过，源码扫描未发现 `GpuComputeSpec`、`GpuLinearInput`、旧 `gpu_segments` 或线性 S-lane 分支。
+
+- 针对性命令 `PYTHONPATH=src:. .venv/bin/python -m pytest -q tests/unit/test_jobpacer_gpu_compute_profile.py tests/unit/test_jobpacer_runtime_worker.py tests/unit/test_jobpacer_gpu_route_retirement.py tests/unit/test_jobpacer_phase1.py tests/unit/test_jobpacer_phase3_experiments.py tests/integration/test_jobpacer_profile.py tests/integration/test_runtime_replay_nccl.py`：46 passed、5 skipped，27.59 秒。通过项包括 compute-profile v2/v3、worker 直接拒绝 NCCL 线性、Phase 2 Gloo profile replay 和 Phase 3 入口拒绝测试；其余 opt-in NCCL 用例在该命令中跳过。
+- `PYTHONPATH=src RUN_JOBPACER_RUNTIME_REPLAY=1 .venv/bin/python -m pytest -q tests/integration/test_runtime_replay.py`：47 passed，117.64 秒，覆盖保留的 Gloo 新 runtime 线性与 DAG 路径。
+- 双卡 NCCL 的 `test_two_rank_gpu_dag_waits_for_compute_event_before_dependent_comm`：1 passed，5 deselected，6.71 秒。RTX 4090 ×2、PyTorch 2.13.0+cu126、CUDA 12.6、NCCL 2.29.3；保留的 DAG `cuda-matmul` 计算回执检查通过。
+- 另以 schema-v2 `gpu-v2-fork-join.json` 执行一次 `run_phase3 --policy fifo --dag ... --backend nccl` smoke：validation `ok`、2 ranks、collective 数值正确；结果 `/tmp/jobpacer-gpu-dag-retirement-smoke.json`。该次是语义检查，不作性能结论。
+- 完整 `tests/unit`：310 passed、3 failed，7.27 秒。3 个失败仍是 `tests/unit/test_benchmark_paths.py` 依赖的历史迁移映射/结果 fixture 缺失（Phase 3 旧路径、Phase 1.2 旧批次目录），不涉及本次 GPU 路线修改；未补造或改写历史产物。

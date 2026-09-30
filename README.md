@@ -1,13 +1,13 @@
 # Runtime Communication Scheduler
 
-研究真实 PyTorch collective 的运行时通信调度。当前主线是 **JobPacer Phase 3**：中心化 coordinator 根据各 rank 的在线就绪与完成状态决定通信准入，比较静态顺序与动态策略；线性 workload 和手写 DAG 共用新的 runtime。
+研究真实 PyTorch collective 的运行时通信调度。当前主线是 **JobPacer Phase 3**：中心化 coordinator 根据各 rank 的在线就绪与完成状态决定通信准入，比较静态顺序与动态策略；Gloo 保留线性 workload 和手写 DAG，GPU/NCCL replay 只接受 DAG 输入。
 
 本项目与 `SimAI/simai-flow-scheduler` 互补：前者用于 flow-level replay 与策略研究，本仓库验证真实执行栈中可观察、可控制和可安全重排的通信边界。
 
 ## 当前范围与架构
 
 ```text
-线性 workload / DAG runner
+Gloo linear workload / DAG runner (GPU/NCCL requires DAG)
   → RankRuntime.submit(TaskSpec, LocalBinding, TaskHint) → handle
   → OFFER → 中心化 coordinator：合法候选 → policy → GRANT
   → 各 rank 单 launch worker → PyTorch Gloo / NCCL all-reduce
@@ -53,7 +53,7 @@ G5 的 bridge 批次成功执行，但尚不能认定为等价迁移：所选 [D
 | `src/runtime_comm_scheduler/runtime/` | 模型、coordinator、policy、控制通道、本地执行及完成探测 |
 | `src/runtime_comm_scheduler/dag/` | 图模型、校验、计算与通信节点推进 |
 | `examples/jobpacer/runtime/` | workload 映射、rank harness |
-| `examples/jobpacer/gpu/` | GPU workload、CUDA compute/DAG 资源、compute profile 与设备信息 |
+| `examples/jobpacer/gpu/` | GPU DAG 的 CUDA compute/resources、compute profile 与设备信息 |
 | `examples/jobpacer/scripts/` | replay/profile 工具及七臂唯一用户入口 `run_gpu_seven_arm.py` |
 | `examples/jobpacer/experiments/seven_arm/` | 七臂输入、资格、检查、批次、分析和封存实现 |
 | `examples/jobpacer/analysis/` | 结果校验、汇总与可视化 |
@@ -66,6 +66,8 @@ G5 的 bridge 批次成功执行，但尚不能认定为等价迁移：所选 [D
 ## 运行与验证
 
 从仓库根目录使用已有项目环境；远程环境为 `.venv`，不要为复现实验擅自升级 PyTorch/CUDA/NCCL。
+
+Gloo 保留线性 workload 和 DAG replay。Phase 3 GPU/NCCL replay 只接受 `--dag`；旧 Phase 2 线性入口固定使用 Gloo。GPU linear parser、S lane 及线性 GPU 执行分支已经退役，历史输入与结果继续归档。
 
 ```bash
 source .venv/bin/activate
@@ -88,9 +90,10 @@ PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
   --policy fifo --workload balanced --backend gloo \
   --world-size 2 --timeout 20 --output /tmp/jobpacer-phase3-gloo.json
 
-# 新 runtime 双卡 NCCL smoke；这不是性能矩阵
+# 新 runtime 双卡 NCCL DAG smoke；这不是性能矩阵
 PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
-  --policy fifo --workload balanced --backend nccl \
+  --policy fifo --dag benchmark/phase3/experiments/dag-semantics/smoke/gpu-v2-fork-join.json \
+  --backend nccl \
   --world-size 2 --warmup-iterations 5 --setup-timeout 60 --timeout 30 \
   --output /tmp/jobpacer-phase3-nccl.json
 

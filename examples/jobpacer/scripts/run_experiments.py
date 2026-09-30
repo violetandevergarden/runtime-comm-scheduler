@@ -41,15 +41,13 @@ ARM_SPECS = {
     "new-ltf-poll-0.2ms": ("new", "ltf", False, False),
     "new-static_fifo-minimal": ("new", "static_fifo", False, False),
     "new-static_fifo-diagnostic": ("new", "static_fifo", False, False),
-    # Schema-v2 arms use the shared DAG worker. raw-ordered is an explicit
-    # reference, not the original unconstrained bare baseline.
+    # Schema-v2 arms use the shared DAG worker.
     "old-static-fifo": ("old", "static_fifo", True, False, "old"),
     "old-static-ltf": ("old", "static_ltf", True, False, "old"),
     "new-static-fifo": ("new", "static_fifo", False, False, "new"),
     "new-static-ltf": ("new", "static_ltf", False, False, "new"),
     "new-dynamic-fifo": ("new", "fifo", False, False, "new"),
     "new-dynamic-ltf": ("new", "ltf", False, False, "new"),
-    "raw-ordered-static-fifo": ("raw-ordered", "static_fifo", False, False, "raw-ordered"),
 }
 DAG_SUPPORTED_ARMS = (
     "old-static-fifo", "old-static-ltf",
@@ -81,7 +79,6 @@ SOURCE_SNAPSHOT_ROOTS = (
     ROOT / "examples/jobpacer/analysis/runtime_results.py",
     ROOT / "examples/jobpacer/analysis/visualize_phase3.py",
     ROOT / "examples/jobpacer/runtime/runtime_adapter.py",
-    ROOT / "examples/jobpacer/gpu/gpu_workload.py",
     ROOT / "examples/jobpacer/gpu/gpu_compute.py",
     ROOT / "examples/jobpacer/gpu/gpu_compute_profile.py",
     ROOT / "examples/jobpacer/gpu/gpu_dag_resources.py",
@@ -762,11 +759,9 @@ def _selected_arms(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
     if not names or any(name not in ARM_SPECS for name in names) or len(names) != len(set(names)):
         parser.error("--arms must be unique comma-separated names from: " + ", ".join(ARM_SPECS))
     if args.dag:
-        invalid = [name for name in names if name not in DAG_SUPPORTED_ARMS
-                   and name != "raw-ordered-static-fifo"]
+        invalid = [name for name in names if name not in DAG_SUPPORTED_ARMS]
         if invalid:
-            parser.error("schema-v2 DAG batches support: " + ", ".join(DAG_SUPPORTED_ARMS)
-                         + "; raw-ordered-static-fifo is an explicit non-bare reference")
+            parser.error("schema-v2 DAG batches support: " + ", ".join(DAG_SUPPORTED_ARMS))
         if args.backend != "nccl":
             parser.error("schema-v2 GPU DAG batches require --backend nccl")
     baseline = args.baseline
@@ -941,8 +936,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="explicit DAG order for the static_ltf arm; static_fifo remains unchanged")
     parser.add_argument("--include-old", action="store_true")
     parser.add_argument("--arms", help=(
-        "comma-separated arm names; schema-v2 DAG defaults to six supported configurations; "
-        "raw-ordered-static-fifo is an explicit non-bare reference"
+        "comma-separated arm names; schema-v2 DAG defaults to six supported configurations"
     ))
     parser.add_argument("--preview", action="store_true", help="show count and estimated wall time without writing")
     parser.add_argument("--resume", action="store_true", help="continue an identical batch in its output directory")

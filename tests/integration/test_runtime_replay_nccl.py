@@ -14,6 +14,20 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKER = Path(__file__).with_name("nccl_semantics_worker.py")
 
 
+def test_phase3_cli_rejects_gpu_linear_workload_before_launch(tmp_path):
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "src"), str(ROOT), env.get("PYTHONPATH", "")))
+    output_path = tmp_path / "must-not-be-created.json"
+    result = subprocess.run(
+        [sys.executable, "-m", "examples.jobpacer.scripts.run_phase3",
+         "--backend", "nccl", "--workload", "balanced", "--output", str(output_path)],
+        cwd=ROOT, env=env, capture_output=True, text=True, timeout=15, check=False,
+    )
+    assert result.returncode == 2
+    assert "GPU/NCCL Phase 3 replay accepts DAG inputs only" in result.stderr
+    assert not output_path.exists()
+
+
 @pytest.mark.skipif(os.environ.get("RUN_JOBPACER_RUNTIME_NCCL") != "1",
                     reason="set RUN_JOBPACER_RUNTIME_NCCL=1 to run the dual-GPU NCCL test")
 def test_dual_rank_cuda_producer_consumer_and_unrelated_stream_contract(tmp_path):

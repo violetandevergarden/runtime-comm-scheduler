@@ -62,10 +62,10 @@ def test_bare_failure_gives_peer_a_bounded_chance_to_observe_shared_failure():
     phase3_replay._stop_failed_siblings([failed, timed_out_peer], comm_engine="bare")
     assert timed_out_peer.killed
 
-    raw_peer = Child()
-    phase3_replay._stop_failed_siblings([failed, raw_peer], comm_engine="raw-ordered")
-    assert raw_peer.wait_timeouts == []
-    assert raw_peer.killed
+    old_peer = Child()
+    phase3_replay._stop_failed_siblings([failed, old_peer], comm_engine="old")
+    assert old_peer.wait_timeouts == []
+    assert old_peer.killed
 
 
 def test_rendezvous_retry_is_bounded_to_pre_task_tcpstore_bind_conflicts():
@@ -238,14 +238,12 @@ def test_binding_and_poll_arms_are_paired_inside_randomized_blocks():
         assert {item["binding_preparation"] for item in block} == {"precreate"}
 
 
-def test_schema_v2_dag_arms_share_runtime_worker_and_keep_raw_ordered_explicit():
+def test_schema_v2_dag_arms_share_runtime_worker():
     arms = experiment_batch.DAG_SUPPORTED_ARMS
     planned = experiment_batch._plan((91,), 1, arms, 13)
     assert {item["comm_engine"] for item in planned} == {"old", "new"}
     assert len(planned) == 6
-    raw = experiment_batch._plan((91,), 1, ("raw-ordered-static-fifo",), 13)[0]
-    assert raw["comm_engine"] == "raw-ordered"
-    assert raw["arm"] not in arms
+    assert "raw-ordered-static-fifo" not in experiment_batch.ARM_SPECS
 
     args = Namespace(
         dag="fork-join.json", workload=None, backend="nccl", world_size=2,
@@ -601,3 +599,10 @@ def test_isolated_diagnostic_runs_thirty_interleaved_conditions_and_resumes(tmp_
     assert len(calls) == 30
     assert isolated_batch.main([*argv, "--resume"]) == 0
     assert len(calls) == 30
+
+
+def test_replay_rejects_retired_raw_ordered_engine(capsys):
+    with pytest.raises(SystemExit) as error:
+        phase3_replay.main(["--comm-engine", "raw-ordered"])
+    assert error.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err

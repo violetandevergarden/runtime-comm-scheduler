@@ -3,7 +3,13 @@
 本目录保留历史 Phase 2 线性 replay/profile 工具，并提供当前 Phase 3 中心化 runtime replay。
 两条路径用途和完成语义不同：`scripts/run_phase2.py`、`runtime/replay_worker.py` 与
 `AdmissionScheduler` 是 Phase 2 基线；Phase 3 入口见后面的“Phase 3 runtime replay”。
+Phase 2 线性 replay 只支持 Gloo；Phase 3 GPU/NCCL 只接受 DAG 输入。
 旧工具可以作为历史对照，不是新 runtime 的内部依赖。
+
+2026-09-30 起，Phase 3 已移除 `raw-ordered` 通信引擎及
+`raw-ordered-static-fifo` 实验臂；当前通信引擎为 `new`、`old`、`bare`。
+有序多在途 bare 实现保持在 `runtime/dag_comm_adapters.py`。
+历史 raw-ordered 结果保留其原始名称，复现须使用对应批次归档源码，不能替换成 bare。
 
 Phase 2 工具支持直接并发发射通信作为 baseline，也可以通过 `AdmissionScheduler` 按静态 FIFO、
 corrected LTF，或 `--selection ready_first` 的跨 rank globally-ready-first 控制发射顺序。
@@ -119,7 +125,7 @@ Profile 与 replay 必须使用相同的 backend、device type、world size 和 
 | `--mode bare\|scheduler` | 直接调用 collective，或通过 scheduler 发射 |
 | `--policy fifo\|ltf` | 静态 Plan 构造策略 |
 | `--selection runtime_arrival\|ready_first` | 静态 Plan 发射，或跨 rank 协调全局 ready 集合 |
-| `--backend gloo\|nccl` | CPU/Gloo 或 GPU/NCCL |
+| `--backend gloo` | Phase 2 旧线性 replay 固定使用 CPU/Gloo |
 | `--world-size N` | rank 数，至少为 2 |
 | `--max-outstanding N` | scheduler 最大在途任务数；`1` 表示等待物理完成后再准入下一项，`0` 不限制 |
 | `--comm-profile PATH` | 可选的离线通信 profile |
@@ -156,23 +162,26 @@ Profile 是实验环境的一部分，不应把一台机器生成的绝对耗时
 
 ## GPU/NCCL
 
-两张 GPU 的基本用法为：
+Phase 3 GPU/NCCL replay 只接受 DAG 输入。通信 profiler 可以对 workload 或 DAG 的通信签名采样；
+下面示例使用当前 GPU DAG 输入。两 rank NCCL 的基本用法为：
 
 ```bash
 PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_comm_profile \
-  --workload balanced --backend nccl --world-size 2 \
+  --dag benchmark/phase3/experiments/dag-semantics/smoke/gpu-v2-fork-join.json \
+  --backend nccl --world-size 2 \
   --warmup 10 --iterations 50 \
   --output /tmp/jobpacer-nccl-profile.json
 
-PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase2 \
-  --mode scheduler --policy ltf --workload balanced \
-  --backend nccl --world-size 2 --max-outstanding 1 \
+PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
+  --policy fifo --dag benchmark/phase3/experiments/dag-semantics/smoke/gpu-v2-fork-join.json \
+  --backend nccl --world-size 2 --warmup-iterations 5 \
   --comm-profile /tmp/jobpacer-nccl-profile.json \
-  --output /tmp/jobpacer-nccl-ltf.json
+  --output /tmp/jobpacer-nccl-dag.json
 ```
 
-父进程会按 rank 设置 `CUDA_VISIBLE_DEVICES`，每个 rank 在其可见设备的 `cuda:0` 上运行。
-Profiler 在计时区间前后同步 CUDA device，避免只测到 Python API 返回时间。
+NCCL run 继承外部设置的 `CUDA_VISIBLE_DEVICES`，rank 使用该可见设备空间中的 `cuda:rank`。
+GPU 线性 workload/parser、S lane 和旧 Phase 2 的 CUDA producer/consumer stream 路径已退役；
+`run_phase2.py`/`replay_worker.py` 只接受 Gloo 线性 replay。历史 GPU 线性输入与结果保留归档。
 
 ## Trace 与验收字段
 
@@ -200,8 +209,8 @@ Visualizer 只接受完整 batch manifest 列出的 schema-v2 trace，并拒绝�
 | `runtime/plan_builder.py` | FIFO/LTF 静态 Plan 构造和 job 内顺序校验 |
 | `comm_profile.py` | profile 数据模型、digest、严格匹配和 workload 覆盖 |
 | `scripts/run_comm_profile.py` | 多进程 Gloo/NCCL 离线测量入口 |
-| `scripts/run_phase2.py` | 启动各 rank、回收超时进程、汇总和验证输出 |
-| `runtime/replay_worker.py` | 单 rank ProcessGroup、job 线程、scheduler 和 collective 执行 |
+| `scripts/run_phase2.py` | 启动 Gloo 线性 replay ranks、回收超时进程、汇总和验证输出 |
+| `runtime/replay_worker.py` | 单 rank Gloo ProcessGroup、job 线程、scheduler 和 collective 执行 |
 | `scripts/run_phase1_2_experiments.py` | Phase 1/2 的批次编排入口（原 benchmark 下的 `run_experiments.py`） |
 | `scripts/runner_batch.py` | Phase 1/2 容量、轮询和优先级矩阵的执行与分析实现 |
 | `analysis/visualize.py` | Phase 1/2 历史 batch 的 trace 读取与绘图 |
@@ -220,9 +229,9 @@ pytest -q tests/integration/test_jobpacer_profile.py
 
 ## Phase 3 runtime replay（当前主线）
 
-Phase 3 通过独立控制通道上的 coordinator 决定通信准入。线性 workload 和手写 DAG 都调用新
-runtime；DAG runner 只推进 compute/communication 依赖，通信成员匹配、group 顺序、grant 和完成
-仍由 runtime 负责。CPU/Gloo 是当前验收路径；这不代表 GPU/NCCL 已验收。
+Phase 3 通过独立控制通道上的 coordinator 决定通信准入。Gloo 保留线性 workload 和手写 DAG；
+GPU/NCCL 只接受 DAG 输入。DAG runner 推进 compute/communication 依赖，通信成员匹配、group 顺序、
+grant 和完成仍由 runtime 负责。CPU/Gloo 与 GPU/NCCL 的语义和性能验收分别记录。
 
 线性 workload 示例：
 
@@ -242,7 +251,7 @@ PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
 ```
 
 `--static-order` 只用于 DAG 的 `static_fifo` / `static_ltf`；静态队首未 ready 时会等待，不能跳过。
-`--compute-jitter` 只改变实际 CPU compute 样本，不改变线性/DAG 的估计值；线性样本还按
+`--compute-jitter` 只改变实际 CPU compute 样本，不改变 Gloo 线性/DAG 的估计值；线性样本还按
 `seed/epoch/job/communication/rank/producer|consumer` 固定键生成。`--comm-profile` 可将严格匹配的
 离线 p50 注入线性新旧 replay，`--wait-budget-s` 固定 bounded lookahead 的等待预算。replay 的校验和指标
 由 rank worker 在通信 drain 后执行 tensor correctness scan，父进程再聚合 rank-local performance，
@@ -252,7 +261,7 @@ PYTHONPATH=src:. python -m examples.jobpacer.scripts.run_phase3 \
 
 | 文件 | 用途 |
 | --- | --- |
-| `runtime/runtime_adapter.py` | 输入 schema/digest、线性映射、计算采样、tensor/collective 绑定及历史线性 Plan 桥接 |
+| `runtime/runtime_adapter.py` | DAG 输入 schema/digest、Gloo 线性 workload 映射、计算采样、tensor/collective 绑定 |
 | `runtime/runtime_worker.py` | rank 生命周期、共享 job 线程 harness、故障注入和结果装配 |
 | `analysis/runtime_results.py` | 预期 DAG 任务集、结果校验与指标；不启动进程、不导入 torch |
 | `scripts/run_phase3.py` | CLI、输入预检、rank 子进程启动/回收 |

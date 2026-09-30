@@ -58,3 +58,16 @@ def test_job_failure_passes_replay_deadline_to_adapter_abort():
         )
 
     assert observed["deadline"] == deadline
+
+
+def test_runtime_worker_rejects_direct_nccl_linear_replay_before_setup(monkeypatch):
+    monkeypatch.setenv("RANK", "0")
+    monkeypatch.setenv("WORLD_SIZE", "2")
+    args = SimpleNamespace(
+        comm_engine="new", timeout=1.0, setup_timeout=1.0,
+        poll_interval=0.001, dag_poll_interval=0.001,
+        compute_mode="host-sleep", compute_matrix_size=256,
+        compute_repeats=1, backend="nccl", dag=None,
+    )
+    with pytest.raises(ValueError, match="accepts DAG inputs only"):
+        runtime_worker.run_rank(args)

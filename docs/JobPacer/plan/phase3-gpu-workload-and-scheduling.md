@@ -1,6 +1,6 @@
 # Phase 3：统一 DAG workload 的 GPU 执行与通信调度设计
 
-创建：2026-09-27；修订：2026-09-28。状态：修订设计，待按新路线实施。本次仅修改设计，不表示代码已经完成收敛，也不启动性能矩阵。
+创建：2026-09-27；修订：2026-09-28。状态：统一 DAG 执行路线已落地；GPU 线性实现于 2026-09-30 退役，见[后续复核记录](../process/phase3-gpu-unified-dag-correction.md#20-2026-09-30-退役-gpu-线性执行路线)。本计划保留设计理由和早期实施边界，不代替最新代码状态。
 
 依据：[总体讨论](discussion.md)、[Phase 3.1](phase3.1.md)、[Phase 3.2](phase3.2.md)、[GPU 七配置实验计划](phase3-gpu-seven-arm-experiments.md)。具体迁移见[统一 DAG 修正实施计划](../process/phase3-gpu-unified-dag-correction.md)。
 
@@ -8,14 +8,14 @@
 
 2026-09-27 初稿提出独立 `jobpacer-gpu-linear` schema、线性执行器，再通过 bridge 转成 DAG。其目的是核对 sleep 到 GPU 的迁移语义，但将验证步骤变成了第二套长期执行架构。本轮实现已有 GPU linear runner、worker 和单独 bridge 推进循环；它们不适合作为七配置、六场景实验的共同主路径。
 
-本修订取代初稿中“先 linear、再 bridge”的架构、schema、tail 和实施顺序要求：
+本修订取代初稿中“先 linear、再 bridge”的架构、schema、tail 和实施顺序要求。GPU linear schema 的历史 manifest 继续归档，但不再作为当前 parser/worker 的兼容输入：
 
 1. 新 GPU 实验统一使用现有 `DagInput / DagGraph / DagRunner`，线性只是 DAG 的一种输入拓扑。
 2. 扩展 `ReplayExecutionConfig` 表达 GPU 算子、buffer 数据流和执行合同；不再扩展 `GpuLinearInput` 为完整图模型。
 3. 保留旧 `workloads.py` 的线性 `Workload`、旧输入与历史执行路径，用于复现和回归，不承担新 GPU 主模型。
 4. 保留本轮新增的 CUDA 程序、初始化依赖、回执、profile 和数值校验能力，解除固定 segment 绑定后复用。
 5. 所有七配置共用输入、计算推进、数据绑定、结果与统计，仅切换通信执行适配。
-6. bridge 降为可选的离线输入转换与迁移校验，不再是必经阶段或独立实验模式。
+6. GPU linear bridge 的执行和输入转换入口均已退役；当前 GPU/NCCL 入口只接收 DAG 输入。
 
 [前轮实施说明](../process/phase3-gpu-workload-implementation.md)和[前轮结果](../result/phase3-gpu-workload-implementation-20260927.md)保留为历史事实；其中 M1/M2/M4/M5 的完成不等于本修订已完成。H 回归修复和 Phase 2 复测以该结果记录为准，不能继续将初稿中的旧故障状态当作当前实测结果。
 
@@ -35,7 +35,7 @@
 | --- | --- | --- |
 | `DagInput / DagGraph` | jobs、groups、节点、依赖、规范身份、通信参数、估计、全集和校验 | execution 目前以 sleep duration 为主，缺少通用节点 GPU 程序与数据引用 |
 | `DagRunner` | ready/running/completed、完成依赖、异常传播、通信 handle、compute receipt | 明确计算通道、提交顺序合同；解除接口对单一通信执行路径的不必要假设 |
-| `gpu_workload.py` | GPU 算子参数、profile 引用、seed 派生及校验 | `GpuJob.segments / GpuLinearInput` 不作为新主模型；GPU 描述改按节点绑定 |
+| `gpu_workload.py` | 早期 GPU 线性模型/解析器 | 已退役；当前 GPU 算子、buffers 和绑定由 DAG execution schema 描述 |
 | `gpu_compute.py` | 固定工作量、设备事件、初始化和校验 | `GpuSegmentResources` 拆解为节点程序及 job 本地 buffer 所有权，避免强制四阶段结构 |
 | `gpu_dag_bridge.py` | 可借鉴输入转换与数据一致性检查 | 重复的节点状态机不进入统一路径 |
 | `run_experiments.py` | arm、配对顺序、ledger、重试/分析基础 | 解除旧 arm 仅支持线性的限制，接统一 DAG worker，不再另建 batch runner |

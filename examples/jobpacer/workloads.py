@@ -6,9 +6,9 @@ collective is submitted and ``consumer_compute_s`` runs between submission and
 the consumer's ``wait``.  This preserves a useful compute/communication
 overlap window while keeping the dependency graph explicit.
 
-``consumer_compute_s`` is independent post-submit work in this historical
-schema. New fixed CUDA programs use ``examples.jobpacer.gpu.gpu_workload`` and do not map
-these seconds to device work.
+``consumer_compute_s`` is independent post-submit work in this historical Gloo
+schema. GPU workloads use the DAG execution schema and do not map these seconds
+to device work.
 """
 
 from __future__ import annotations

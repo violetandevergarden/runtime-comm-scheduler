@@ -1,5 +1,7 @@
 # Phase 3 GPU workload 与调度：逐文件实施方案
 
+> 历史实施记录（2026-09-27）。GPU 线性模型/执行路径已于 2026-09-30 退役；本文件中的 `gpu_workload.py`、GPU S lane、linear runner、bridge 命令和验收步骤描述当时的实现，不是当前使用说明。当前边界与验证见[统一 DAG 修正实施记录](phase3-gpu-unified-dag-correction.md#20-2026-09-30-退役-gpu-线性执行路线)。历史结果和输入未删除。
+
 日期：2026-09-27。状态：M1/M2/M4/M5 已实现并完成受限 smoke；M0 的 H 回归已修复，Phase 2 profile replay 复跑通过，但一次超时未找到稳定根因；M3 配对性能实验未启动。执行事实、命令、环境与未验收项见[本任务结果记录](../result/phase3-gpu-workload-implementation-20260927.md)。依据 [设计提案](../plan/phase3-gpu-workload-and-scheduling.md)、[Phase 3.1](../plan/phase3.1.md)、[Phase 3.2](../plan/phase3.2.md)、[已有 GPU 实施合同](phase3-gpu-experiments-and-fixes.md)与[首轮结果](../result/phase3-gpu-20260927.md)。实际能力以工作树代码和本文记录的重新验证为准。
 
 ## 1. 基线、边界与交付顺序

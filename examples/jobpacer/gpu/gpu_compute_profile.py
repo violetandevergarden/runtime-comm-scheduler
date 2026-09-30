@@ -10,9 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from examples.jobpacer.gpu.gpu_workload import GpuComputeSpec
-
-
 PROFILE_SCHEMA = "jobpacer-gpu-compute-profile"
 PROFILE_VERSION = 2
 DAG_PROFILE_VERSION = 3
@@ -49,7 +46,7 @@ class GpuComputeProfile:
         return hashlib.sha256(payload.encode()).hexdigest()
 
     def record(self, *, device_uuid: str, stage: str,
-               spec: GpuComputeSpec | Mapping[str, Any],
+               spec: Mapping[str, Any],
                tensor_shape: tuple[int, ...] | None = None,
                software: Mapping[str, Any] | None = None) -> ComputeProfileRecord:
         mismatches = []
@@ -175,9 +172,11 @@ def _record(raw: Any, where: str, *, version: int = PROFILE_VERSION) -> ComputeP
     return ComputeProfileRecord(value["stage"], dict(signature), device_samples, host_samples, prep)
 
 
-def compute_profile_signature(spec: GpuComputeSpec | Mapping[str, Any], *,
+def compute_profile_signature(spec: Mapping[str, Any], *,
                               tensor_shape: tuple[int, ...] | None = None) -> dict[str, Any]:
-    signature = spec.to_dict() if isinstance(spec, GpuComputeSpec) else dict(spec)
+    if not isinstance(spec, Mapping):
+        raise TypeError("compute profile signature must be a mapping")
+    signature = dict(spec)
     if "input_shapes" in signature:
         return signature
     if signature.get("op") in {"fill", "sum_join"}:

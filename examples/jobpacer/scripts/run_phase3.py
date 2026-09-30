@@ -92,7 +92,6 @@ def _start(rank: int, args: argparse.Namespace, rendezvous_port: int, control_po
                "--fault", args.fault]
     command.extend(("--compute-jitter", str(args.compute_jitter),
                     "--compute-mode", args.compute_mode,
-                    "--lane", args.lane,
                     "--compute-matrix-size", str(args.compute_matrix_size),
                     "--compute-repeats", str(args.compute_repeats),
                     "--binding-preparation", args.binding_preparation,
@@ -161,7 +160,7 @@ def _option_was_set(name: str) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--policy", choices=("static_fifo", "static_ltf", "fifo", "ltf", "lookahead", "bare"), default="fifo")
-    parser.add_argument("--comm-engine", choices=("new", "old", "raw-ordered", "bare"), default="new")
+    parser.add_argument("--comm-engine", choices=("new", "old", "bare"), default="new")
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--workload")
     source.add_argument("--dag", type=Path)
@@ -178,17 +177,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dag-poll-interval", type=float, default=0.001)
     parser.add_argument("--compute-jitter", type=float, default=0.0)
     parser.add_argument("--compute-mode", choices=("host-sleep", "cuda-matmul"), default="host-sleep")
-    parser.add_argument("--lane", choices=("H", "S"), default="H")
     parser.add_argument("--compute-matrix-size", type=int, default=256)
     parser.add_argument("--compute-repeats", type=int, default=1)
     parser.add_argument("--matmul-precision", choices=("highest", "high", "medium"), default="highest")
     parser.add_argument("--wait-budget-s", type=float, default=0.02)
     parser.add_argument("--warmup-iterations", type=int, default=1)
     parser.add_argument("--binding-preparation", choices=("precreate", "on-ready"), default="precreate",
-                        help="linear replay only; DAG preparation remains unchanged")
+                        help="Gloo linear replay only; DAG preparation remains unchanged")
     parser.add_argument("--declaration-mode", choices=("before-producer", "on-submit"),
                         default="before-producer",
-                        help="linear replay only; on-submit is unavailable to DAG/Lookahead")
+                        help="Gloo linear replay only; on-submit is unavailable to DAG/Lookahead")
     parser.add_argument("--observation-mode", choices=("minimal", "diagnostic", "full"), default="full",
                         help="minimal; control-path diagnostic without policy snapshots; or full legacy trace")
     parser.add_argument("--comm-profile", type=Path)
@@ -200,6 +198,8 @@ def main(argv: list[str] | None = None) -> int:
                                               "completion_probe_failure", "compute_failure", "binding_failure"),
                         default="none")
     args = parser.parse_args(argv)
+    if args.backend == "nccl" and not args.dag:
+        parser.error("GPU/NCCL Phase 3 replay accepts DAG inputs only; linear --workload is Gloo-only")
     if args.timeout <= 0 or args.setup_timeout <= 0 or args.poll_interval <= 0 or args.dag_poll_interval <= 0:
         parser.error("setup/replay timeouts and poll intervals must be positive")
     if args.wait_budget_s < 0 or args.warmup_iterations < 0:
@@ -210,12 +210,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("compute-matrix-size must be >= 16 and compute-repeats positive")
     if args.compute_mode == "cuda-matmul" and args.backend != "nccl":
         parser.error("cuda-matmul compute requires --backend nccl")
-    if args.compute_mode == "cuda-matmul" and not args.dag and args.lane != "S":
-        parser.error("linear cuda-matmul requires --lane S")
-    if args.lane == "S" and (args.backend != "nccl" or args.dag
-                              or args.compute_mode != "cuda-matmul"
-                              or args.binding_preparation != "precreate"):
-        parser.error("S lane requires linear NCCL, cuda-matmul, and precreate bindings")
+    if args.compute_mode == "cuda-matmul" and not args.dag:
+        parser.error("cuda-matmul is supported only for DAG inputs")
     if args.epoch < 0 or args.world_size <= 0:
         parser.error("epoch must be non-negative and world-size positive")
     if args.comm_engine == "bare" and (not args.dag or args.policy != "bare"):
@@ -230,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
         except (RuntimeError, ValueError) as exc:
             parser.error(str(exc))
     if args.declaration_mode == "on-submit" and (args.dag or args.policy == "lookahead"):
-        parser.error("--declaration-mode on-submit supports linear non-Lookahead replay only")
+        parser.error("--declaration-mode on-submit supports Gloo linear non-Lookahead replay only")
     if args.dag:
         args.dag = resolve_migrated_path(repository_path(args.dag), PHASE3_MIGRATION_MAP)
     elif args.workload:
@@ -272,11 +268,9 @@ def main(argv: list[str] | None = None) -> int:
                     parser.error("DAG schema-v2 uses frozen workload inputs; --compute-jitter is unsupported")
             if args.comm_engine != "new":
                 if dag.execution.schema_version != 2 or args.backend != "nccl":
-                    parser.error("old/raw-ordered/bare adapters require a schema-v2 NCCL DAG")
+                    parser.error("old/bare adapters require a schema-v2 NCCL DAG")
                 if args.comm_engine == "old" and args.policy not in {"static_fifo", "static_ltf"}:
                     parser.error("old scheduler arms require static_fifo or static_ltf")
-                if args.comm_engine == "raw-ordered" and args.policy != "static_fifo":
-                    parser.error("raw-ordered uses the common static_fifo sequence")
                 if args.comm_engine == "bare" and args.policy != "bare":
                     parser.error("bare uses direct DAG readiness and requires --policy bare")
             if args.policy == "bare" and args.comm_engine != "bare":
@@ -394,7 +388,6 @@ def main(argv: list[str] | None = None) -> int:
             "wake_completion_on_submit": args.wake_completion_on_submit,
             "dag_poll_interval_s": args.dag_poll_interval, "compute_jitter": args.compute_jitter,
             "compute_mode": args.compute_mode,
-            "measurement_lane": args.lane,
             "compute_matrix_size": args.compute_matrix_size if args.compute_mode == "cuda-matmul" else None,
             "compute_repeats": args.compute_repeats if args.compute_mode == "cuda-matmul" else None,
             "warmup_iterations": args.warmup_iterations,
@@ -509,8 +502,7 @@ def main(argv: list[str] | None = None) -> int:
     config["profile_strict"] = args.profile_strict if args.comm_profile else None
     config["wait_budget_s"] = args.wait_budget_s
     config["rendezvous_startup_attempts"] = rendezvous_startup_attempts
-    config["communication_adapter"] = ("raw-ordered-static-fifo" if args.comm_engine == "raw-ordered"
-                                       else args.comm_engine)
+    config["communication_adapter"] = args.comm_engine
     config["backend_ordering"] = ({
         "nccl_launch_order_implicit": "1",
         "contract_version": bare_order.contract_version,

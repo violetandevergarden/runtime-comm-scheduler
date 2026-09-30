@@ -140,73 +140,6 @@ def _prepare_linear_bindings(workload: Workload, local_jobs: list[Job], *, group
     return bindings, events, start_ts, end_ts
 
 
-def _prepare_linear_gpu_segments(workload: Workload, local_jobs: list[Job], *,
-                                 precreated_bindings: dict[str, LocalBinding],
-                                 device: str, rank: int, world_size: int, epoch: int,
-                                 matrix_size: int, repeats: int, warmup_iterations: int
-                                 ) -> tuple[dict[str, dict[str, Any]], int, int]:
-    """Preallocate and warm producer/independent/consumer CUDA resources before release."""
-    started = time.perf_counter_ns() // 1000
-    segments: dict[str, dict[str, Any]] = {}
-    local_error: BaseException | None = None
-    try:
-        for job in local_jobs:
-            for comm in job.communications:
-                spec = task_spec(job, comm, epoch=epoch)
-                binding = precreated_bindings[spec.task_id]
-                key = f"{epoch}:{job.job_id}:{comm.id}:{rank}:independent"
-                seed = int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], "big")
-                program = CudaMatmulProgram(device, matrix_size=matrix_size,
-                                            repeats=repeats, seed=seed)
-                producer_stream = torch.cuda.Stream(device=device)
-                consumer_stream = torch.cuda.Stream(device=device)
-                resource = {
-                    "program": program,
-                    "producer_stream": producer_stream,
-                    "producer_start": torch.cuda.Event(enable_timing=True, blocking=False),
-                    "producer_done": torch.cuda.Event(enable_timing=True, blocking=False),
-                    "consumer_stream": consumer_stream,
-                    "consumer_start": torch.cuda.Event(enable_timing=True, blocking=False),
-                    "consumer_done": torch.cuda.Event(enable_timing=True, blocking=False),
-                    "consumer_value": torch.empty((), dtype=binding.tensor.dtype, device=device),
-                    "binding": binding,
-                }
-                program.warmup(warmup_iterations)
-                if warmup_iterations:
-                    with torch.cuda.device(device), torch.cuda.stream(consumer_stream):
-                        for _ in range(warmup_iterations):
-                            torch.sum(binding.tensor, dim=tuple(range(binding.tensor.ndim)),
-                                      out=resource["consumer_value"])
-                    consumer_stream.synchronize()
-                segments[spec.task_id] = resource
-    except BaseException as exc:
-        local_error = exc
-    errors: list[str | None] = [None] * world_size
-    dist.all_gather_object(errors, None if local_error is None else
-                           f"{type(local_error).__name__}: {local_error}")
-    ended = time.perf_counter_ns() // 1000
-    failures = [(endpoint, error) for endpoint, error in enumerate(errors) if error]
-    if failures:
-        if local_error is not None:
-            raise local_error
-        raise RuntimeError(f"linear GPU compute preparation failed on another rank: {failures}")
-    return segments, started, ended
-
-
-def _wait_cuda_event(event: Any, *, deadline: float, stop_event: threading.Event,
-                     runtime, label: str) -> int:
-    while not bool(event.query()):
-        if stop_event.is_set():
-            raise RuntimeError(f"stopped while waiting for {label}")
-        if runtime.failure is not None:
-            raise runtime.failure
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError(f"timed out while waiting for {label}")
-        stop_event.wait(min(0.001, remaining))
-    return time.perf_counter_ns() // 1000
-
-
 def _free_device(backend: str) -> str:
     if backend == "nccl":
         local_rank = int(os.environ.get("LOCAL_RANK", "0"))
@@ -430,17 +363,14 @@ def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank
                     validation_records: list[tuple[dict[str, Any], torch.Tensor, int]],
                     precreated_bindings: dict[str, LocalBinding] | None,
                     binding_creation_events: list[dict[str, Any]], binding_events_lock: threading.Lock,
-                    gpu_segments: dict[str, dict[str, Any]] | None = None
                     ) -> dict[str, Any]:
     result: dict[str, Any] = {"job_id": job.job_id, "status": "ok", "tasks": [],
                               "compute_samples_s": {},
                               "job_start_ts": time.perf_counter_ns() // 1000}
     diagnostic = getattr(args, "observation_mode", "full") != "minimal"
-    lane = getattr(args, "lane", "H")
     comm_engine = getattr(args, "comm_engine", "new")
-    if comm_engine not in {"new", "old", "raw-ordered", "bare"}:
+    if comm_engine not in {"new", "old", "bare"}:
         raise ValueError(f"unsupported communication engine {comm_engine!r}")
-    gpu_segments = gpu_segments or {}
     for index, comm in enumerate(job.communications):
         if args.fault == "missing_task" and rank == 1 and job.job_id == "job-1" and index == len(job.communications) - 1:
             continue
@@ -465,17 +395,10 @@ def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank
             workload, args.epoch, job.job_id, comm.id, rank, "consumer",
             comm.consumer_compute_s, args.compute_jitter,
         )
-        if lane == "H":
-            result["compute_samples_s"][f"comm-{comm.id}/producer"] = producer_s
-            result["compute_samples_s"][f"comm-{comm.id}/consumer"] = consumer_s
-            stop_event.wait(producer_s)
-            ready_ts = time.perf_counter_ns() // 1000 if diagnostic else None
-        elif lane == "S":
-            if getattr(args, "compute_mode", "host-sleep") != "cuda-matmul":
-                raise ValueError("S lane requires the fixed CUDA compute mode")
-            ready_ts = None
-        else:
-            raise ValueError(f"unsupported measurement lane: {lane!r}")
+        result["compute_samples_s"][f"comm-{comm.id}/producer"] = producer_s
+        result["compute_samples_s"][f"comm-{comm.id}/consumer"] = consumer_s
+        stop_event.wait(producer_s)
+        ready_ts = time.perf_counter_ns() // 1000 if diagnostic else None
         group = groups[job.job_id]
         if precreated_bindings is None:
             binding, binding_event = _make_linear_binding(
@@ -492,35 +415,6 @@ def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank
             binding_event = (next(
                 item for item in binding_creation_events if item["task_id"] == spec.task_id
             ) if diagnostic else {})
-        gpu_segment = gpu_segments.get(spec.task_id) if lane == "S" else None
-        independent_receipt = None
-        producer_device_elapsed_ms = None
-        independent_device_elapsed_ms = None
-        consumer_device_elapsed_ms = None
-        if lane == "S":
-            if gpu_segment is None:
-                raise RuntimeError(f"missing precreated CUDA segment for {spec.task_id}")
-            producer_stream = gpu_segment["producer_stream"]
-            with torch.cuda.device(device), torch.cuda.stream(producer_stream):
-                gpu_segment["producer_start"].record(producer_stream)
-                binding.tensor.fill_(float(rank + 1))
-                gpu_segment["producer_done"].record(producer_stream)
-            ready_ts = _wait_cuda_event(
-                gpu_segment["producer_done"], deadline=deadline, stop_event=stop_event,
-                runtime=runtime, label=f"producer event for {spec.task_id}")
-            producer_device_elapsed_ms = float(
-                gpu_segment["producer_start"].elapsed_time(gpu_segment["producer_done"]))
-            binding = replace(
-                binding, producer_event=gpu_segment["producer_done"],
-                keepalive=tuple(binding.keepalive) + (gpu_segment, gpu_segment["producer_done"]))
-            # Independent GPU work is queued before submit/wait paths can stall for admission.
-            independent_receipt = gpu_segment["program"].submit()
-            if diagnostic:
-                runtime.event_log.record("producer_physical_ready", task_id=spec.task_id,
-                                         producer_device_elapsed_ms=producer_device_elapsed_ms)
-                runtime.event_log.record("independent_compute_submitted", task_id=spec.task_id,
-                                         matrix_size=gpu_segment["program"].matrix_size,
-                                         matmul_repeats=gpu_segment["program"].repeats)
         if args.fault == "metadata_mismatch" and rank == 1 and job.job_id == "job-1" and index == 0:
             spec = replace(spec, collective=CollectiveSpec("all_reduce", spec.collective.numel + 1,
                                                            spec.collective.num_bytes + 4, "float32",
@@ -538,56 +432,20 @@ def _run_linear_job(job: Job, *, workload: Workload, args, runtime, groups, rank
             runtime.event_log.record("submit_return", task_id=spec.task_id)
         consume_start = time.perf_counter_ns() // 1000 if diagnostic else None
         first_wait_ts = time.perf_counter_ns() // 1000 if diagnostic else None
-        if lane == "S":
-            consumer_stream = gpu_segment["consumer_stream"]
-            if not handle.wait_on(consumer_stream, timeout=max(0.0, deadline - time.monotonic())):
-                raise TimeoutError(f"stream binding wait timed out for {spec.task_id}")
-            with torch.cuda.device(device), torch.cuda.stream(consumer_stream):
-                consumer_stream.wait_event(independent_receipt.done_event)
-                gpu_segment["consumer_start"].record(consumer_stream)
-                torch.sum(binding.tensor, dim=tuple(range(binding.tensor.ndim)), out=gpu_segment["consumer_value"])
-                gpu_segment["consumer_done"].record(consumer_stream)
-            consumer_end_ts = _wait_cuda_event(
-                gpu_segment["consumer_done"], deadline=deadline, stop_event=stop_event,
-                runtime=runtime, label=f"dependent consumer for {spec.task_id}")
-            if not independent_receipt.is_completed():
-                raise RuntimeError(f"independent compute event did not complete for {spec.task_id}")
-            independent_device_elapsed_ms = independent_receipt.elapsed_ms()
-            consumer_device_elapsed_ms = float(
-                gpu_segment["consumer_start"].elapsed_time(gpu_segment["consumer_done"]))
-            if diagnostic:
-                runtime.event_log.record("consumer_dependency_enqueued", task_id=spec.task_id,
-                                         stream=str(consumer_stream))
-                runtime.event_log.record("consumer_physical_complete", task_id=spec.task_id,
-                                         independent_device_elapsed_ms=independent_device_elapsed_ms,
-                                         consumer_device_elapsed_ms=consumer_device_elapsed_ms)
-        else:
-            stop_event.wait(consumer_s)
-            if diagnostic:
-                runtime.event_log.record("application_wait_start", task_id=spec.task_id)
-            if not handle.wait_host(max(0.0, deadline - time.monotonic())):
-                raise TimeoutError(f"wait timed out for {spec.task_id}")
-            consumer_end_ts = time.perf_counter_ns() // 1000 if diagnostic else None
-            if diagnostic:
-                runtime.event_log.record("application_wait_return", task_id=spec.task_id)
+        stop_event.wait(consumer_s)
+        if diagnostic:
+            runtime.event_log.record("application_wait_start", task_id=spec.task_id)
+        if not handle.wait_host(max(0.0, deadline - time.monotonic())):
+            raise TimeoutError(f"wait timed out for {spec.task_id}")
+        consumer_end_ts = time.perf_counter_ns() // 1000 if diagnostic else None
+        if diagnostic:
+            runtime.event_log.record("application_wait_return", task_id=spec.task_id)
         expected = sum(item + 1 for item in ranks_for_job(job, world_size))
         task_result = {
             "task_id": spec.task_id, "job_id": job.job_id, "ordinal": comm.id,
             "correct": None, "decision_seq": handle.decision_seq,
             "group_id": spec.group_id, "group_seq": spec.group_seq,
-            "measurement_lane": lane,
         }
-        if lane == "S":
-            task_result.update({
-                "consumer_dependency_impl": "cuda_event_wait_on_consumer_stream",
-                "compute_work_kind": "fixed_count_matmul",
-                "compute_matrix_size": gpu_segment["program"].matrix_size,
-                "compute_repeats": gpu_segment["program"].repeats,
-                "compute_warmup_iterations": gpu_segment["program"].warmup_count,
-                "producer_device_elapsed_ms": producer_device_elapsed_ms,
-                "independent_device_elapsed_ms": independent_device_elapsed_ms,
-                "dependent_consumer_device_elapsed_ms": consumer_device_elapsed_ms,
-            })
         if diagnostic:
             task_result.update({
                 "producer_start_ts": producer_start, "ready_ts": ready_ts,
@@ -691,28 +549,24 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     rank = int(os.environ["RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
     comm_engine = getattr(args, "comm_engine", "new")
-    if comm_engine not in {"new", "old", "raw-ordered", "bare"}:
+    if comm_engine not in {"new", "old", "bare"}:
         raise ValueError(f"unsupported communication engine {comm_engine!r}")
     if args.timeout <= 0 or args.setup_timeout <= 0 or args.poll_interval <= 0 or args.dag_poll_interval <= 0:
         raise ValueError("setup/replay timeouts and poll intervals must be positive")
     compute_mode = getattr(args, "compute_mode", "host-sleep")
     compute_matrix_size = getattr(args, "compute_matrix_size", 256)
     compute_repeats = getattr(args, "compute_repeats", 1)
-    lane = getattr(args, "lane", "H")
     binding_preparation = getattr(args, "binding_preparation", "on-ready")
     if compute_mode not in {"host-sleep", "cuda-matmul"}:
         raise ValueError(f"unsupported compute mode: {compute_mode!r}")
-    if lane not in {"H", "S"}:
-        raise ValueError(f"unsupported measurement lane: {lane!r}")
     if compute_matrix_size < 16 or compute_repeats <= 0:
         raise ValueError("compute matrix size must be >= 16 and repeats must be positive")
     if compute_mode == "cuda-matmul" and args.backend != "nccl":
         raise ValueError("cuda-matmul compute requires NCCL")
-    if compute_mode == "cuda-matmul" and not args.dag and lane != "S":
-        raise ValueError("linear cuda-matmul requires measurement lane S")
-    if lane == "S" and (args.backend != "nccl" or args.dag is not None
-                         or compute_mode != "cuda-matmul" or binding_preparation != "precreate"):
-        raise ValueError("S lane requires linear NCCL, fixed CUDA compute, and precreated bindings")
+    if args.backend == "nccl" and args.dag is None:
+        raise ValueError("GPU/NCCL Phase 3 replay accepts DAG inputs only; linear workloads require Gloo")
+    if compute_mode == "cuda-matmul" and args.dag is None:
+        raise ValueError("cuda-matmul is supported only for DAG inputs")
     if not 0 <= args.compute_jitter < 1:
         raise ValueError("compute_jitter must be in [0, 1)")
     comm_profile = getattr(args, "comm_profile", None)
@@ -729,11 +583,9 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     if gpu_program_dag and args.backend != "nccl":
         raise ValueError("DAG schema-v2 cuda-program execution requires --backend nccl")
     if comm_engine != "new" and (not gpu_program_dag or args.backend != "nccl"):
-        raise ValueError("old, raw-ordered, and bare adapters require a schema-v2 CUDA DAG on NCCL")
+        raise ValueError("old and bare adapters require a schema-v2 CUDA DAG on NCCL")
     if comm_engine == "old" and args.policy not in {"static_fifo", "static_ltf"}:
         raise ValueError("old scheduler adapter requires static_fifo or static_ltf")
-    if comm_engine == "raw-ordered" and args.policy != "static_fifo":
-        raise ValueError("raw-ordered adapter uses the common static_fifo sequence")
     if comm_engine == "bare" and args.policy != "bare":
         raise ValueError("bare adapter uses DAG readiness and requires the bare policy marker")
     if comm_engine == "bare":
@@ -809,7 +661,6 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
     groups: dict[str, Any] = {}
     gpu_compute_programs: dict[str, CudaMatmulProgram] = {}
     gpu_dag_resources: dict[str, GpuDagResources] = {}
-    gpu_segments: dict[str, dict[str, Any]] = {}
     gpu_compute_preparation_start_ts = gpu_compute_preparation_end_ts = None
     try:
         process_group_timeout_s = (
@@ -868,14 +719,6 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 workload, local_jobs, groups=groups, rank=rank, device=device,
                 world_size=world_size, epoch=args.epoch, fault=args.fault,
             )
-        if lane == "S":
-            assert precreated_bindings is not None
-            (gpu_segments, gpu_compute_preparation_start_ts,
-             gpu_compute_preparation_end_ts) = _prepare_linear_gpu_segments(
-                workload, local_jobs, precreated_bindings=precreated_bindings,
-                device=device, rank=rank, world_size=world_size, epoch=args.epoch,
-                matrix_size=compute_matrix_size, repeats=compute_repeats,
-                warmup_iterations=getattr(args, "warmup_iterations", 0))
         dist.barrier()
         warmup_collective_count = _warmup_collectives(
             inputs, groups, rank=rank, world_size=world_size, device=device,
@@ -920,19 +763,6 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 dag.graph, policy=args.policy, epoch=args.epoch, rank=rank, group_ids=used_groups,
                 tails=dag_tails, device=device, poll_interval_s=args.poll_interval,
                 event_log=runtime_event_log, order=order, failure_signal=failure_signal,
-                failure_drain_timeout_s=args.timeout,
-            )
-            executor = runtime.executor
-        elif comm_engine == "raw-ordered":
-            from examples.jobpacer.runtime.dag_comm_adapters import RawOrderedDagAdapter
-            if not order:
-                order = build_static_order(dag.graph, "static_fifo", tails=dag_tails)
-            raw_probe = (_FailingProbe() if args.fault == "completion_probe_failure" and rank == 0
-                         else None)
-            runtime = RawOrderedDagAdapter(
-                dag.graph, order=order, rank=rank, group_ranks=dag.group_ranks, device=device,
-                deadline_s=args.timeout, poll_interval_s=args.poll_interval, event_log=runtime_event_log,
-                failure_signal=failure_signal, completion_probe=raw_probe,
                 failure_drain_timeout_s=args.timeout,
             )
             executor = runtime.executor
@@ -1004,7 +834,6 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 validation_records=validation_records, precreated_bindings=precreated_bindings,
                 binding_creation_events=binding_creation_events,
                 binding_events_lock=binding_events_lock,
-                gpu_segments=gpu_segments,
             )
             jobs = _run_jobs(local_jobs, run_one, runtime=runtime, deadline=deadline,
                              stop_event=stop_event, thread_name_prefix="job")
@@ -1045,12 +874,11 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                                   else "work_is_completed"),
             "nccl_launch_order_implicit": (
                 os.environ.get("NCCL_LAUNCH_ORDER_IMPLICIT") if comm_engine == "bare" else None),
-            "measurement_lane": lane,
             "offer_readiness_mode": "physical_ready",
             "compute_mode": compute_mode,
             "compute_matrix_size": compute_matrix_size if compute_mode == "cuda-matmul" else None,
             "compute_repeats": compute_repeats if compute_mode == "cuda-matmul" else None,
-            "gpu_compute_program_count": len(gpu_compute_programs) + len(gpu_segments)
+            "gpu_compute_program_count": len(gpu_compute_programs)
             + sum(len(item.node_programs) for item in gpu_dag_resources.values()),
             "gpu_compute_preparation_start_ts": gpu_compute_preparation_start_ts,
             "gpu_compute_preparation_end_ts": gpu_compute_preparation_end_ts,
@@ -1059,7 +887,6 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 if gpu_compute_preparation_start_ts is not None else None),
             "application_end_definition": (
                 "all local DAG nodes have physical completion evidence" if dag is not None else
-                "all terminal consumer events physically completed" if lane == "S" else
                 "all local host waits returned"),
             "epoch": args.epoch, "world_size": world_size,
             "max_inflight": None if comm_engine == "bare" else 1,
@@ -1180,11 +1007,6 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
                 output["shared_plan_digest"] = runtime.plan.digest()
                 output["shared_plan_sequence"] = list(runtime.launch_order)
                 output["plan_origin"] = "gpu-shared-estimator"
-            elif comm_engine == "raw-ordered":
-                output["raw_ordered_sequence"] = list(runtime.launch_order)
-                output["raw_ordered_contract"] = "static_fifo-global-sequence-physical-serial"
-                output["raw_ordered_peak_inflight"] = runtime.peak_inflight
-                output["raw_ordered_static_head_wait_s"] = runtime.static_head_wait_s
             elif comm_engine == "bare":
                 output["bare_launch_sequence"] = list(runtime.launch_order)
                 output["bare_contract"] = bare_order.contract_version
@@ -1242,7 +1064,7 @@ def run_rank(args: argparse.Namespace) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", choices=("static_fifo", "static_ltf", "fifo", "ltf", "lookahead", "bare"), default="fifo")
-    parser.add_argument("--comm-engine", choices=("new", "old", "raw-ordered", "bare"), default="new")
+    parser.add_argument("--comm-engine", choices=("new", "old", "bare"), default="new")
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--workload")
     source.add_argument("--dag", type=Path)
@@ -1257,7 +1079,6 @@ def main() -> int:
     parser.add_argument("--dag-poll-interval", type=float, default=0.001)
     parser.add_argument("--compute-jitter", type=float, default=0.0)
     parser.add_argument("--compute-mode", choices=("host-sleep", "cuda-matmul"), default="host-sleep")
-    parser.add_argument("--lane", choices=("H", "S"), default="H")
     parser.add_argument("--compute-matrix-size", type=int, default=256)
     parser.add_argument("--compute-repeats", type=int, default=1)
     parser.add_argument("--matmul-precision", choices=("highest", "high", "medium"), default="highest")
@@ -1278,7 +1099,7 @@ def main() -> int:
     if args.timeout <= 0 or args.setup_timeout <= 0 or args.wait_budget_s < 0 or args.warmup_iterations < 0:
         parser.error("setup-timeout and timeout must be positive; wait-budget-s must be non-negative")
     if args.declaration_mode == "on-submit" and (args.dag or args.policy == "lookahead"):
-        parser.error("--declaration-mode on-submit supports linear non-Lookahead replay only")
+        parser.error("--declaration-mode on-submit supports Gloo linear non-Lookahead replay only")
     try:
         if args.cuda_profiler_dir:
             args.cuda_profiler_dir.mkdir(parents=True, exist_ok=True)

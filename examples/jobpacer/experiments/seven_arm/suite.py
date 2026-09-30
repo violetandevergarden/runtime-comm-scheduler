@@ -36,7 +36,6 @@ MECHANISM_PILOT_ARMS = (
     "new-dynamic-fifo", "new-dynamic-ltf",
 )
 SUPPORTED_ARMS = ARMS
-RAW_ORDERED_ARM = "raw-ordered-static-fifo"
 BARE_ARM = "bare-ordered"
 CONTRACT_VERSION = "gpu-seven-arm-v2"
 GENERATOR_VERSION = "gpu-seven-arm-inputs-v5-mechanisms"
@@ -415,8 +414,7 @@ def prepare_suite(output_dir: Path, *, seeds: tuple[int, ...] = FORMAL_WORKLOAD_
         "tensor_seed_derivation": TENSOR_SEED_VERSION,
         "workload_seeds": list(seeds), "order_seed": ORDER_SEED,
         "scenarios": scenarios, "execution_contract": dict(EXECUTION_CONTRACT),
-        "bare": {"status": "unqualified", "evidence": None,
-                 "available_reference": RAW_ORDERED_ARM},
+        "bare": {"status": "unqualified", "evidence": None},
         "contract_version": CONTRACT_VERSION,
         "bare_qualification": {"arm": BARE_ARM, "status": "pending-G1", "evidence": None},
         "readiness": {"software": "pending", "backend": "pending", "mechanism": "pending",

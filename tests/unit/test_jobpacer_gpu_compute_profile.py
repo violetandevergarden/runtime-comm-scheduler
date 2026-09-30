@@ -12,9 +12,6 @@ from examples.jobpacer.gpu.gpu_compute_profile import (
     dag_compute_profile_signature,
     load_gpu_compute_profile,
 )
-from examples.jobpacer.gpu.gpu_workload import GpuComputeSpec
-
-
 def _profile():
     return {
         "schema": "jobpacer-gpu-compute-profile", "schema_version": 2,
@@ -34,8 +31,9 @@ def test_compute_profile_matches_device_software_and_full_program_signature(tmp_
     path = tmp_path / "compute.json"
     path.write_text(json.dumps(_profile()))
     profile = load_gpu_compute_profile(path)
-    spec = GpuComputeSpec("matmul", m=2, n=2, k=3, repeats=2,
-                          output_role="collective_input")
+    spec = {"op": "matmul", "m": 2, "n": 2, "k": 3, "dtype": "float32",
+            "layout": "contiguous", "repeats": 2,
+            "output_role": "collective_input"}
     record = profile.record(device_uuid="GPU-0", stage="producer", spec=spec,
                             software={"pytorch_version": "2.x", "cuda_version": "12.x",
                                       "matmul_precision": "highest", "allow_tf32": False})
@@ -90,7 +88,7 @@ def test_fill_and_sum_join_profile_signatures_include_tensor_shape_dtype_and_lay
     path.write_text(json.dumps(raw))
     profile = load_gpu_compute_profile(path)
 
-    fill = GpuComputeSpec("fill", output_role="collective_input")
+    fill = {"op": "fill", "output_role": "collective_input"}
     assert profile.record(device_uuid="GPU-0", stage="producer", spec=fill,
                           tensor_shape=(2, 3)).signature["shape"] == [2, 3]
     join = {"op": "sum_join", "inputs": ["collective_output", "independent_output"]}
