@@ -6,12 +6,12 @@ from types import SimpleNamespace
 import pytest
 
 from examples.jobpacer.runtime.runtime_adapter import parse_dag, apply_dag_compute_profile
-from examples.jobpacer.scripts.gpu_seven_arm_suite import (
+from examples.jobpacer.experiments.seven_arm.suite import (
     ARMS, BARE_ARM, EXECUTION_CONTRACT, PILOT_WORKLOAD_SEEDS,
     expand_sample, make_template, prepare_suite, topology_hash,
 )
-from examples.jobpacer.scripts.gpu_seven_arm_gates import decision_evidence, mechanism_gates, verify_readiness
-from examples.jobpacer.scripts.run_gpu_seven_arm import _verified_pre_task_port_conflict
+from examples.jobpacer.experiments.seven_arm.gates import decision_evidence, mechanism_gates, verify_readiness
+from examples.jobpacer.experiments.seven_arm.batch import _verified_pre_task_port_conflict
 
 
 def test_v2_has_distinct_six_graphs_two_real_chains_and_explicit_capacities():

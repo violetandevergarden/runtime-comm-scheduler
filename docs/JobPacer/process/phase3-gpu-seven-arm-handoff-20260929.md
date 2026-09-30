@@ -1,5 +1,11 @@
 # 七臂 v2 放行检查记录（2026-09-29 至 2026-09-30）
 
+## 2026-09-30 统一入口
+
+七臂操作统一从仓库根目录使用 `python -m examples.jobpacer.scripts.run_gpu_seven_arm`：顶层命令为 `prepare`、`qualify`、`check`、`run`、`analyze`、`finalize`。准备动作使用 `prepare generate/freeze/order/preview`；`run --plan-only` 只建批次计划，`run --resume` 恢复同一批次；pilot 封存和 readiness 封存分别使用 `finalize pilot`、`finalize formal`。
+
+`check --status --suite-manifest PATH` 只读现有资格与放行证据；测量、恢复和 NCCL mechanism 诊断必须显式选择 `check --kind ...`。`analyze` 只分析已有批次。正式数据仍未放行，本记录中的 D1 门槛结论不变；这些入口不自动封存或启动正式采集。
+
 ## 当前结论
 
 接手清单的预正式检查已完成。revision-1 pilot、七项 source/profile 绑定审计、GPU 辅助诊断、恢复彩排、测量检查、预算和回归结果均已归档。

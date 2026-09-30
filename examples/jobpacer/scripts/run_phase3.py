@@ -158,7 +158,7 @@ def _option_was_set(name: str) -> bool:
     return any(token == name or token.startswith(name + "=") for token in sys.argv[1:])
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--policy", choices=("static_fifo", "static_ltf", "fifo", "ltf", "lookahead", "bare"), default="fifo")
     parser.add_argument("--comm-engine", choices=("new", "old", "raw-ordered", "bare"), default="new")
@@ -199,7 +199,7 @@ def main() -> int:
     parser.add_argument("--fault", choices=("none", "missing_task", "metadata_mismatch", "launch_failure",
                                               "completion_probe_failure", "compute_failure", "binding_failure"),
                         default="none")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.timeout <= 0 or args.setup_timeout <= 0 or args.poll_interval <= 0 or args.dag_poll_interval <= 0:
         parser.error("setup/replay timeouts and poll intervals must be positive")
     if args.wait_budget_s < 0 or args.warmup_iterations < 0:

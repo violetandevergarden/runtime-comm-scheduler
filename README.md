@@ -54,7 +54,8 @@ G5 的 bridge 批次成功执行，但尚不能认定为等价迁移：所选 [D
 | `src/runtime_comm_scheduler/dag/` | 图模型、校验、计算与通信节点推进 |
 | `examples/jobpacer/runtime/` | workload 映射、rank harness |
 | `examples/jobpacer/gpu/` | GPU workload、CUDA compute/DAG 资源、compute profile 与设备信息 |
-| `examples/jobpacer/scripts/` | 单次 replay、通信 profile、实验批次入口 |
+| `examples/jobpacer/scripts/` | replay/profile 工具及七臂唯一用户入口 `run_gpu_seven_arm.py` |
+| `examples/jobpacer/experiments/seven_arm/` | 七臂输入、资格、检查、批次、分析和封存实现 |
 | `examples/jobpacer/analysis/` | 结果校验、汇总与可视化 |
 | `benchmark/phase3/experiments/` | 语义分类的实验输入 |
 | `benchmark/phase3/results/` | 本地产物，默认被 Git 忽略 |

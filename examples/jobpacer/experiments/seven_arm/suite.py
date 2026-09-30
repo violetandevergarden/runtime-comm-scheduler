@@ -19,7 +19,7 @@ from runtime_comm_scheduler.dag import build_static_order
 from runtime_comm_scheduler.dag.model import compute_tails
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 SCENARIOS = (
     "L0-balanced", "L1-skew-tail", "D0-fork-join",
     "D1-asymmetric-frontiers", "D2-cross-job-skew", "D3-order-and-sinks",

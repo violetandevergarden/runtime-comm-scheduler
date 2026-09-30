@@ -1,5 +1,7 @@
 # GPU 七臂 v2 实验前准备
 
+2026-09-30 入口整理：七臂用户操作统一使用 `python -m examples.jobpacer.scripts.run_gpu_seven_arm` 的 `prepare`、`qualify`、`check`、`run`、`analyze`、`finalize` 子命令。本文记录中的放行结论与实验数据不因入口迁移而改变。
+
 2026-09-29。本记录落实[执行要求](phase3-gpu-seven-arm-implementation-20260928.md)，保留进入工作时已有未提交实现；起始 tracked patch 和七臂脚本副本暂存 `/tmp/jobpacer-seven-arm-preparation-start/`。未提交 commit，未删除历史输入/结果，未启动正式矩阵。
 
 ## 实现

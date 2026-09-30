@@ -14,7 +14,7 @@ import pytest
 
 from examples.jobpacer.runtime.runtime_adapter import load_dag
 from examples.jobpacer.runtime.dag_comm_adapters import build_bare_order
-from examples.jobpacer.scripts.gpu_seven_arm_suite import (
+from examples.jobpacer.experiments.seven_arm.suite import (
     ARMS,
     CONTRACT_VERSION,
     BARE_ARM,
@@ -33,7 +33,7 @@ from examples.jobpacer.scripts.gpu_seven_arm_suite import (
     verify_order_table,
 )
 from examples.jobpacer.scripts.run_gpu_compute_profile import collect_calibration_cases
-from examples.jobpacer.scripts.run_gpu_seven_arm import (
+from examples.jobpacer.experiments.seven_arm.batch import (
     _accepted_blocks,
     _classify_failure,
     _dynamic_fifo_bypass,
@@ -51,7 +51,7 @@ from examples.jobpacer.scripts.run_gpu_seven_arm import (
     run_batch,
     source_snapshot,
 )
-from examples.jobpacer.scripts.prepare_gpu_seven_arm import _preview
+from examples.jobpacer.experiments.seven_arm.prepare import _preview
 from runtime_comm_scheduler.dag import (
     CommNode, build_layered_fifo_order, build_static_order, validate_static_order,
 )
@@ -388,7 +388,7 @@ def test_formal_complete_requires_exact_formal_grid_and_bare_evidence():
 
 
 def _controlled_runner_batch(tmp_path, monkeypatch):
-    import examples.jobpacer.scripts.run_gpu_seven_arm as runner
+    import examples.jobpacer.experiments.seven_arm.batch as runner
 
     batch_dir = tmp_path / "controlled-batch"
     for directory in ("inputs", "logs/reservations", "raw", "source/repository", "tables", "figures"):
@@ -579,7 +579,7 @@ def test_compute_profile_provenance_must_match_every_formal_sample_hash(tmp_path
 def test_pilot_profile_freeze_uses_the_verified_formal_calibration_suite(tmp_path, monkeypatch):
     import examples.jobpacer.comm_profile as comm_profile_module
     import examples.jobpacer.gpu.gpu_compute_profile as compute_profile_module
-    import examples.jobpacer.scripts.gpu_seven_arm_suite as suite_module
+    import examples.jobpacer.experiments.seven_arm.suite as suite_module
 
     formal_dir = tmp_path / "formal"
     pilot_dir = tmp_path / "pilot"
@@ -643,7 +643,7 @@ def test_source_snapshot_covers_legacy_static_scheduler_modules():
 def test_plan_interruption_recovery_and_analysis_use_whole_paired_attempts(tmp_path, monkeypatch):
     import examples.jobpacer.analysis.runtime_results as runtime_results
     import examples.jobpacer.runtime.runtime_adapter as runtime_adapter
-    import examples.jobpacer.scripts.run_gpu_seven_arm as runner
+    import examples.jobpacer.experiments.seven_arm.batch as runner
 
     suite_root = tmp_path / "suite"
     (suite_root / "inputs/L0-balanced").mkdir(parents=True)

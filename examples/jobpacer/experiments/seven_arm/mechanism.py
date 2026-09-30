@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import os
@@ -184,36 +183,31 @@ def _worker(rank: int, world_size: int, port: int, numel: int,
         dist.destroy_process_group()
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--message-bytes", type=int, default=1 << 20)
-    parser.add_argument("--repeats", type=int, default=5)
-    parser.add_argument("--warmup", type=int, default=5)
-    parser.add_argument("--timeout", type=float, default=30.0)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
-    if args.message_bytes <= 0 or args.message_bytes % 4:
-        parser.error("--message-bytes must be a positive multiple of 4 for float32")
-    if args.repeats < 5 or args.warmup < 0 or args.timeout <= 0:
-        parser.error("mechanism check requires >=5 repeats, non-negative warmup, and a positive timeout")
+def run_mechanism_check(output: Path, *, message_bytes: int = 1 << 20,
+                        repeats: int = 5, warmup: int = 5,
+                        timeout: float = 30.0) -> dict[str, object]:
+    if message_bytes <= 0 or message_bytes % 4:
+        raise ValueError("message_bytes must be a positive multiple of 4 for float32")
+    if repeats < 5 or warmup < 0 or timeout <= 0:
+        raise ValueError("mechanism check requires >=5 repeats, non-negative warmup, and a positive timeout")
     if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
-        parser.error("bare NCCL mechanism check requires two visible CUDA devices")
+        raise RuntimeError("bare NCCL mechanism check requires two visible CUDA devices")
     from examples.jobpacer.runtime.dag_comm_adapters import validate_bare_backend
     validate_bare_backend(nccl_version=tuple(torch.cuda.nccl.version()), cuda_version=torch.version.cuda,
                           implicit=os.environ.get("NCCL_LAUNCH_ORDER_IMPLICIT"),
                           blocking_wait=os.environ.get("TORCH_NCCL_BLOCKING_WAIT"))
-    if args.output.exists():
-        parser.error("refusing to overwrite existing mechanism output directory")
-    args.output.mkdir(parents=True)
+    if output.exists():
+        raise FileExistsError("refusing to overwrite existing mechanism output directory")
+    output.mkdir(parents=True)
     world_size = 2
     mp.spawn(
         _worker,
-        args=(world_size, _free_port(), args.message_bytes // 4, args.warmup,
-              args.repeats, args.timeout, str(args.output.resolve())),
+        args=(world_size, _free_port(), message_bytes // 4, warmup,
+              repeats, timeout, str(output.resolve())),
         nprocs=world_size,
         join=True,
     )
-    ranks = [json.loads((args.output / f"rank-{rank}.json").read_text())
+    ranks = [json.loads((output / f"rank-{rank}.json").read_text())
              for rank in range(world_size)]
     by_mode: dict[str, list[float]] = {mode: [] for mode in MODES}
     for rank_result in ranks:
@@ -225,20 +219,15 @@ def main() -> int:
     summary = {
         "contract": "bare-ordered-v2-layered-round-robin",
         "backend_mechanism": "NCCL_LAUNCH_ORDER_IMPLICIT=1",
-        "message_bytes_per_collective": args.message_bytes,
-        "repeats_per_mode_per_rank": args.repeats,
-        "warmup_per_group_per_rank": args.warmup,
+        "message_bytes_per_collective": message_bytes,
+        "repeats_per_mode_per_rank": repeats,
+        "warmup_per_group_per_rank": warmup,
         "median_application_us_across_rank_samples": {
             mode: statistics.median(values) for mode, values in by_mode.items()
         },
         "source_sha256": source_digest,
         "ranks": ranks,
     }
-    path = args.output / "mechanism-summary.json"
+    path = output / "mechanism-summary.json"
     path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
-    print(json.dumps({"status": "ok", "summary": str(path), "source_sha256": source_digest}))
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+    return {"status": "ok", "summary": str(path), "source_sha256": source_digest}

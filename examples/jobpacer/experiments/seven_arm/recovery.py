@@ -1,12 +1,12 @@
 """Exercise real startup collision and interrupted-ledger recovery in separate pilot blocks."""
 from __future__ import annotations
 
-import argparse
 import json
+import sys
 from pathlib import Path
 
-from examples.jobpacer.scripts import run_gpu_seven_arm as batch
-from examples.jobpacer.scripts.gpu_seven_arm_suite import MECHANISM_PILOT_ARMS, ORDER_SEED
+from examples.jobpacer.experiments.seven_arm import batch
+from examples.jobpacer.experiments.seven_arm.suite import MECHANISM_PILOT_ARMS, ORDER_SEED
 
 # The held socket forces rank zero's real TCPStore bind to fail before any
 # communicator or application can start. Subsequent processes allocate normally.
@@ -22,8 +22,7 @@ def occupied(excluded=None):
     calls += 1
     return held.getsockname()[1] if calls == 1 else original(excluded)
 replay._free_port = occupied
-sys.argv = ["run_phase3"] + sys.argv[1:]
-raise SystemExit(replay.main())
+raise SystemExit(replay.main(sys.argv[1:]))
 '''
 
 
@@ -95,17 +94,3 @@ def run(suite_path: Path, output: Path) -> dict:
               "artifacts": artifacts}
     batch._write_json(output / "recovery-audit.json", report)
     return report
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--suite-manifest", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
-    report = run(args.suite_manifest.resolve(), args.output.resolve())
-    print(json.dumps({"passed": report["passed"], "checks": report["checks"]}))
-    return 0 if report["passed"] else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

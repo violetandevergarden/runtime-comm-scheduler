@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import os
@@ -12,11 +11,13 @@ import time
 from pathlib import Path
 from typing import Any
 
-from examples.jobpacer.scripts.gpu_seven_arm_suite import BARE_ARM, SCENARIOS
-from examples.jobpacer.scripts.run_gpu_seven_arm import source_snapshot, _reserve_run_attempt, _run_child, _verify_frozen_inputs
+from examples.jobpacer.experiments.seven_arm.batch import (
+    source_snapshot, _reserve_run_attempt, _run_child, _verify_frozen_inputs,
+)
+from examples.jobpacer.experiments.seven_arm.suite import BARE_ARM, SCENARIOS
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 RUNNER = ROOT / "examples/jobpacer/scripts/run_phase3.py"
 CONTRACT_VERSION = "bare-ordered-v2-layered-round-robin"
 
@@ -312,25 +313,3 @@ def qualify_g1(suite_manifest_path: Path, output_dir: Path, *, timeout_s: float 
         }
     _write_json(suite_manifest_path, suite)
     return audit
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mechanism-evidence", type=Path, required=True)
-    parser.add_argument("--suite-manifest", type=Path, required=True)
-    parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--timeout", type=float, default=60.0)
-    parser.add_argument("--setup-timeout", type=float, default=30.0)
-    parser.add_argument("--warmup", type=int, default=5)
-    args = parser.parse_args(argv)
-    if args.timeout <= 0 or args.setup_timeout <= 0 or args.warmup < 5:
-        parser.error("timeouts must be positive and G1 warmup must be at least five iterations")
-    audit = qualify_g1(args.suite_manifest, args.output_dir, timeout_s=args.timeout,
-                       setup_timeout_s=args.setup_timeout, warmup=args.warmup,
-                       mechanism_evidence=args.mechanism_evidence)
-    print(json.dumps(audit, sort_keys=True))
-    return 0 if audit["passed"] else 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())

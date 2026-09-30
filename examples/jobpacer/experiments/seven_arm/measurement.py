@@ -1,7 +1,6 @@
 """Plan/run paired A/A and minimal/full diagnostics, separate from performance blocks."""
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import os
@@ -9,8 +8,8 @@ import statistics
 import sys
 from pathlib import Path
 
-from examples.jobpacer.scripts.gpu_seven_arm_suite import BARE_ARM, CONTRACT_VERSION
-from examples.jobpacer.scripts.run_gpu_seven_arm import (
+from examples.jobpacer.experiments.seven_arm.suite import BARE_ARM, CONTRACT_VERSION
+from examples.jobpacer.experiments.seven_arm.batch import (
     ARM_CONFIG, ROOT, _canonical, _cuda_environment, _reserve_run_attempt,
     _run_child, _verify_frozen_inputs, _write_json, source_snapshot,
 )
@@ -173,23 +172,3 @@ def run(directory: Path) -> dict:
         if code != 0 or timed_out or not exited:
             break
     return analyze(directory)
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("plan", "run", "analyze"))
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--suite", type=Path)
-    args = parser.parse_args()
-    if args.command == "plan":
-        if args.suite is None:
-            parser.error("plan requires --suite")
-        result = plan(args.suite, args.output)
-    else:
-        result = run(args.output) if args.command == "run" else analyze(args.output)
-    print(json.dumps(result, sort_keys=True))
-    return 1 if result.get("passed") is False else 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from examples.jobpacer.runtime.runtime_adapter import parse_dag
-from examples.jobpacer.scripts.run_gpu_seven_arm import _cuda_environment, source_snapshot
+from examples.jobpacer.experiments.seven_arm.batch import _cuda_environment, source_snapshot
 from runtime_comm_scheduler.dag import build_layered_fifo_order, validate_static_order
 
 
